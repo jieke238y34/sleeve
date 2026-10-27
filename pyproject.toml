@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sleeve"
+version = "0.1.0"
+description = "A music library browser, player and sync dashboard for the playlist-sync downloader."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "jieke238y34" }]
+keywords = ["music", "player", "library", "playlist", "mpv", "qt", "spotify"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "PySide6-Essentials>=6.6,<7",
+    "mutagen>=1.47,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+    "build>=1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/jieke238y34/sleeve"
+Issues = "https://github.com/jieke238y34/sleeve/issues"
+Changelog = "https://github.com/jieke238y34/sleeve/blob/main/CHANGELOG.md"
+
+[project.gui-scripts]
+sleeve = "sleeve.app:main"
+
+[tool.setuptools.packages.find]
+include = ["sleeve*"]
+
+[tool.setuptools.package-data]
+sleeve = ["data/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+ignore = [
+    "S101",    # asserts are fine in tests
+    "B008",    # Qt default arguments such as QModelIndex()
+    "S311",    # random is used for shuffle, not for security
+    "SIM105",  # explicit try/except reads better next to Qt signal code
+    "SIM108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B", "E501"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

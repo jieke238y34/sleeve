@@ -7,7 +7,6 @@ import os
 import random
 import shutil
 import tempfile
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 from PySide6.QtNetwork import QLocalSocket
@@ -142,12 +141,14 @@ class Player(QObject):
     def close(self):
         "Stop mpv and remove the socket folder."
         try:
-            self._send(["quit"])
-        except Exception:
+            self._proc.errorOccurred.disconnect()          # no signals while we shut down
+        except (RuntimeError, TypeError):
             pass
+        self._send(["quit"])
         self._proc.waitForFinished(500)
         if self._proc.state() != QProcess.NotRunning:
             self._proc.kill()
+            self._proc.waitForFinished(1000)
         shutil.rmtree(self._dir, ignore_errors=True)
 
     # --- queue --------------------------------------------------------------
@@ -204,9 +205,12 @@ class Player(QObject):
             self._send(["cycle", "pause"])
 
     def next(self):
-        if self.queue:
-            self.play_index(random.randrange(len(self.queue)) if self.shuffle and len(self.queue) > 1
-                            else (self.index + 1) % len(self.queue))
+        if not self.queue:
+            return
+        if self.shuffle and len(self.queue) > 1:
+            self.play_index(random.randrange(len(self.queue)))  # nosec B311 - shuffle order, not security
+        else:
+            self.play_index((self.index + 1) % len(self.queue))
 
     def prev(self):
         if not self.queue:
