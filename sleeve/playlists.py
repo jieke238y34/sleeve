@@ -1,6 +1,11 @@
 """Read the .m3u8 files that dl.py writes."""
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from .library import AUDIO_EXT
+
+MAX_BYTES = 5_000_000          # a playlist larger than this is not a playlist
 
 
 @dataclass
@@ -14,9 +19,21 @@ class Entry:
         return Path(self.path).is_file()
 
 
-def read_m3u8(file):
-    "Entries of one playlist. Relative paths are resolved against the playlist's folder."
+def _inside(path, root):
+    try:
+        return Path(path).is_relative_to(root)
+    except (ValueError, TypeError):
+        return False
+
+
+def read_m3u8(file, root=None):
+    """Entries of one playlist. Relative paths are resolved against the playlist's folder (symlinks are not followed,
+    so paths match the ones the library scan produces). With root given, entries outside it and entries that are not
+    audio files are dropped, so a planted playlist cannot queue /etc/passwd or a URL-like name."""
     file = Path(file)
+    if file.stat().st_size > MAX_BYTES:
+        return []
+    root = os.path.abspath(root) if root is not None else None
     out, info = [], None
     for raw in file.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
@@ -25,13 +42,14 @@ def read_m3u8(file):
         if line.startswith("#EXTINF:"):
             head, _, title = line[8:].partition(",")
             try:
-                info = (int(float(head.split()[0])), title.strip())
+                info = (max(0, int(float(head.split()[0]))), title.strip())
             except (ValueError, IndexError):
                 info = (0, title.strip())
         elif not line.startswith("#"):
-            p = Path(line)
-            p = p if p.is_absolute() else (file.parent / p)
-            out.append(Entry(str(p.resolve()), info[1] if info else "", info[0] if info else 0))
+            p = os.path.normpath(line if os.path.isabs(line) else os.path.join(file.parent, line))
+            keep = os.path.splitext(p)[1].lower() in AUDIO_EXT and (root is None or _inside(p, root))
+            if keep:
+                out.append(Entry(p, info[1] if info else "", info[0] if info else 0))
             info = None
     return out
 

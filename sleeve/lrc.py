@@ -2,7 +2,8 @@
 import bisect
 import re
 
-_TIME = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
+MAX_BYTES = 1_000_000                     # larger files are not lyrics
+_TIME = re.compile(r"\[(\d{1,4}):(\d{1,3}(?:\.\d{1,4})?)\]")
 
 
 def parse_lrc(text):

@@ -9,7 +9,7 @@
     <p>Sleeve browses your music library, plays it through mpv, and runs the playlist-sync downloader's sorting, genre repair, duplicate and playlist jobs from one window.</p>
     <ul>
       <li>Library browser with genre folders and instant search</li>
-      <li>Gapless playback with queue, shuffle, repeat, cover art and synced lyrics</li>
+      <li>Playback with queue, shuffle, repeat, cover art and synced lyrics</li>
       <li>Playlist view that shows which songs are missing from the library</li>
       <li>Library health report and a tag editor</li>
     </ul>

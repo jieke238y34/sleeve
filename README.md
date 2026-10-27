@@ -11,11 +11,42 @@ shows what is in the library, and runs the script's sort, dedupe, genre and play
 
 ![The Sleeve library page](docs/screenshots/library.png)
 
-## Features
+> **Status: work in progress (alpha).** Sleeve is young and changes quickly. Expect rough edges, missing features
+> and the occasional bug. Back up your music and tags before using the tag editor or the sync actions.
+>
+> **Vibe-coded.** Most of this project is written with an AI coding assistant (Claude) under the author's direction:
+> the author describes what they want, the assistant writes and tests the code, and the author reviews, runs and
+> steers it. It has automated tests, linting and security scanning (and two AI review passes so far), but it has not
+> had the scrutiny of a long-lived human-maintained project. Read the code before trusting it with anything
+> important, and please report anything odd.
+
+## What we're going for
+
+Sleeve aims to be a personal, self-hosted-style music app for people who keep their own library of files and
+download it with [playlist-sync](https://github.com/jieke238y34/playlist-sync): one window that plays the music, shows
+what is in it, and keeps it healthy, with no accounts, no telemetry and no network access of its own.
+
+The main feature set we're working towards:
+
+- **Playback done properly:** queue, shuffle, repeat, seek, volume, cover art, synced lyrics, and real gapless
+  playback.
+- **Desktop integration:** media keys and the Plasma/GNOME media widgets (MPRIS), a proper app icon and launcher
+  entry, light and dark themes that follow the system.
+- **Library management:** fast browsing and search, tag and genre fixing, duplicate and low-quality review, and
+  smart playlists, all driven by playlist-sync's own rules so the two never disagree.
+- **Sync dashboard:** start, watch and stop downloads and library jobs, with clear progress and errors.
+- **Easy installation:** `dnf install sleeve` on Fedora and `winget install` on Windows, plus `pipx`.
+- **Safe by default:** read-only unless you press Save, no shell commands built from tags or file names, and
+  hardened mpv. See [SECURITY.md](SECURITY.md).
+
+Not done yet: gapless playback, MPRIS/media keys, smart playlists, installers and packages (the files exist but
+nothing is published), and a settings page.
+
+## Features (today)
 
 - **Library browser.** Genre folders on the left, a sortable song table on the right, instant search across
   title, artist, album and genre. Tags are cached, so a 4,000 song library opens in a moment.
-- **Player.** Gapless playback through [mpv](https://mpv.io), queue, shuffle, repeat, seek, volume, embedded cover
+- **Player.** Playback through [mpv](https://mpv.io), queue, shuffle, repeat, seek, volume, embedded cover
   art and synced lyrics from the `.lrc` files `dl.py` fetches.
 - **Playlists.** Reads the `.m3u8` files `dl.py` writes and shows which songs are in the library and which are
   still missing.
@@ -63,6 +94,17 @@ folder, playlist folder and log location. Set `SLEEVE_DL` to choose `dl.py` with
 
 Requirements: Python 3.10 or newer, `mpv` on your `PATH`, and a working [playlist-sync](https://github.com/jieke238y34/playlist-sync)
 checkout for the sync features. Browsing and playing work without running anything.
+
+## Dependencies
+
+| Needs | Why |
+|---|---|
+| [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) | downloads, sorts and tags the music Sleeve browses; also written by the same author (listed in [`Dependencies`](Dependencies)) |
+| [mpv](https://mpv.io) | playback |
+| [PySide6](https://pypi.org/project/PySide6/) | the Qt interface |
+| [mutagen](https://pypi.org/project/mutagen/) | reading and writing tags |
+
+Python packages are declared in `pyproject.toml`, so GitHub's dependency graph and Dependabot track them.
 
 ## How it works
 

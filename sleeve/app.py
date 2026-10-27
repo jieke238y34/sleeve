@@ -50,14 +50,24 @@ def fmt_time(seconds):
 class SongModel(QAbstractTableModel):
     COLS = ("Title", "Artist", "Album", "Genre", "Time")
 
+    SORT_KEYS = (lambda s: s.name.lower(), lambda s: s.artist.lower(), lambda s: s.album.lower(),
+                 lambda s: (s.genre or s.folder).lower(), lambda s: s.length)
+
     def __init__(self, songs=()):
         super().__init__()
         self.songs = list(songs)
+        self._sort = None                     # (column, order) the header shows; kept when the list changes
 
     def set_songs(self, songs):
         self.beginResetModel()
         self.songs = list(songs)
+        self._apply_sort()
         self.endResetModel()
+
+    def _apply_sort(self):
+        if self._sort:
+            col, order = self._sort
+            self.songs.sort(key=self.SORT_KEYS[col], reverse=order == Qt.DescendingOrder)
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.songs)
@@ -84,23 +94,28 @@ class SongModel(QAbstractTableModel):
         return None
 
     def sort(self, column, order=Qt.AscendingOrder):
-        keys = (lambda s: s.name.lower(), lambda s: s.artist.lower(), lambda s: s.album.lower(),
-                lambda s: (s.genre or s.folder).lower(), lambda s: s.length)
-        self.layoutAboutToBeChanged.emit()
-        self.songs.sort(key=keys[column], reverse=order == Qt.DescendingOrder)
-        self.layoutChanged.emit()
+        self.beginResetModel()                # a reset also drops the selection, which would point at other songs
+        self._sort = (column, order)
+        self._apply_sort()
+        self.endResetModel()
 
 
 class ScanWorker(QThread):
     progress = Signal(int, int)
     done = Signal(list)
+    failed = Signal(str)
 
     def __init__(self, music_dir, extra_skip, parent=None):
         super().__init__(parent)
         self.music_dir, self.extra_skip = music_dir, extra_skip
 
     def run(self):
-        songs = library.scan(self.music_dir, CACHE_FILE, self.extra_skip, progress=self.progress.emit)
+        try:
+            songs = library.scan(self.music_dir, CACHE_FILE, self.extra_skip, progress=self.progress.emit,
+                                 cancel=self.isInterruptionRequested)
+        except Exception as e:                # the window must never be left on "Scanning…"
+            self.failed.emit(str(e))
+            return
         self.done.emit(songs)
 
 
@@ -129,8 +144,10 @@ class MainWindow(QMainWindow):
     def __init__(self, cfg, player=None):
         super().__init__()
         self.cfg = cfg
-        self.player = player or Player(self)
+        self.player = player or Player(parent=self)
         self.runner = sync.SyncRunner(cfg, self)
+        self.worker = None
+        self._closing = self._rescan_again = False
         self.songs, self.by_path = [], {}
         self.folder = ALL
         self._dragging = False
@@ -173,7 +190,7 @@ class MainWindow(QMainWindow):
         p.playingChanged.connect(self._on_playing)
         p.trackChanged.connect(self._on_track)
         p.queueChanged.connect(self._refresh_queue)
-        p.volumeChanged.connect(lambda v: self._set_slider_silently(self.volume, v))
+        p.volumeChanged.connect(self._on_volume)
         p.error.connect(lambda m: self.status.showMessage(m, 8000))
         self.runner.line.connect(self._on_sync_line)
         self.runner.progress.connect(self._on_sync_progress)
@@ -249,6 +266,7 @@ class MainWindow(QMainWindow):
         self._style_table(self.pl_table)
         self.pl_table.cellDoubleClicked.connect(self._play_playlist_from)
         self.pl_info = QLabel("")
+        self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
         right = QVBoxLayout()
         right.addWidget(self.pl_info)
         right.addWidget(self.pl_table, 1)
@@ -296,6 +314,7 @@ class MainWindow(QMainWindow):
         self.sync_log.setMaximumBlockCount(5000)
         self.sync_log.setFont(QFont("monospace"))
         self.sync_note = QLabel(f"dl.py: {self.cfg.dl_path}")
+        self.sync_note.setTextFormat(Qt.PlainText)
         lay.addLayout(row)
         lay.addWidget(self.sync_bar)
         lay.addWidget(self.sync_log, 1)
@@ -326,6 +345,7 @@ class MainWindow(QMainWindow):
         self.cover.setFixedSize(56, 56)
         self.cover.setScaledContents(True)
         self.now = QLabel("Nothing playing")
+        self.now.setTextFormat(Qt.PlainText)
         self.now.setMinimumWidth(220)
         self.now.setMaximumWidth(320)
         st = self.style()
@@ -369,24 +389,42 @@ class MainWindow(QMainWindow):
 
     # --- library ------------------------------------------------------------
     def rescan(self):
+        if self._closing:
+            return
+        if self.worker is not None and self.worker.isRunning():
+            self._rescan_again = True            # one scan at a time; run another when this one ends
+            return
         self.status.showMessage("Scanning the music folder…")
         extra = [self.cfg.playlist_dir.name] if self.cfg.playlist_dir.parent == self.cfg.music_dir else []
         self.worker = ScanWorker(self.cfg.music_dir, extra, self)
         self.worker.progress.connect(lambda d, t: self.status.showMessage(f"Scanning… {d} / {t}"))
         self.worker.done.connect(self._scan_done)
+        self.worker.failed.connect(self._scan_failed)
+        self.worker.finished.connect(self._scan_finished)
         self.worker.start()
 
+    def _scan_failed(self, message):
+        self.status.showMessage(f"Could not scan the music folder: {message}", 10000)
+
+    def _scan_finished(self):
+        if self._rescan_again and not self._closing:
+            self._rescan_again = False
+            self.rescan()
+
     def _scan_done(self, songs):
+        keep_folder = self.folder
         self.songs = songs
         self.by_path = {s.path: s for s in songs}
         groups = library.by_folder(songs)
         self.folders.blockSignals(True)
         self.folders.clear()
-        self.folders.addItem(f"{ALL}")
+        self.folders.addItem(ALL)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
-        self.folders.setCurrentRow(0)
+        names = [ALL, *groups]
+        self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
+        self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
         self._load_playlists()
         self._load_health()
@@ -422,17 +460,33 @@ class MainWindow(QMainWindow):
         dlg = TagDialog(song, self)
         if dlg.exec() != QDialog.Accepted:
             return
+        changed = {k: v for k, v in dlg.values().items() if v.strip() != getattr(song, k)}
+        if not changed:                              # untouched fields are never rewritten
+            return
+        if not self._inside_library(song.path):
+            QMessageBox.warning(self, "Could not save tags", "Sleeve only edits regular files inside the music folder.")
+            return
         try:
-            tags.write_tags(song.path, **dlg.values())
+            tags.write_tags(song.path, **changed)
         except Exception as e:                       # mutagen raises many kinds of errors
             QMessageBox.warning(self, "Could not save tags", str(e))
             return
         new = library.read_song(song.path, self.cfg.music_dir)
-        self.songs[self.songs.index(song)] = new
+        old = self.by_path.get(song.path)
+        if old is not None and old in self.songs:
+            self.songs[self.songs.index(old)] = new
         self.by_path[new.path] = new
         self._apply_filter()
         self._load_health()
         self.status.showMessage("Tags saved", 4000)
+
+    def _inside_library(self, path):
+        "True for a regular, non-symlink file under the music folder."
+        try:
+            p = Path(path)
+            return p.is_file() and not p.is_symlink() and p.resolve().is_relative_to(self.cfg.music_dir.resolve())
+        except (OSError, ValueError):
+            return False
 
     # --- playlists ----------------------------------------------------------
     def _load_playlists(self):
@@ -452,7 +506,11 @@ class MainWindow(QMainWindow):
     def _playlist_selected(self, row):
         if not 0 <= row < len(self._playlist_files):
             return
-        entries = playlists.read_m3u8(self._playlist_files[row][1])
+        try:
+            entries = playlists.read_m3u8(self._playlist_files[row][1], self.cfg.music_dir)
+        except OSError as e:
+            self.pl_info.setText(f"Could not read the playlist: {e}")
+            return
         self._playlist_entries = entries
         have = sum(1 for e in entries if e.exists)
         self.pl_info.setText(f"{len(entries)} songs, {have} in the library, {len(entries) - have} missing")
@@ -471,10 +529,11 @@ class MainWindow(QMainWindow):
                 self.pl_table.setItem(r, c, it)
 
     def _play_playlist_from(self, row, _col):
+        if not 0 <= row < len(self._playlist_entries) or not self._playlist_entries[row].exists:
+            return
         playable = [e.path for e in self._playlist_entries if e.exists]
-        want = self._playlist_entries[row]
-        if want.exists:
-            self.player.set_queue(playable, playable.index(want.path))
+        start = sum(1 for e in self._playlist_entries[:row] if e.exists)       # the clicked copy, not the first one
+        self.player.set_queue(playable, start)
 
     # --- queue --------------------------------------------------------------
     def _refresh_queue(self):
@@ -505,7 +564,7 @@ class MainWindow(QMainWindow):
         for b in self.sync_buttons:
             b.setEnabled(not running)
         self.stop_btn.setEnabled(running)
-        if not running:
+        if not running and not self._closing:
             self.rescan()
 
     def _on_sync_line(self, line):
@@ -518,7 +577,7 @@ class MainWindow(QMainWindow):
 
     def _poll_log(self):
         "Show the progress of a download that was started outside the app (a terminal, a timer)."
-        if self.runner.running:
+        if self.runner.running or not sync.log_is_fresh(self.cfg.log_file):
             return
         prog = sync.latest_progress(sync.tail_log(self.cfg.log_file))
         if prog:
@@ -532,8 +591,8 @@ class MainWindow(QMainWindow):
         self.health_list.clear()
         for name, items in self._health.items():
             self.health_list.addItem(f"{name}  ({len(items)})")
+        self.health_list.setCurrentRow(row)           # signals still blocked: draw the table once, below
         self.health_list.blockSignals(False)
-        self.health_list.setCurrentRow(row)
         self._health_selected(row)
 
     def _health_selected(self, row):
@@ -558,6 +617,10 @@ class MainWindow(QMainWindow):
     # --- player bar ---------------------------------------------------------
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
+
+    def _on_volume(self, value):
+        if not self.volume.isSliderDown():           # do not fight the user's drag
+            self._set_slider_silently(self.volume, value)
 
     def _set_slider_silently(self, slider, value):
         slider.blockSignals(True)
@@ -615,8 +678,9 @@ class MainWindow(QMainWindow):
         f = song.lrc
         if f:
             try:
-                self._lyrics = lrc.parse_lrc(f.read_text(encoding="utf-8", errors="replace"))
-            except OSError:
+                if f.stat().st_size <= lrc.MAX_BYTES:
+                    self._lyrics = lrc.parse_lrc(f.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, ValueError):
                 pass
         for _, line in self._lyrics:
             self.lyrics.addItem(line or "♪")
@@ -624,11 +688,13 @@ class MainWindow(QMainWindow):
             self.lyrics.addItem("No synced lyrics for this song")
 
     def closeEvent(self, event):
+        self._closing = True                         # no new scans from here on
         self.log_timer.stop()
-        self.runner.stop()
-        worker = getattr(self, "worker", None)
+        worker = self.worker
         if worker is not None and worker.isRunning():
-            worker.wait(10000)                       # let the library scan finish; it only reads files
+            worker.requestInterruption()             # the scan loop checks this and stops early
+            worker.wait(10000)
+        self.runner.stop()
         self.player.close()
         super().closeEvent(event)
 

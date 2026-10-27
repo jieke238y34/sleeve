@@ -216,3 +216,128 @@ def test_latest_progress_and_tail_log(tmp_path):
 def test_actions_are_fixed_argument_lists():
     assert sync.ACTIONS["Sort songs"] == ["--sort"]
     assert all(isinstance(v, list) and all(a.startswith("--") for a in v) for v in sync.ACTIONS.values())
+
+
+# --- fixes from the code review --------------------------------------------
+def test_missing_music_dir_raises_and_keeps_the_cache(tmp_path):
+    cache = tmp_path / "cache.json"
+    cache.write_text('{"keep": "me"}')
+    with pytest.raises(FileNotFoundError):
+        library.scan(tmp_path / "unmounted", cache)
+    assert cache.read_text() == '{"keep": "me"}'
+
+
+def test_malformed_cache_entries_are_ignored_not_fatal(tmp_path):
+    make_library(tmp_path)
+    f = str(tmp_path / "Rock" / "a.mp3")
+    st = os.stat(f)
+    key = [st.st_mtime_ns, st.st_size]
+    for bad in ("string", None, {"k": key}, {"k": key, "s": "x"}, {"k": key, "s": {"path": "/other"}},
+                {"k": key, "s": {"path": f, "title": 5}}, {"k": "no", "s": {}}):
+        (tmp_path / "cache.json").write_text(__import__("json").dumps({f: bad}))
+        songs = library.scan(tmp_path, tmp_path / "cache.json", mutagen_file=fake_mutagen({}))
+        assert len(songs) == 3, bad
+
+
+def test_cached_folder_follows_the_current_music_dir(tmp_path):
+    make_library(tmp_path)
+    cache = tmp_path / "cache.json"
+    library.scan(tmp_path, cache, mutagen_file=fake_mutagen({}))
+    import json
+    data = json.loads(cache.read_text())
+    for v in data.values():
+        v["s"]["folder"] = "STALE"
+    cache.write_text(json.dumps(data))
+    folders = {Path(s.path).name: s.folder for s in library.scan(tmp_path, cache, mutagen_file=fake_mutagen({}))}
+    assert folders["a.mp3"] == "Rock" and folders["loose.mp3"] == library.LOOSE
+
+
+def test_skip_names_apply_only_at_the_top_level_and_symlinks_are_skipped(tmp_path):
+    (tmp_path / "Rock" / "Archives").mkdir(parents=True)
+    (tmp_path / "Rock" / "Archives" / "deep.mp3").write_bytes(b"x")       # an album named Archives is kept
+    (tmp_path / "Archives").mkdir()
+    (tmp_path / "Archives" / "state.mp3").write_bytes(b"x")                # dl.py's own folder is skipped
+    (tmp_path / "real.mp3").write_bytes(b"x")
+    (tmp_path / "link.mp3").symlink_to(tmp_path / "real.mp3")
+    names = sorted(Path(p).name for p in library.walk_audio(tmp_path))
+    assert names == ["deep.mp3", "real.mp3"]
+
+
+def test_scan_can_be_cancelled_without_touching_the_cache(tmp_path):
+    make_library(tmp_path)
+    cache = tmp_path / "cache.json"
+    songs = library.scan(tmp_path, cache, mutagen_file=fake_mutagen({}), cancel=lambda: True)
+    assert songs == [] and not cache.exists()
+
+
+def test_playlist_entries_must_be_audio_files_inside_the_music_folder(tmp_path):
+    music = tmp_path / "Music"
+    (music / "Lists").mkdir(parents=True)
+    (music / "a.mp3").write_bytes(b"x")
+    pl = music / "Lists" / "p.m3u8"
+    pl.write_text("../a.mp3\n/etc/passwd\n../../outside.mp3\nhttp://x/y.mp3\n../notes.txt\n../more.m3u8\n#EXTINF:-1,t\n../a.mp3\n")
+    entries = playlists.read_m3u8(pl, music)
+    paths = [e.path for e in entries]
+    assert paths[0] == paths[-1] == str(music / "a.mp3")
+    assert len(paths) == 3 and paths[1].startswith(str(music))      # "http://..." became a local, missing path
+    assert not entries[1].exists and not paths[1].startswith("http")
+    assert "/etc/passwd" not in paths and not any("outside" in p for p in paths)
+    assert entries[-1].length == 0                     # EXTINF:-1 is "unknown", not a negative length
+
+
+def test_oversized_playlist_and_lyrics_are_ignored(tmp_path, monkeypatch):
+    big = tmp_path / "big.m3u8"
+    big.write_text("a.mp3\n")
+    monkeypatch.setattr(playlists, "MAX_BYTES", 3)
+    assert playlists.read_m3u8(big) == []
+    assert lrc.MAX_BYTES >= 100_000
+
+
+def test_lrc_ignores_absurd_digit_runs():
+    assert lrc.parse_lrc("[" + "9" * 5000 + ":00]boom\n[01:02.5]ok") == [(62.5, "ok")]
+
+
+def test_health_parked_folder_is_relative_and_audio_only(tmp_path):
+    music = tmp_path / "_Broken" / "Music"                  # a "_Broken" higher up must not matter
+    (music / "_Duplicates" / "sub").mkdir(parents=True)
+    (music / "_Duplicates" / "sub" / "d.mp3").write_bytes(b"x")
+    (music / "_Duplicates" / "cover.jpg").write_bytes(b"x")
+    (music / "_Duplicates" / "d.lrc").write_text("")
+    parked = health.parked_files(music)
+    assert [Path(p).name for p in parked["Duplicates"]] == ["d.mp3"] and parked["Broken"] == []
+
+
+def test_check_dl_refuses_writable_or_foreign_files(tmp_path):
+    f = tmp_path / "dl.py"
+    f.write_text("")
+    f.chmod(0o644)
+    assert sync.check_dl(f) is None
+    f.chmod(0o666)
+    assert "modified by other users" in sync.check_dl(f)
+    assert "cannot read" in sync.check_dl(tmp_path / "missing.py")
+
+
+def test_log_freshness(tmp_path):
+    log = tmp_path / "dl.log"
+    log.write_text("x")
+    assert sync.log_is_fresh(log)
+    assert not sync.log_is_fresh(log, now=log.stat().st_mtime + sync.STALE_LOG_SECONDS + 1)
+    assert not sync.log_is_fresh(tmp_path / "none.log")
+
+
+def test_cover_art_over_the_size_limit_is_ignored():
+    from sleeve import art
+
+    class Frame:
+        data = b"x" * 10
+
+    class Tags:
+        def getall(self, name):
+            return [Frame()]
+
+    class Audio:
+        tags = Tags()
+    assert art.cover_bytes("x", mutagen_file=lambda p: Audio()) == b"x" * 10
+    Frame.data = b"x" * (art.MAX_BYTES + 1)
+    assert art.cover_bytes("x", mutagen_file=lambda p: Audio()) is None
+    assert art.cover_bytes("x", mutagen_file=lambda p: None) is None

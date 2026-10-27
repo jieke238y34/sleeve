@@ -87,12 +87,130 @@ def test_player_without_mpv_reports_error(app, monkeypatch):
     p.close()
 
 
-def test_queue_operations_without_a_process(app):
+def songs(tmp_path, *names):
+    out = []
+    for n in names:
+        f = tmp_path / n
+        f.write_bytes(b"x")
+        out.append(str(f))
+    return out
+
+
+def test_queue_operations_without_a_process(app, tmp_path):
+    a, b, c, x, y = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3", "x.mp3", "y.mp3")
     p = Player()
-    p.queue = ["a", "b", "c"]
-    p.index = 0
-    p.enqueue(["x"], next_up=True)
-    assert p.queue == ["a", "x", "b", "c"]
-    p.enqueue(["y"])
-    assert p.queue[-1] == "y"
+    p.queue, p.index = [a, b, c], 0
+    p.enqueue([x], next_up=True)
+    assert p.queue == [a, x, b, c]
+    p.enqueue([y])
+    assert p.queue[-1] == y
     p.close()
+
+
+def test_player_constructor_takes_parent_first(app):
+    "Regression: MainWindow passed itself as the first argument, which used to be the audio output."
+    from PySide6.QtCore import QObject
+    owner = QObject()
+    p = Player(owner)
+    assert p.parent() is owner and p._ao is None
+    p.close()
+
+
+def test_is_playable_refuses_everything_but_absolute_audio_files(tmp_path):
+    good = songs(tmp_path, "a.mp3")[0]
+    assert player.is_playable(good)
+    assert not player.is_playable("a.mp3")                        # relative
+    assert not player.is_playable("http://evil.example/x.mp3")
+    assert not player.is_playable("edl://x.mp3")
+    assert not player.is_playable(str(tmp_path / "missing.mp3"))
+    assert not player.is_playable(songs(tmp_path, "list.m3u8")[0])  # a playlist is not a song
+    assert not player.is_playable(str(tmp_path))                  # a folder
+    assert not player.is_playable(None)
+
+
+def test_set_queue_drops_unplayable_paths_and_keeps_the_clicked_song(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = Player()
+    errors = []
+    p.error.connect(errors.append)
+    p.set_queue([a, "/etc/passwd", "http://x/y.mp3", b], start=3)
+    assert p.queue == [a, b] and p.current() == b and len(errors) == 1
+    p.set_queue(["/nope.mp3"])
+    assert p.queue == [] and p.index == -1
+    p.close()
+
+
+def test_playing_flag_follows_play_index_and_clear(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = Player()
+    seen = []
+    p.playingChanged.connect(seen.append)
+    p.set_queue([a, b])
+    assert p.playing is True and seen == [True]           # no mpv pause event is needed for the first play
+    p.clear()
+    assert p.playing is False and seen == [True, False]
+    p.close()
+
+
+def test_stale_end_of_file_after_loading_another_song_is_ignored(app, tmp_path):
+    a, b, c = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3")
+    p = Player()
+    p.set_queue([a, b, c], start=0)
+    p.play_index(2)                                        # the user picked song 3 ...
+    p._handle({"event": "end-file", "reason": "eof"})      # ... while song 1's end was already on its way
+    assert p.index == 2
+    p._handle({"event": "start-file"})
+    p._handle({"event": "end-file", "reason": "eof"})      # now song 3 really ended
+    assert p.index == -1                                   # end of queue, repeat off
+    p.close()
+
+
+def test_errors_do_not_loop_forever(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    for repeat in (REPEAT_OFF, REPEAT_ONE, REPEAT_ALL):
+        p = Player()
+        p.repeat = repeat
+        p.set_queue([a, b])
+        stopped = []
+        p.trackChanged.connect(lambda i, path, s=stopped: s.append(i))
+        for _ in range(10):                                # far more failures than songs
+            p._handle({"event": "start-file"})
+            p._handle({"event": "end-file", "reason": "error"})
+            if p.index == -1:
+                break
+        assert p.index == -1 and stopped[-1] == -1, f"repeat={repeat} kept retrying"
+        p.close()
+
+
+def test_repeat_one_skips_a_broken_song(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = Player()
+    p.repeat = REPEAT_ONE
+    p.set_queue([a, b])
+    p._handle({"event": "start-file"})
+    p._handle({"event": "end-file", "reason": "error"})
+    assert p.index == 1                                    # moved on instead of retrying song 1
+    p.close()
+
+
+def test_prev_next_with_nothing_playing(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = Player()
+    p.queue = [a, b]
+    p.prev()
+    assert p.index == 0
+    p.index = -1
+    p.next()
+    assert p.index == 0
+    p.shuffle = True
+    p.index = 0
+    for _ in range(10):
+        before = p.index
+        p.next()
+        assert p.index != before                           # shuffle never repeats the current song
+    p.close()
+
+
+def test_mpv_is_started_without_user_config_scripts_or_downloaders():
+    for flag in ("--no-config", "--ytdl=no", "--load-scripts=no", "--load-unsafe-playlists=no", "--sub-auto=no"):
+        assert flag in player.MPV_ARGS

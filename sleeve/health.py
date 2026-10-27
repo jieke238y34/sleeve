@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from .library import AUDIO_EXT
+
 LOW_BITRATE = 128          # kbit/s
 
 
@@ -31,11 +33,13 @@ def same_name(songs):
 
 def parked_files(music_dir):
     "Files dl.py --dedupe moved aside: {'Duplicates': [paths], 'Broken': [paths]}."
-    music_dir = Path(music_dir)
+    parked = Path(music_dir) / "_Duplicates"
     out = {"Duplicates": [], "Broken": []}
-    for root, _, files in os.walk(music_dir / "_Duplicates"):
-        key = "Broken" if "_Broken" in Path(root).parts else "Duplicates"
-        out[key] += [os.path.join(root, f) for f in files if not f.startswith(".")]
+    for root, _, files in os.walk(parked):
+        inside = Path(root).relative_to(parked).parts          # relative, so a "_Broken" higher up does not count
+        key = "Broken" if "_Broken" in inside else "Duplicates"
+        out[key] += [os.path.join(root, f) for f in files
+                     if not f.startswith(".") and os.path.splitext(f)[1].lower() in AUDIO_EXT]
     return out
 
 
