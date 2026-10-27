@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sleeve
+GenericName=Music Player
+Comment=Music library, player and sync dashboard
+Exec=sleeve
+Icon=io.github.jieke238y34.Sleeve
+Terminal=false
+Categories=AudioVideo;Audio;Player;Qt;
+Keywords=music;player;library;playlist;mpv;
+StartupWMClass=sleeve

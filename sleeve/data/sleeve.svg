@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Sleeve</title>
+  <defs>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b7afe0"/>
+      <stop offset="1" stop-color="#6f64b8"/>
+    </linearGradient>
+  </defs>
+  <!-- the record, sliding out of the sleeve -->
+  <circle cx="168" cy="128" r="84" fill="#1c1b22"/>
+  <circle cx="168" cy="128" r="66" fill="none" stroke="#34323f" stroke-width="3"/>
+  <circle cx="168" cy="128" r="48" fill="none" stroke="#34323f" stroke-width="3"/>
+  <circle cx="168" cy="128" r="26" fill="#b7afe0"/>
+  <circle cx="168" cy="128" r="5" fill="#1c1b22"/>
+  <!-- the sleeve -->
+  <rect x="24" y="40" width="152" height="176" rx="14" fill="url(#sleeve)"/>
+  <rect x="40" y="56" width="120" height="120" rx="8" fill="#ffffff" fill-opacity="0.16"/>
+  <circle cx="100" cy="116" r="30" fill="none" stroke="#ffffff" stroke-width="6" stroke-opacity="0.9"/>
+  <circle cx="100" cy="116" r="8" fill="#ffffff" fill-opacity="0.9"/>
+  <rect x="40" y="190" width="72" height="8" rx="4" fill="#ffffff" fill-opacity="0.8"/>
+</svg>

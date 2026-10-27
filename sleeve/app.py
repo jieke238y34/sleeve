@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QPixmap
+from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -641,6 +641,7 @@ def main(argv=None):
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Sleeve")
     app.setDesktopFileName("io.github.jieke238y34.Sleeve")
+    app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")))
     try:
         cfg = config.load(args.dl)
     except FileNotFoundError as e:

@@ -208,7 +208,7 @@ class Player(QObject):
         if not self.queue:
             return
         if self.shuffle and len(self.queue) > 1:
-            self.play_index(random.randrange(len(self.queue)))  # nosec B311 - shuffle order, not security
+            self.play_index(random.randrange(len(self.queue)))  # nosec B311
         else:
             self.play_index((self.index + 1) % len(self.queue))
 
