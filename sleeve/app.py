@@ -58,6 +58,7 @@ from . import (
     tags,
     theme,
 )
+from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
@@ -1625,6 +1626,14 @@ class MainWindow(QMainWindow):
         if not self._lyrics:
             self.lyrics.addItem("No synced lyrics for this song")
 
+    def raise_window(self):
+        "Bring the window to the front (the desktop asked for it)."
+        if self.isMinimized():
+            self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
         self.log_timer.stop()
@@ -1649,6 +1658,19 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+def attach_media_keys(win, app, suffix="sleeve"):
+    "Let the desktop (media keys, the panel, the lock screen) see and control the player. Returns the Mpris or None."
+    mpris = Mpris(win.player, lambda path: win.by_path.get(path),
+                  {"raise": win.raise_window, "quit": app.quit}, suffix=suffix, parent=win)
+    if not mpris.start():                 # no session bus, or another Sleeve already has the name: carry on without
+        return None
+    app.aboutToQuit.connect(mpris.stop)
+    win.shuffle_btn.clicked.connect(mpris.refresh)        # the player has no signal for these two
+    win.repeat_btn.clicked.connect(mpris.refresh)
+    win.mpris = mpris
+    return mpris
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
@@ -1664,5 +1686,6 @@ def main(argv=None):
         QMessageBox.critical(None, "Sleeve", f"{e}\n\nInstall playlist-sync's dl.py or pass --dl /path/to/dl.py")
         return 2
     win = MainWindow(cfg)
+    attach_media_keys(win, app)
     win.show()
     return app.exec()

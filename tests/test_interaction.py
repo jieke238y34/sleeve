@@ -59,3 +59,46 @@ def test_double_click_on_a_highlighted_row_still_plays(qapp, cfg, monkeypatch, t
         assert [c[0] for c in win.player.calls].count("set_queue") == 1
     finally:
         win.close()
+
+
+def test_media_keys_are_wired_to_the_window_and_the_player(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from sleeve import app as sleeve_app
+
+    made = {}
+
+    class FakeMpris:
+        def __init__(self, player, lookup, actions, suffix="sleeve", parent=None):
+            made.update(player=player, lookup=lookup, actions=actions, suffix=suffix)
+            self.started, self.stopped, self.refreshed = False, False, 0
+
+        def start(self):
+            self.started = True
+            made["self"] = self
+            return True
+
+        def stop(self):
+            self.stopped = True
+
+        def refresh(self, *_):
+            self.refreshed += 1
+
+    monkeypatch.setattr(sleeve_app, "Mpris", FakeMpris)
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        mpris = sleeve_app.attach_media_keys(win, qapp, suffix="sleevetest")
+        assert mpris is made["self"] and mpris.started and made["suffix"] == "sleevetest"
+        assert made["player"] is win.player and win.mpris is mpris
+        song = win.songs[0]
+        assert made["lookup"](song.path) is song                     # looks in the library as it is now
+        win.by_path = {}                                              # (a rescan replaces the dictionary)
+        assert made["lookup"](song.path) is None
+        win.shuffle_btn.click()
+        win.repeat_btn.click()
+        assert mpris.refreshed == 2                                   # the panel follows shuffle and repeat
+        win.showMinimized()
+        made["actions"]["raise"]()
+        assert not win.isMinimized()
+        monkeypatch.setattr(FakeMpris, "start", lambda self: False)   # no session bus: the app just carries on
+        assert sleeve_app.attach_media_keys(win, qapp) is None
+    finally:
+        win.close()
