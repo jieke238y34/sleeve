@@ -123,7 +123,11 @@ def toggle_icon(kind, color, on, one=False, size=22):
             path.lineTo(QPointF(*pt))
         p.drawPath(path)
 
-    if kind == "shuffle":                      # two arrows that cross
+    if kind == "shuffle" and not on:           # in order: two straight arrows side by side
+        for y in (6.5, 13.5):
+            line((3, y), (17.5, y))
+            line((14.6, y - 2.8), (17.8, y), (14.6, y + 2.8))
+    elif kind == "shuffle":                    # shuffled: two arrows that cross
         for y1, y2 in ((6.5, 13.5), (13.5, 6.5)):
             path = QPainterPath(QPointF(3, y1))
             path.cubicTo(QPointF(8, y1), QPointF(10, y2), QPointF(16, y2))
