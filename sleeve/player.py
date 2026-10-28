@@ -8,11 +8,17 @@ import random
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QtAudio
 
 from .library import AUDIO_EXT
 
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
+
+def gain(volume):
+    "Qt's linear gain for a 0-100 slider position. Hearing is logarithmic, so a straight line sounds dead above half."
+    scale = QtAudio.VolumeScale
+    return max(0.0, QtAudio.convertVolume(volume / 100, scale.LogarithmicVolumeScale, scale.LinearVolumeScale))
+
 
 def next_index(index, count, repeat, shuffle, rng=random):
     "Index to play after a track ends on its own, or None to stop."
@@ -52,7 +58,7 @@ class Player(QObject):
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self._errors = 0
         self._audio = QAudioOutput(self)
-        self._audio.setVolume(self.volume / 100)
+        self._audio.setVolume(gain(self.volume))
         self._media = QMediaPlayer(self)
         self._media.setAudioOutput(self._audio)
         self._media.positionChanged.connect(self._on_position)
@@ -236,7 +242,7 @@ class Player(QObject):
 
     def set_volume(self, v):
         self.volume = max(0, min(100, int(v)))
-        self._audio.setVolume(self.volume / 100)
+        self._audio.setVolume(gain(self.volume))
         self.volumeChanged.emit(self.volume)
 
     def cycle_repeat(self):

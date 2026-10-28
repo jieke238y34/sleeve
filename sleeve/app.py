@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QSlider,
     QSplitter,
     QStackedWidget,
+    QStyle,
+    QStyleOptionSlider,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -49,6 +51,23 @@ LIKED = "♥ Liked Songs"
 def fmt_time(seconds):
     s = int(max(0, seconds))
     return f"{s // 60}:{s % 60:02d}"
+
+
+class ClickSlider(QSlider):
+    "A slider whose track jumps to where you click (a stock one only steps by a page), and can still be dragged."
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            style = self.style()
+            groove = style.subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
+            handle = style.subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+            if not handle.contains(e.position().toPoint()):
+                span = max(1, groove.width() - handle.width())
+                x = int(e.position().x()) - groove.x() - handle.width() // 2
+                self.setValue(QStyle.sliderValueFromPosition(self.minimum(), self.maximum(), x, span))
+        super().mousePressEvent(e)                 # the handle is now under the cursor, so a drag carries on from here
 
 
 class SongModel(QAbstractTableModel):
@@ -440,16 +459,17 @@ class MainWindow(QMainWindow):
         self.like_btn.setEnabled(False)
         self.repeat_btn = button("↻", "Repeat: off", self._cycle_repeat, checkable=True)
         self.pos_label = QLabel("0:00")
-        self.seek = QSlider(Qt.Horizontal)
+        self.seek = ClickSlider(Qt.Horizontal)
         self.seek.setRange(0, 0)
         self.seek.sliderPressed.connect(lambda: setattr(self, "_dragging", True))
         self.seek.sliderReleased.connect(self._seek_released)
         self.seek.valueChanged.connect(self._seek_moved)       # keyboard and clicks on the groove
         self.dur_label = QLabel("0:00")
-        self.volume = QSlider(Qt.Horizontal)
+        self.volume = ClickSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
         self.volume.setValue(self.player.volume)
-        self.volume.setMaximumWidth(110)
+        self.volume.setMinimumWidth(150)
+        self.volume.setMaximumWidth(180)
         self.volume.valueChanged.connect(self.player.set_volume)
         self.lyrics_btn = QPushButton("Lyrics")
         self.lyrics_btn.setCheckable(True)
