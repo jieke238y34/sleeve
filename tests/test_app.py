@@ -94,8 +94,8 @@ def test_window_scans_library_and_filters(qapp, cfg, monkeypatch, tmp_path):
         assert win.model.rowCount() == 2
         win.search.setText("")
         items = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert items == ["All songs", "Pop", "Rock"]
-        win.folders.setCurrentRow(2)
+        assert items == ["All songs", "♥ Liked Songs", "Pop", "Rock"]
+        win.folders.setCurrentRow(3)
         assert win.model.rowCount() == 2
         # playlists page: one file, one entry missing
         assert win.pl_list.count() == 1

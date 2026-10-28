@@ -38,11 +38,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, art, config, health, library, lrc, playlists, sync, tags
+from . import __version__, art, config, health, library, likes, lrc, playlists, sync, tags
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
+LIKED = "♥ Liked Songs"
 
 
 def fmt_time(seconds):
@@ -59,6 +60,7 @@ class SongModel(QAbstractTableModel):
     def __init__(self, songs=()):
         super().__init__()
         self.songs = list(songs)
+        self.liked = set()                    # the window's liked paths; shown as a heart before the title
         self._sort = None                     # (column, order) the header shows; kept when the list changes
 
     def set_songs(self, songs):
@@ -83,8 +85,9 @@ class SongModel(QAbstractTableModel):
             return None
         s, col = self.songs[index.row()], index.column()
         if role == Qt.DisplayRole:
-            return (s.name, s.artist, s.album, s.genre or ("" if s.folder == library.LOOSE else s.folder),
-                    fmt_time(s.length))[col]
+            heart = "♥ " if s.path in self.liked else ""
+            genre = s.genre or ("" if s.folder == library.LOOSE else s.folder)
+            return (heart + s.name, s.artist, s.album, genre, fmt_time(s.length))[col]
         if role == Qt.TextAlignmentRole and col == 4:
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.ToolTipRole:
@@ -144,9 +147,11 @@ class TagDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, cfg, player=None):
+    def __init__(self, cfg, player=None, likes_file=None):
         super().__init__()
         self.cfg = cfg
+        self.likes = likes.Likes(likes_file)
+        self._current_path = ""
         self.player = player or Player(parent=self)
         self.runner = sync.SyncRunner(cfg, self)
         self.worker = None
@@ -229,6 +234,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self.search, 1)
         top.addWidget(rescan)
         self.model = SongModel()
+        self.model.liked = self.likes.paths
         self.table = QTableView()
         self.table.setModel(self.model)
         self._style_table(self.table)
@@ -274,8 +280,14 @@ class MainWindow(QMainWindow):
         self.pl_table.cellDoubleClicked.connect(self._play_playlist_from)
         self.pl_info = QLabel("")
         self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
+        like_all = QPushButton("♥ Like all")
+        like_all.setToolTip("Add every song of this playlist to your liked songs")
+        like_all.clicked.connect(self._like_playlist)
+        info_row = QHBoxLayout()
+        info_row.addWidget(self.pl_info, 1)
+        info_row.addWidget(like_all)
         right = QVBoxLayout()
-        right.addWidget(self.pl_info)
+        right.addLayout(info_row)
         right.addWidget(self.pl_table, 1)
         lay.addWidget(self.pl_list)
         lay.addLayout(right, 1)
@@ -369,6 +381,11 @@ class MainWindow(QMainWindow):
         self.prev_btn = button(QStyle.SP_MediaSkipBackward, "Previous", self.player.prev)
         self.play_btn = button(QStyle.SP_MediaPlay, "Play / pause", self.player.toggle)
         self.next_btn = button(QStyle.SP_MediaSkipForward, "Next", self.player.next)
+        self.like_btn = QPushButton("♡")
+        self.like_btn.setToolTip("Like this song")
+        self.like_btn.setFlat(True)
+        self.like_btn.setEnabled(False)
+        self.like_btn.clicked.connect(self._like_current)
         self.repeat_btn = QPushButton("Repeat: off")
         self.repeat_btn.setFlat(True)
         self.repeat_btn.clicked.connect(self._cycle_repeat)
@@ -387,7 +404,7 @@ class MainWindow(QMainWindow):
         self.lyrics_btn = QPushButton("Lyrics")
         self.lyrics_btn.setCheckable(True)
         self.lyrics_btn.toggled.connect(self.lyrics.setVisible)
-        for w in (self.cover, self.now, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn,
+        for w in (self.cover, self.now, self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn,
                   self.repeat_btn, self.pos_label):
             lay.addWidget(w)
         lay.addWidget(self.seek, 1)
@@ -427,10 +444,11 @@ class MainWindow(QMainWindow):
         self.folders.blockSignals(True)
         self.folders.clear()
         self.folders.addItem(ALL)
+        self.folders.addItem(LIKED)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
-        names = [ALL, *groups]
+        names = [ALL, LIKED, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
@@ -460,7 +478,12 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, ev)
 
     def _apply_filter(self, *_):
-        songs = self.songs if self.folder == ALL else [s for s in self.songs if s.folder == self.folder]
+        if self.folder == ALL:
+            songs = self.songs
+        elif self.folder == LIKED:
+            songs = [s for s in self.songs if s.path in self.likes]
+        else:
+            songs = [s for s in self.songs if s.folder == self.folder]
         self.model.set_songs(library.search(songs, self.search.text()))
 
     def _selected(self):
@@ -475,11 +498,50 @@ class MainWindow(QMainWindow):
         m.addAction("Play now", lambda: self.player.set_queue([s.path for s in sel]))
         m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
+        all_liked = all(s.path in self.likes for s in sel)
+        m.addAction("Unlike" if all_liked else "Like", lambda: self._toggle_like([s.path for s in sel]))
         m.addSeparator()
         m.addAction("Edit tags…", lambda: self._edit_tags(sel[0]))
         folder = str(Path(sel[0].path).parent)
         m.addAction("Show in file manager", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
         m.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _toggle_like(self, paths):
+        try:
+            self.likes.toggle(paths)
+        except OSError as e:
+            self.status.showMessage(f"Could not save your liked songs: {e}", 8000)
+        self._likes_changed()
+
+    def _like_current(self):
+        if self._current_path:
+            self._toggle_like([self._current_path])
+
+    def _likes_changed(self):
+        if self.folder == LIKED:
+            self._apply_filter()                    # an unliked song leaves this list
+        elif self.model.songs:
+            self.model.dataChanged.emit(self.model.index(0, 0), self.model.index(len(self.model.songs) - 1, 0))
+        self._update_like_button()
+
+    def _update_like_button(self):
+        on = self._current_path in self.likes
+        self.like_btn.setEnabled(bool(self._current_path))
+        self.like_btn.setText("♥" if on else "♡")
+        self.like_btn.setToolTip("Unlike this song" if on else "Like this song")
+
+    def _like_playlist(self):
+        paths = [e.path for e in self._playlist_entries if e.exists]
+        if not paths:
+            self.status.showMessage("Nothing in this playlist is in the library", 6000)
+            return
+        try:
+            new = self.likes.add(paths)
+        except OSError as e:
+            self.status.showMessage(f"Could not save your liked songs: {e}", 8000)
+            return
+        self._likes_changed()
+        self.status.showMessage(f"Liked {new} new songs ({len(paths) - new} were already liked)", 8000)
 
     def _edit_tags(self, song):
         dlg = TagDialog(song, self)
@@ -723,6 +785,8 @@ class MainWindow(QMainWindow):
 
     def _on_track(self, index, path):
         self._refresh_queue()
+        self._current_path = path
+        self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
             self.cover.clear()
