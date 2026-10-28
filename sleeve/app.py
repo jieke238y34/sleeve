@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -61,6 +60,7 @@ from . import (
 )
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
+from .switch import Switch
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -229,6 +229,7 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
 
         self.setStyleSheet(theme.build_style(self.settings.accent_color))
+        Switch.set_accent(self.settings.accent_color)
         root = self.backdrop = theme.Backdrop()
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -660,11 +661,11 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         lay.addWidget(hint("How loud the volume slider gets when it is all the way up. Lower it if everything "
                            "feels too loud."))
-        self.gapless_box = QCheckBox("Gapless playback (no pause between songs)")
+        self.gapless_box = Switch("Gapless playback (no pause between songs)")
         self.gapless_box.setChecked(self.settings.gapless)
         self.gapless_box.toggled.connect(self._gapless_toggled)
         lay.addWidget(self.gapless_box)
-        self.same_volume_box = QCheckBox("Play songs at the same volume")
+        self.same_volume_box = Switch("Play songs at the same volume")
         self.same_volume_box.setChecked(self.settings.same_volume)
         self.same_volume_box.toggled.connect(self._same_volume_toggled)
         lay.addWidget(self.same_volume_box)
@@ -766,6 +767,9 @@ class MainWindow(QMainWindow):
     def _accent_changed(self, name):
         if self.settings.set("accent", name):
             self.setStyleSheet(theme.build_style(self.settings.accent_color))
+            Switch.set_accent(self.settings.accent_color)
+            for switch in self.findChildren(Switch):
+                switch.update()
             self._update_toggle_icons()
             self._save_settings()
 

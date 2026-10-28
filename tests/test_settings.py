@@ -88,3 +88,32 @@ def test_the_volume_you_left_is_remembered(qapp, cfg, monkeypatch, tmp_path):  #
         assert settings.Settings(win.settings.file).volume == 33
     finally:
         win.close()
+
+
+def test_switches_say_on_or_off_and_look_different(qapp):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from sleeve.switch import Switch
+
+    sw = Switch("Gapless")
+    sw.resize(sw.sizeHint())
+    sw.show()
+    qapp.processEvents()
+    assert sw.state_text() == "Off" and not sw.isChecked()
+    off_look = sw.grab().toImage()
+    seen = []
+    sw.toggled.connect(seen.append)
+    QTest.mouseClick(sw, Qt.LeftButton, Qt.NoModifier, sw.rect().center())      # anywhere on the row switches it
+    import time
+    end = time.time() + 1
+    while time.time() < end and sw._pos < 1.0:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert sw.isChecked() and sw.state_text() == "On" and seen == [True] and sw._pos == 1.0
+    assert sw.grab().toImage() != off_look
+    sw.setChecked(False)                                                       # also works from code
+    sw.close()
+    plain = Switch("x")
+    plain.setChecked(True)                                                     # before it is shown: no animation
+    assert plain._pos == 1.0
