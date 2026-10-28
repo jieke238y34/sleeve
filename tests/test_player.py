@@ -198,3 +198,44 @@ def test_real_playback_plays_seeks_and_advances(app, tmp_path):
         assert wait_for(app, lambda: not p.playing)
     finally:
         p.close()
+
+
+def test_enqueue_after_the_queue_finished_plays_the_new_song(app, tmp_path):
+    a, b, x = songs(tmp_path, "a.mp3", "b.mp3", "x.mp3")
+    p = Player()
+    p.set_queue([a, b])
+    p._on_status(QMediaPlayer.EndOfMedia)
+    p._on_status(QMediaPlayer.EndOfMedia)
+    assert p.index == -1
+    p.enqueue([x])
+    assert p.current() == x
+    p.close()
+
+
+def test_set_queue_start_survives_unplayable_files_and_duplicates(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = Player()
+    p.set_queue(["/nope.mp3", a, b, b], start=3)  # the second copy of b
+    assert p.queue == [a, b, b] and p.index == 2
+    p.close()
+
+
+def test_stopping_resets_position_and_duration(app, tmp_path):
+    a = songs(tmp_path, "a.mp3")[0]
+    p = Player()
+    p.set_queue([a])
+    p.position, p.duration = 30.0, 200.0
+    p._on_status(QMediaPlayer.EndOfMedia)
+    assert p.index == -1 and p.position == 0.0 and p.duration == 0.0
+    p.close()
+
+
+def test_repeat_one_rewinds_instead_of_reloading_the_same_source(app, tmp_path):
+    a = songs(tmp_path, "a.mp3")[0]
+    p = Player()
+    p.repeat = REPEAT_ONE
+    p.set_queue([a])
+    src = p._media.source()
+    p._on_status(QMediaPlayer.EndOfMedia)
+    assert p.index == 0 and p._media.source() == src
+    p.close()

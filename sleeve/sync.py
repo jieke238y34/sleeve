@@ -48,6 +48,7 @@ def check_dl(path):
     "None if dl.py is safe to run, else the reason it is refused: it must be a file only its owner can write."
     try:
         st = Path(path).stat()
+        parent = Path(path).resolve().parent.stat()
     except OSError as e:
         return f"cannot read dl.py: {e}"
     if os.name != "nt":
@@ -55,6 +56,8 @@ def check_dl(path):
             return "dl.py can be modified by other users (group or world writable)"
         if st.st_uid != os.getuid():
             return "dl.py is owned by another user"
+        if parent.st_mode & 0o002 and not parent.st_mode & 0o1000:  # world-writable and no sticky bit
+            return "dl.py's folder can be changed by any user"
     return None
 
 
@@ -91,6 +94,9 @@ class SyncRunner(QObject):
         self._proc.finished.connect(self._done)
         self._proc.errorOccurred.connect(self._on_error)
         env = QProcessEnvironment.systemEnvironment()
+        for name in env.keys():  # noqa: SIM118 (QProcessEnvironment is not a dict)
+            if name.upper().startswith("PYTHON") and name.upper() != "PYTHONUNBUFFERED":
+                env.remove(name)  # PYTHONPATH, PYTHONSTARTUP, ... would run code the approval hash does not cover
         env.insert("PYTHONUNBUFFERED", "1")
         env.insert("NO_COLOR", "1")
         self._proc.setProcessEnvironment(env)
@@ -128,6 +134,14 @@ class SyncRunner(QObject):
         if self.running:
             self._proc.terminate()
             self._kill_timer.start(5000)  # one timer for this process; _done stops it
+
+    def shutdown(self, wait_ms=3000):
+        "Stop dl.py and wait for it, killing it if it ignores the request. For when the app is closing."
+        if self.running:
+            self._proc.terminate()
+            if not self._proc.waitForFinished(wait_ms):
+                self._proc.kill()
+                self._proc.waitForFinished(1000)
 
     def _kill(self):
         if self.running:

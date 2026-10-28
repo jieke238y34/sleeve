@@ -145,13 +145,20 @@ def scan(music_dir, cache_file=None, extra_skip=(), progress=None, mutagen_file=
     return songs
 
 
+def _haystack(s):
+    "Lower-case text a search looks in, built once per song (kept outside the dataclass fields, so not cached to disk)."
+    h = s.__dict__.get("_hay")
+    if h is None:
+        h = s.__dict__["_hay"] = f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}".lower()
+    return h
+
+
 def search(songs, text):
     "Songs where every word of text is in the title, artist, album, genre or file name."
     words = text.lower().split()
     if not words:
         return list(songs)
-    return [s for s in songs
-            if all(w in f"{s.title} {s.artist} {s.album} {s.genre} {Path(s.path).name}".lower() for w in words)]
+    return [s for s in songs if all(w in _haystack(s) for w in words)]
 
 
 def by_folder(songs):

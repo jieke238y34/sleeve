@@ -341,3 +341,14 @@ def test_cover_art_over_the_size_limit_is_ignored():
     Frame.data = b"x" * (art.MAX_BYTES + 1)
     assert art.cover_bytes("x", mutagen_file=lambda p: Audio()) is None
     assert art.cover_bytes("x", mutagen_file=lambda p: None) is None
+
+
+def test_search_matches_every_word_and_ignores_case():
+    from sleeve import library
+
+    a = library.Song(path="/m/Rock/a.mp3", title="Hello", artist="Adele", genre="Pop")
+    b = library.Song(path="/m/Rock/b.mp3", title="Other", artist="Someone")
+    assert library.search([a, b], "adele HELLO") == [a]
+    assert library.search([a, b], "b.mp3") == [b]
+    assert library.search([a, b], "") == [a, b]
+    assert "_hay" not in __import__("dataclasses").asdict(a)  # the cached search text never reaches the disk cache

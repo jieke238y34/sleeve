@@ -112,6 +112,10 @@ class Player(QObject):
     def _set_stopped(self):
         self.index = -1
         self._set_playing(False)
+        self._media.setSource(QUrl())  # let go of the file
+        self.position = self.duration = 0.0
+        self.positionChanged.emit(0.0)
+        self.durationChanged.emit(0.0)
 
     def close(self):
         "Stop playback and let go of the file."
@@ -136,23 +140,28 @@ class Player(QObject):
 
     def set_queue(self, paths, start=0):
         paths = [str(p) for p in paths]
-        wanted = paths[start] if 0 <= start < len(paths) else ""
-        self.queue = self._playable(paths)
+        good, before = [], 0  # before: playable songs ahead of the clicked one
+        for i, p in enumerate(paths):
+            if is_playable(p):
+                good.append(p)
+                if i < start:
+                    before += 1
+        if len(good) < len(paths):
+            self.error.emit(f"skipped {len(paths) - len(good)} files that are not playable audio files")
+        self.queue = good
         self.queueChanged.emit()
-        if not self.queue:
+        if not good:
             self.clear()
             return
-        self.play_index(self.queue.index(wanted) if wanted in self.queue else 0)
+        self.play_index(min(before, len(good) - 1))
 
     def enqueue(self, paths, next_up=False):
         good = self._playable(list(paths))
-        if next_up:
-            self.queue[self.index + 1 : self.index + 1] = good
-        else:
-            self.queue += good
+        at = self.index + 1 if next_up else len(self.queue)
+        self.queue[at:at] = good
         self.queueChanged.emit()
-        if self.index < 0 and self.queue:
-            self.play_index(0)
+        if self.index < 0 and good:
+            self.play_index(at)
 
     def clear(self):
         self.queue, self.index = [], -1
@@ -172,7 +181,11 @@ class Player(QObject):
         self.position = self.duration = 0.0
         self.positionChanged.emit(0.0)
         self.durationChanged.emit(0.0)
-        self._media.setSource(QUrl.fromLocalFile(self.queue[i]))
+        url = QUrl.fromLocalFile(self.queue[i])
+        if self._media.source() == url:  # setSource ignores the same file, so repeat-one needs a rewind instead
+            self._media.setPosition(0)
+        else:
+            self._media.setSource(url)
         self._media.play()
         self._set_playing(True)
         self.trackChanged.emit(i, self.queue[i])

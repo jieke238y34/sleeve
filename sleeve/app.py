@@ -4,11 +4,14 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -199,6 +202,7 @@ class MainWindow(QMainWindow):
         for key, slot in ((Qt.Key_Space, p.toggle), (Qt.Key_Left, lambda: self._seek_by(-5)),
                           (Qt.Key_Right, lambda: self._seek_by(5))):
             QShortcut(QKeySequence(key), self, slot)
+        QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -442,6 +446,19 @@ class MainWindow(QMainWindow):
         self.folder = name or ALL
         self._apply_filter()
 
+    def eventFilter(self, obj, ev):
+        "Window shortcuts (space, left, right) must not steal those keys from a widget that uses them."
+        if ev.type() == QEvent.ShortcutOverride and isinstance(obj, QWidget) and self.isAncestorOf(obj):
+            key = ev.key()
+            text_like = isinstance(obj, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
+            if key in (Qt.Key_Left, Qt.Key_Right) and (text_like or isinstance(obj, (QAbstractItemView, QSlider))):
+                ev.accept()
+                return True
+            if key == Qt.Key_Space and (text_like or isinstance(obj, (QAbstractButton, QAbstractItemView))):
+                ev.accept()
+                return True
+        return super().eventFilter(obj, ev)
+
     def _apply_filter(self, *_):
         songs = self.songs if self.folder == ALL else [s for s in self.songs if s.folder == self.folder]
         self.model.set_songs(library.search(songs, self.search.text()))
@@ -579,7 +596,10 @@ class MainWindow(QMainWindow):
                     self,
                     "Trust dl.py?",
                     f"Sleeve will run this script on your behalf:\n\n{cfg.dl_path}\n\n"
+                    f"Fingerprint: {config.dl_fingerprint(cfg.dl_path)[:12]}\n\n"
                     "Only continue if you wrote it or have read it. Trust it?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
                 )
                 if ask != QMessageBox.Yes:
                     return
@@ -759,7 +779,8 @@ class MainWindow(QMainWindow):
         if worker is not None and worker.isRunning():
             worker.requestInterruption()             # the scan loop checks this and stops early
             worker.wait(10000)
-        self.runner.stop()
+        QApplication.instance().removeEventFilter(self)
+        self.runner.shutdown()
         self.player.close()
         super().closeEvent(event)
 

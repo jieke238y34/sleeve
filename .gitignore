@@ -6,3 +6,9 @@ build/
 dist/
 *.egg-info/
 .coverage
+config.ini
+playlists.txt
+genre_overrides.txt
+cookies*
+*.cookies
+.env
