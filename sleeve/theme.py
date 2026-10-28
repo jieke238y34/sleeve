@@ -1,7 +1,7 @@
 """How the window looks: a dark lavender theme, and a backdrop made from the playing song's cover."""
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
 
 LAVENDER, CREAM = "#b7afe0", "#f3e9d2"
@@ -40,7 +40,8 @@ QLineEdit:focus {{ border-color: {accent}; }}
 QPushButton {{ background: rgba(255, 255, 255, 24); border: none; border-radius: 15px; padding: 6px 16px; }}
 QPushButton:hover {{ background: rgba(255, 255, 255, 42); }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
-QPushButton:checked {{ background: {accent}; color: {BG}; }}
+QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
+QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 80); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
@@ -98,6 +99,58 @@ QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
 
 
 STYLE = build_style()
+
+
+def toggle_icon(kind, color, on, one=False, size=22):
+    """A painted icon for the shuffle and repeat buttons ("shuffle" or "repeat"): crisp at any scale, drawn in `color`.
+    A dot under it shows the feature is on; `one` puts a 1 inside the repeat arrows."""
+    scale = 3
+    pix = QPixmap(size * scale, size * scale)
+    pix.setDevicePixelRatio(scale)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(size / 22, size / 22)
+    pen = QPen(QColor(color), 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+
+    def line(*points):
+        path = QPainterPath(QPointF(*points[0]))
+        for pt in points[1:]:
+            path.lineTo(QPointF(*pt))
+        p.drawPath(path)
+
+    if kind == "shuffle":                      # two arrows that cross
+        for y1, y2 in ((6.5, 13.5), (13.5, 6.5)):
+            path = QPainterPath(QPointF(3, y1))
+            path.cubicTo(QPointF(8, y1), QPointF(10, y2), QPointF(16, y2))
+            p.drawPath(path)
+            line((14, y2 - 2.6), (17, y2), (14, y2 + 2.6))
+    else:                                      # repeat: two arrows chasing round a loop
+        line((15.2, 3.6), (17.8, 6), (15.2, 8.4))
+        path = QPainterPath(QPointF(17.8, 6))
+        path.lineTo(QPointF(7, 6))
+        path.quadTo(QPointF(3.5, 6), QPointF(3.5, 9.5))
+        p.drawPath(path)
+        line((6.8, 11.6), (4.2, 14), (6.8, 16.4))
+        path = QPainterPath(QPointF(4.2, 14))
+        path.lineTo(QPointF(15, 14))
+        path.quadTo(QPointF(18.5, 14), QPointF(18.5, 10.5))
+        p.drawPath(path)
+        if one:
+            font = p.font()
+            font.setPixelSize(8)
+            font.setBold(True)
+            p.setFont(font)
+            p.setPen(QColor(color))
+            p.drawText(QRectF(7.5, 6.5, 7, 7), Qt.AlignCenter, "1")
+    if on:
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(color))
+        p.drawEllipse(QPointF(11, 19.6), 1.5, 1.5)
+    p.end()
+    return pix
 
 
 def rounded_pixmap(pix, size, radius):

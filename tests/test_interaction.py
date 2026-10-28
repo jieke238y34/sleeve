@@ -102,3 +102,26 @@ def test_media_keys_are_wired_to_the_window_and_the_player(qapp, cfg, monkeypatc
         assert sleeve_app.attach_media_keys(win, qapp) is None
     finally:
         win.close()
+
+
+def test_shuffle_and_repeat_show_their_state_in_the_icon(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        def key(btn):
+            return btn.icon().pixmap(22, 22).toImage()
+
+        assert win.shuffle_btn.text() == "" and win.repeat_btn.text() == ""     # painted icons, no font glyphs
+        off, off_tip = key(win.shuffle_btn), win.shuffle_btn.toolTip()
+        win.shuffle_btn.click()
+        assert key(win.shuffle_btn) != off and win.shuffle_btn.toolTip() != off_tip
+        win.shuffle_btn.click()
+        assert key(win.shuffle_btn) == off                                       # and back
+        win.player.cycle_repeat = lambda: 2                                      # the stub returns nothing
+        before = key(win.repeat_btn)
+        win.repeat_btn.click()
+        assert key(win.repeat_btn) != before and "this song" in win.repeat_btn.toolTip()
+        assert "QPushButton#round:checked" in win.styleSheet()                    # no fill when switched on
+        win.accent_box.setCurrentText("Mint")                                    # a new accent recolours the icons
+        assert key(win.repeat_btn) != key(win.shuffle_btn)
+    finally:
+        win.close()

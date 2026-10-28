@@ -766,6 +766,7 @@ class MainWindow(QMainWindow):
     def _accent_changed(self, name):
         if self.settings.set("accent", name):
             self.setStyleSheet(theme.build_style(self.settings.accent_color))
+            self._update_toggle_icons()
             self._save_settings()
 
     def _health_page(self):
@@ -803,14 +804,19 @@ class MainWindow(QMainWindow):
             b.setCheckable(checkable)
             b.clicked.connect(slot)
             return b
-        self.shuffle_btn = button("⇄", "Shuffle", self.player.set_shuffle, checkable=True)
+        self.shuffle_btn = button("", "Shuffle: off", self.player.set_shuffle, checkable=True)
         self.prev_btn = button("⏮", "Previous", self.player.prev)
         self.play_btn = button("▶", "Play / pause", self.player.toggle, "play")
         self.next_btn = button("⏭", "Next", self.player.next)
         self.like_btn = button("♡", "Like this song", self._like_current)
         self.like_btn.setObjectName("round")
         self.like_btn.setEnabled(False)
-        self.repeat_btn = button("↻", "Repeat: off", self._cycle_repeat, checkable=True)
+        self.repeat_btn = button("", "Repeat: off", self._cycle_repeat, checkable=True)
+        self._repeat_mode = 0
+        for b in (self.shuffle_btn, self.repeat_btn):
+            b.setIconSize(QSize(22, 22))
+        self.shuffle_btn.toggled.connect(self._update_toggle_icons)
+        self._update_toggle_icons()
         self.pos_label = QLabel("0:00")
         self.seek = ClickSlider(Qt.Horizontal)
         self.seek.setRange(0, 0)
@@ -1580,11 +1586,19 @@ class MainWindow(QMainWindow):
         slider.blockSignals(False)
 
     def _cycle_repeat(self):
-        mode = self.player.cycle_repeat()
-        name = {0: "off", REPEAT_ALL: "all", REPEAT_ONE: "one"}[mode]
+        self._repeat_mode = mode = self.player.cycle_repeat() or 0
         self.repeat_btn.setChecked(mode != 0)
-        self.repeat_btn.setText("↻" if mode != REPEAT_ONE else "↻1")
-        self.repeat_btn.setToolTip(f"Repeat: {name}")
+        self._update_toggle_icons()
+
+    def _update_toggle_icons(self, *_):
+        "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
+        accent, mode = self.settings.accent_color, getattr(self, "_repeat_mode", 0)
+        shuffle_on = self.shuffle_btn.isChecked()
+        self.shuffle_btn.setIcon(QIcon(theme.toggle_icon("shuffle", accent if shuffle_on else theme.MUTED, shuffle_on)))
+        self.shuffle_btn.setToolTip("Shuffle: on" if shuffle_on else "Shuffle: off")
+        self.repeat_btn.setIcon(QIcon(theme.toggle_icon("repeat", accent if mode else theme.MUTED, mode != 0,
+                                                        one=mode == REPEAT_ONE)))
+        self.repeat_btn.setToolTip("Repeat: " + {0: "off", REPEAT_ALL: "all songs", REPEAT_ONE: "this song"}[mode])
 
     def _seek_released(self):
         self._dragging = False
