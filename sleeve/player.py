@@ -11,6 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QElapsedTimer, QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QtAudio
 
+from . import loudness
 from .library import AUDIO_EXT
 
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
@@ -84,6 +85,10 @@ class Player(QObject):
         self.shuffle, self.repeat = False, REPEAT_OFF
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
+        self.same_volume = True
+        self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
+        self._norm_checked = set()         # paths whose tags and saved measurement were already looked at
+        self.loudness_cache = loudness.LoudnessCache()
         self._errors = 0
         self._slots = [_Slot(self), _Slot(self)]
         self._cur = 0                      # the slot that is playing; the other one is loaded with the next song
@@ -117,6 +122,7 @@ class Player(QObject):
         "Take the saved preferences (see sleeve.settings.Settings)."
         self.max_gain = settings.max_volume / 100
         self.gapless = settings.gapless
+        self.same_volume = settings.same_volume
         self.set_volume(settings.volume)
         self._replan()
 
@@ -124,6 +130,31 @@ class Player(QObject):
         "How much of the output's loudest level the full slider means."
         self.max_gain = max(0.3, min(1.0, percent / 100))
         self.set_volume(self.volume)
+
+    def set_same_volume(self, on):
+        self.same_volume = bool(on)
+        self._apply_volume()
+
+    def set_norm(self, path, db):
+        "A song was measured: remember how much to add, and apply it if the song is loaded."
+        self.norm_db[path] = db
+        self._apply_volume()
+
+    def _norm_for(self, path):
+        "dB to add to this song (0 until it is known): from its loudness tags, or an earlier measurement."
+        if not self.same_volume or not path:
+            return 0.0
+        if path not in self.norm_db and path not in self._norm_checked:
+            self._norm_checked.add(path)
+            found = loudness.gain_for(path, self.loudness_cache)
+            if found is not None:
+                self.norm_db[path] = found
+        return self.norm_db.get(path, 0.0)
+
+    def _apply_volume(self):
+        "Set each player's output level: the slider, the ceiling and that song's own adjustment."
+        for slot in self._slots:
+            slot.audio.setVolume(min(1.0, gain(self.volume, self.max_gain) * 10 ** (self._norm_for(slot.path) / 20)))
 
     def set_gapless(self, on):
         self.gapless = bool(on)
@@ -230,6 +261,7 @@ class Player(QObject):
         if idle.path != path:
             idle.path = path
             idle.media.setSource(QUrl.fromLocalFile(path))
+            self._apply_volume()
 
     def _replan(self):
         if self.index >= 0:
@@ -336,6 +368,7 @@ class Player(QObject):
             slot.media.setSource(url)
         slot.path = self.queue[i]
         slot.failed = False
+        self._apply_volume()
         slot.media.play()
         self._set_playing(True)
         self.trackChanged.emit(i, self.queue[i])
@@ -390,8 +423,7 @@ class Player(QObject):
 
     def set_volume(self, v):
         self.volume = max(0, min(100, int(v)))
-        for slot in self._slots:
-            slot.audio.setVolume(gain(self.volume, self.max_gain))
+        self._apply_volume()
         self.volumeChanged.emit(self.volume)
 
     def cycle_repeat(self):

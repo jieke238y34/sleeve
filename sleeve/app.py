@@ -50,6 +50,7 @@ from . import (
     health,
     library,
     likes,
+    loudness,
     lrc,
     myplaylists,
     playlists,
@@ -202,6 +203,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
+        self._ffmpeg, self._loud, self._loud_again = None, None, False
+        self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
+        self._loud_timer.setSingleShot(True)
+        self._loud_timer.setInterval(400)
+        self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
@@ -660,10 +666,11 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.gapless_box)
         self.same_volume_box = QCheckBox("Play songs at the same volume")
         self.same_volume_box.setChecked(self.settings.same_volume)
-        self.same_volume_box.toggled.connect(lambda on: self._set_setting("same_volume", on))
+        self.same_volume_box.toggled.connect(self._same_volume_toggled)
         lay.addWidget(self.same_volume_box)
-        lay.addWidget(hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and measures "
-                           "the rest in the background if ffmpeg is installed."))
+        self.same_volume_hint = hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and "
+                                     "measures the rest in the background if ffmpeg is installed.")
+        lay.addWidget(self.same_volume_hint)
 
         section("Look")
         row = QHBoxLayout()
@@ -715,6 +722,42 @@ class MainWindow(QMainWindow):
         self.ceiling_label.setText(f"{value}%")
         self.player.set_max_volume(value)
         self._set_setting("max_volume", value)
+
+    def enable_loudness(self, ffmpeg):
+        "Start levelling songs to the same volume. ffmpeg (path or None) measures the songs that have no tags."
+        self._ffmpeg = ffmpeg
+        if not ffmpeg:
+            self.same_volume_hint.setText("ffmpeg was not found, so only songs that carry loudness tags are evened "
+                                          "out. Installing ffmpeg lets Sleeve measure the rest.")
+        self.player.queueChanged.connect(self._loud_timer.start)
+        self._measure_loudness()
+
+    def _same_volume_toggled(self, on):
+        self.player.set_same_volume(on)
+        self._set_setting("same_volume", on)
+        if on:
+            self._measure_loudness()
+
+    def _measure_loudness(self):
+        "Measure the queued songs in the background (the one playing first), so they can play at the same volume."
+        if not self.settings.same_volume or not self._ffmpeg:
+            return
+        if self._loud is not None and self._loud.isRunning():
+            self._loud_again = True                       # the queue changed meanwhile: look again when this ends
+            return
+        queue, start = list(self.player.queue), max(self.player.index, 0)
+        paths = (queue[start:] + queue[:start])[:300]
+        if not paths:
+            return
+        self._loud_again = False
+        self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self)
+        self._loud.measured.connect(self.player.set_norm)
+        self._loud.finished.connect(self._loudness_done)
+        self._loud.start()
+
+    def _loudness_done(self):
+        if self._loud_again and not self._closing:
+            self._measure_loudness()
 
     def _gapless_toggled(self, on):
         self.player.set_gapless(on)
@@ -1645,6 +1688,8 @@ class MainWindow(QMainWindow):
                 sig.disconnect()                     # no slot may run on a window that is going away
             except (RuntimeError, TypeError):
                 pass
+        if self._loud is not None:
+            self._loud.stop()
         worker = self.worker
         if worker is not None and worker.isRunning():
             worker.requestInterruption()             # the scan loop checks this and stops early
@@ -1687,5 +1732,6 @@ def main(argv=None):
         return 2
     win = MainWindow(cfg)
     attach_media_keys(win, app)
+    win.enable_loudness(loudness.find_ffmpeg())
     win.show()
     return app.exec()

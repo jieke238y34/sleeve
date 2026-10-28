@@ -15,3 +15,9 @@ def private_settings_file(tmp_path, monkeypatch):
     from sleeve import settings
 
     monkeypatch.setattr(settings, "SETTINGS_FILE", tmp_path / "settings-for-tests.json")
+
+
+@pytest.fixture(autouse=True)
+def private_cache_dir(tmp_path, monkeypatch):
+    "Loudness measurements, cover art for the desktop and the like must not land in the real ~/.cache."
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
