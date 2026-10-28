@@ -33,6 +33,8 @@ QHeaderView::section {{ background: transparent; color: {MUTED}; border: none; p
 QTableView::item, QTableWidget::item {{ padding: 4px 8px; }}
 QTableCornerButton::section {{ background: transparent; border: none; }}
 
+QListWidget[dropping="true"], QTableWidget[dropping="true"] {{ border: 2px dashed {accent}; }}
+QWidget#playlistspage[dropping="true"] {{ border: 2px dashed {accent}; border-radius: 12px; }}
 QLineEdit {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 15px;
              padding: 6px 14px; selection-background-color: {accent}; selection-color: {BG}; }}
 QLineEdit:focus {{ border-color: {accent}; }}

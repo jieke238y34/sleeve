@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
@@ -47,6 +48,7 @@ from . import (
     art,
     config,
     docs,
+    filedrop,
     health,
     library,
     likes,
@@ -356,12 +358,18 @@ class MainWindow(QMainWindow):
         new_btn = QPushButton("＋  New playlist")
         new_btn.setToolTip("Make an empty playlist of your own")
         new_btn.clicked.connect(lambda: self._new_playlist())
+        import_btn = QPushButton("Import…")
+        import_btn.setToolTip("Add playlist files (.m3u8). You can also drag them onto this page.")
+        import_btn.clicked.connect(self._import_dialog)
+        new_row = QHBoxLayout()
+        new_row.addWidget(new_btn, 1)
+        new_row.addWidget(import_btn)
         self.pl_spotify_btn = QPushButton("Show Spotify playlists")
         self.pl_spotify_btn.setCheckable(True)
         self.pl_spotify_btn.setToolTip("The playlist files dl.py made from your Spotify playlists")
         self.pl_spotify_btn.toggled.connect(self._spotify_toggled)
         left = QVBoxLayout()
-        left.addWidget(new_btn)
+        left.addLayout(new_row)
         left.addWidget(self.pl_list, 1)
         left.addWidget(self.pl_spotify_btn)
         side = QWidget()
@@ -383,8 +391,8 @@ class MainWindow(QMainWindow):
         info_row = QHBoxLayout()
         info_row.addWidget(self.pl_info, 1)
         info_row.addWidget(self.pl_like_all)
-        self.pl_empty = QLabel("You have no playlists yet.\n\nPress “＋ New playlist”, or right-click songs in your "
-                               "library and choose Add to playlist.\nThe queue can be saved as a playlist too.")
+        self.pl_empty = QLabel("You have no playlists yet.\n\nDrag playlist files (.m3u8) onto this page to import "
+                               "them,\npress “＋ New playlist”, or right-click songs and choose Add to playlist.")
         self.pl_empty.setAlignment(Qt.AlignCenter)
         self.pl_empty.setObjectName("muted")
         self.pl_empty.setWordWrap(True)
@@ -424,6 +432,11 @@ class MainWindow(QMainWindow):
         self._playlist_entries = []
         self._playlist_files = []
         self._pl_current = None                           # (name, path, is one of mine)
+        page.setObjectName("playlistspage")
+        self._playlist_drop = filedrop.FileDrop((".m3u8", ".m3u"), self)      # drag playlist files in from anywhere
+        for widget in (page, self.pl_list, self.pl_table):
+            self._playlist_drop.install(widget)
+        self._playlist_drop.dropped.connect(self._import_playlists)
         return page
     def _now_playing_page(self):
         "The playlist with cover thumbnails on the left, the big cover and song details on the right."
@@ -1169,6 +1182,54 @@ class MainWindow(QMainWindow):
         self._load_playlists(select=used)
         self.status.showMessage(f"Made the playlist “{used}” with {len(songs)} songs", 6000)
         return used
+
+    def _import_dialog(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Import playlists", str(self.cfg.music_dir),
+                                                "Playlists (*.m3u8 *.m3u)")
+        if files:
+            self._import_playlists(files)
+
+    def _songs_by_name(self):
+        "{lower-case file name: [paths]} of the library, to find a song of an imported playlist by its name."
+        names = {}
+        for song in self.songs:
+            names.setdefault(Path(song.path).name.lower(), []).append(song.path)
+        return names
+
+    def _import_playlists(self, files):
+        "Make a playlist of your own from each playlist file. Songs are matched to the library (see below)."
+        names, last, total_missing, made = self._songs_by_name(), None, 0, 0
+        for file in files:
+            try:
+                entries = playlists.read_m3u8(file)
+            except (OSError, ValueError) as e:
+                self.status.showMessage(f"Could not read {Path(file).name}: {e}", 8000)
+                continue
+            found, seen = [], set()
+            for e in entries:
+                path = e.path if e.path in self.by_path else None
+                if path is None:                           # another machine's folders: try the file name
+                    same = names.get(Path(e.path).name.lower(), [])
+                    path = same[0] if len(same) == 1 else None
+                if path is None or path in seen:
+                    total_missing += path is None
+                    continue
+                seen.add(path)
+                song = self.by_path[path]
+                found.append(playlists.Entry(path, myplaylists.label_for(song), int(song.length)))
+            if not found:
+                self.status.showMessage(f"None of the songs in {Path(file).name} are in your library", 8000)
+                continue
+            try:
+                last = self.my_playlists.create_from_entries(Path(file).stem, found)
+            except (OSError, ValueError) as e:
+                self._playlist_error(e)
+                continue
+            made += 1
+        if last:
+            self._load_playlists(select=last)
+            note = f" ({total_missing} songs were not in your library)" if total_missing else ""
+            self.status.showMessage(f"Imported {made} playlist{'s' if made != 1 else ''}{note}", 8000)
 
     def _add_to_playlist(self, name, songs):
         try:

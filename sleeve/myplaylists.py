@@ -80,8 +80,12 @@ class PlaylistStore:
 
     def create(self, name, songs):
         "Make a new playlist from library Songs. A taken name gets a number. Returns the name actually used."
+        return self.create_from_entries(name, [playlists.Entry(s.path, label_for(s), int(s.length)) for s in songs])
+
+    def create_from_entries(self, name, entries):
+        "Make a new playlist from playlist Entries. A taken name gets a number. Returns the name actually used."
         name = self.unique_name(name)
-        self._write_entries(name, [playlists.Entry(s.path, label_for(s), int(s.length)) for s in songs])
+        self._write_entries(name, entries)
         return name
 
     def add(self, name, songs):
