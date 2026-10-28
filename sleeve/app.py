@@ -209,7 +209,8 @@ class MainWindow(QMainWindow):
         self.lyrics.setWordWrap(True)
         body.addWidget(self.lyrics)
         outer.addLayout(body, 1)
-        outer.addWidget(self._player_bar())
+        self.bar = self._player_bar()
+        outer.addWidget(self.bar)
         self.setCentralWidget(root)
         self.status = self.statusBar()
         self.nav.setCurrentRow(1)
@@ -228,6 +229,8 @@ class MainWindow(QMainWindow):
         for key, slot in ((Qt.Key_Space, p.toggle), (Qt.Key_Left, lambda: self._seek_by(-5)),
                           (Qt.Key_Right, lambda: self._seek_by(5))):
             QShortcut(QKeySequence(key), self, slot)
+        QShortcut(QKeySequence(Qt.Key_F11), self, self._toggle_fullscreen)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
@@ -361,7 +364,7 @@ class MainWindow(QMainWindow):
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
         self.np_cover.setCursor(Qt.PointingHandCursor)
-        self.np_cover.mousePressEvent = lambda _e: self._toggle_cover()
+        self.np_cover.mousePressEvent = lambda _e: self._toggle_fullscreen() if self._fullscreen else self._toggle_cover()
         right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
         right.addSpacing(18)
         for lab in (self.np_title, self.np_artist, self.np_album):
@@ -370,10 +373,19 @@ class MainWindow(QMainWindow):
         self.expand_btn.setObjectName("round")
         self.expand_btn.setToolTip("Expand the album art")
         self.expand_btn.clicked.connect(self._toggle_cover)
+        self.full_btn = QPushButton("⛶")
+        self.full_btn.setObjectName("round")
+        self.full_btn.setToolTip("Album art fullscreen (F11)")
+        self.full_btn.clicked.connect(self._toggle_fullscreen)
+        cover_btns = QHBoxLayout()
+        cover_btns.addStretch(1)
+        cover_btns.addWidget(self.expand_btn)
+        cover_btns.addWidget(self.full_btn)
+        cover_btns.addStretch(1)
         right.addSpacing(8)
-        right.addWidget(self.expand_btn, 0, Qt.AlignHCenter)
+        right.addLayout(cover_btns)
         right.addStretch(2)
-        self._np_pix, self._cover_expanded = None, False
+        self._np_pix, self._cover_expanded, self._fullscreen = None, False, False
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
@@ -474,11 +486,23 @@ class MainWindow(QMainWindow):
         self.lyrics_btn = QPushButton("Lyrics")
         self.lyrics_btn.setCheckable(True)
         self.lyrics_btn.toggled.connect(self.lyrics.setVisible)
-        for w in (self.cover, self.now, self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn,
-                  self.repeat_btn, self.pos_label):
+        # left: the song; middle: the buttons with the seek bar under them; right: volume and lyrics
+        for w in (self.cover, self.now):
             lay.addWidget(w)
-        lay.addWidget(self.seek, 1)
-        for w in (self.dur_label, QLabel("Vol"), self.volume, self.lyrics_btn):
+        middle = QVBoxLayout()
+        middle.setSpacing(4)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        for w in (self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn):
+            buttons.addWidget(w)
+        buttons.addStretch(1)
+        seek_row = QHBoxLayout()
+        for w in (self.pos_label, self.seek, self.dur_label):
+            seek_row.addWidget(w, 1 if w is self.seek else 0)
+        middle.addLayout(buttons)
+        middle.addLayout(seek_row)
+        lay.addLayout(middle, 1)
+        for w in (QLabel("Vol"), self.volume, self.lyrics_btn):
             lay.addWidget(w)
         return bar
 
@@ -782,6 +806,8 @@ class MainWindow(QMainWindow):
         self.np_album.setText(album)
 
     def _cover_size(self):
+        if self._fullscreen:
+            return max(COVER, min(self.stack.height(), self.stack.width()) - 24)
         if not self._cover_expanded:
             return COVER
         # what is left of the page after the button and the margins (the song details are hidden meanwhile)
@@ -807,6 +833,31 @@ class MainWindow(QMainWindow):
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
         self._apply_cover_size()
+
+    def _toggle_fullscreen(self):
+        "The album art alone, filling the screen. Esc, F11 or a click on the art brings the window back."
+        if not self._fullscreen:
+            self._fs_row, self._fs_was_expanded = self.nav.currentRow(), self._cover_expanded
+            self.nav.setCurrentRow(0)
+            if not self._cover_expanded:
+                self._toggle_cover()
+            self._fullscreen = True
+            for w in (self.nav, self.bar, self.status, self.expand_btn, self.full_btn):
+                w.hide()
+            self.showFullScreen()
+        else:
+            self._fullscreen = False
+            self.showNormal()
+            for w in (self.nav, self.bar, self.status, self.expand_btn, self.full_btn):
+                w.show()
+            if not self._fs_was_expanded:
+                self._toggle_cover()
+            self.nav.setCurrentRow(self._fs_row)
+        self._apply_cover_size()
+
+    def _leave_fullscreen(self):
+        if self._fullscreen:
+            self._toggle_fullscreen()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
