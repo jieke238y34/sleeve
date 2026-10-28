@@ -16,8 +16,8 @@ Please give a reasonable time to fix the problem before you disclose it.
 
 This is the whole surface, so you can judge the risk:
 
-- **Runs `mpv`** as a child process, found on `PATH`, with fixed options. It is controlled over a Unix socket
-  inside a private temporary directory (mode 0700) that is removed when the app closes.
+- **Plays audio** in-process through Qt Multimedia. Only absolute paths of regular audio files are ever loaded:
+  no URLs, playlists or devices.
 - **Runs `dl.py`** from playlist-sync with one of a fixed list of argument sets. No text from the interface,
   from file names or from tags is ever passed to it, and no shell is used.
 - **Reads** your music folder, `.m3u8` and `.lrc` files and `dl.py`'s `config.ini` and log. It treats them as

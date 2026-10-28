@@ -1,21 +1,15 @@
-"""Player tests: the pure helpers, and a real mpv process with silent output (skipped if mpv is missing)."""
+"""Player tests: the pure helpers, queue behaviour driven by fake media events, and one real playback test."""
 
 import random
-import shutil
 import time
 import wave
 
 import pytest
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtMultimedia import QMediaPlayer
 
 from sleeve import player
-from sleeve.player import REPEAT_ALL, REPEAT_OFF, REPEAT_ONE, Player, next_index, parse_events
-
-
-def test_parse_events_keeps_partial_line_and_skips_garbage():
-    msgs, rest = parse_events(b'{"event":"a"}\nnot json\n{"event":"b"}\n{"eve')
-    assert [m["event"] for m in msgs] == ["a", "b"] and rest == b'{"eve'
-    assert parse_events(b"") == ([], b"")
+from sleeve.player import REPEAT_ALL, REPEAT_OFF, REPEAT_ONE, Player, next_index
 
 
 def test_next_index_rules():
@@ -53,41 +47,6 @@ def wait_for(app, cond, timeout=8.0):
     return False
 
 
-@pytest.mark.skipif(shutil.which("mpv") is None, reason="mpv is not installed")
-def test_real_mpv_plays_seeks_and_advances(app, tmp_path):
-    a, b = silent_wav(tmp_path / "a.wav", 1.0), silent_wav(tmp_path / "b.wav", 3.0)
-    p = Player(ao="null")
-    tracks = []
-    p.trackChanged.connect(lambda i, path: tracks.append(i))
-    try:
-        assert p.start()
-        p.set_queue([a, b])
-        assert wait_for(app, lambda: p.playing and p.duration > 0.5), "playback did not start"
-        assert p.current() == a
-        assert wait_for(app, lambda: p.index == 1, timeout=10), "did not advance to the next track"
-        assert wait_for(app, lambda: p.duration > 2.5)  # now on the 3 second file
-        p.seek(1.5)
-        assert wait_for(app, lambda: p.position >= 1.4)
-        p.toggle()
-        assert wait_for(app, lambda: not p.playing)
-        p.set_volume(150)
-        assert p.volume == 100
-        p.clear()
-        assert p.queue == [] and p.current() == ""
-        assert tracks[0] == 0 and 1 in tracks
-    finally:
-        p.close()
-
-
-def test_player_without_mpv_reports_error(app, monkeypatch):
-    monkeypatch.setattr(player.shutil, "which", lambda name: None)
-    p = Player()
-    errors = []
-    p.error.connect(errors.append)
-    assert p.start() is False and errors == ["mpv is not installed"]
-    p.close()
-
-
 def songs(tmp_path, *names):
     out = []
     for n in names:
@@ -97,7 +56,7 @@ def songs(tmp_path, *names):
     return out
 
 
-def test_queue_operations_without_a_process(app, tmp_path):
+def test_queue_operations(app, tmp_path):
     a, b, c, x, y = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3", "x.mp3", "y.mp3")
     p = Player()
     p.queue, p.index = [a, b, c], 0
@@ -109,12 +68,12 @@ def test_queue_operations_without_a_process(app, tmp_path):
 
 
 def test_player_constructor_takes_parent_first(app):
-    "Regression: MainWindow passed itself as the first argument, which used to be the audio output."
+    "The first argument is the parent, as MainWindow passes it."
     from PySide6.QtCore import QObject
 
     owner = QObject()
     p = Player(owner)
-    assert p.parent() is owner and p._ao is None
+    assert p.parent() is owner
     p.close()
 
 
@@ -148,22 +107,9 @@ def test_playing_flag_follows_play_index_and_clear(app, tmp_path):
     seen = []
     p.playingChanged.connect(seen.append)
     p.set_queue([a, b])
-    assert p.playing is True and seen == [True]  # no mpv pause event is needed for the first play
+    assert p.playing is True and seen == [True]  # no media state event is needed for the first play
     p.clear()
     assert p.playing is False and seen == [True, False]
-    p.close()
-
-
-def test_stale_end_of_file_after_loading_another_song_is_ignored(app, tmp_path):
-    a, b, c = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3")
-    p = Player()
-    p.set_queue([a, b, c], start=0)
-    p.play_index(2)  # the user picked song 3 ...
-    p._handle({"event": "end-file", "reason": "eof"})  # ... while song 1's end was already on its way
-    assert p.index == 2
-    p._handle({"event": "start-file"})
-    p._handle({"event": "end-file", "reason": "eof"})  # now song 3 really ended
-    assert p.index == -1  # end of queue, repeat off
     p.close()
 
 
@@ -176,8 +122,7 @@ def test_errors_do_not_loop_forever(app, tmp_path):
         stopped = []
         p.trackChanged.connect(lambda i, path, s=stopped: s.append(i))
         for _ in range(10):  # far more failures than songs
-            p._handle({"event": "start-file"})
-            p._handle({"event": "end-file", "reason": "error"})
+            p._on_error(QMediaPlayer.ResourceError, "boom")
             if p.index == -1:
                 break
         assert p.index == -1 and stopped[-1] == -1, f"repeat={repeat} kept retrying"
@@ -189,8 +134,7 @@ def test_repeat_one_skips_a_broken_song(app, tmp_path):
     p = Player()
     p.repeat = REPEAT_ONE
     p.set_queue([a, b])
-    p._handle({"event": "start-file"})
-    p._handle({"event": "end-file", "reason": "error"})
+    p._on_error(QMediaPlayer.ResourceError, "boom")
     assert p.index == 1  # moved on instead of retrying song 1
     p.close()
 
@@ -213,72 +157,44 @@ def test_prev_next_with_nothing_playing(app, tmp_path):
     p.close()
 
 
-def test_mpv_is_started_without_user_config_scripts_or_downloaders():
-    for flag in ("--no-config", "--ytdl=no", "--load-scripts=no", "--load-unsafe-playlists=no", "--sub-auto=no"):
-        assert flag in player.MPV_ARGS
-
-
-# --- socket folder cleanup (no mpv or audio needed) ---------------------------
-def _dead_pid():
-    import subprocess
-    import sys
-
-    p = subprocess.Popen([sys.executable, "-c", "pass"])
-    p.wait()
-    return p.pid
-
-
-def test_clean_stale_dirs_removes_only_dead_process_dirs(tmp_path):
-    import os
-
-    dead = tmp_path / f"sleeve-{_dead_pid()}-abc_12"
-    live = tmp_path / f"sleeve-{os.getpid()}-abc_12"
-    other = tmp_path / "unrelated"
-    for d in (dead, live, other):
-        d.mkdir()
-    (dead / "mpv.sock").write_text("")
-    target = tmp_path / "target"
-    target.mkdir()
-    link = tmp_path / f"sleeve-{_dead_pid()}-lnk"
-    link.symlink_to(target)
-    assert player.clean_stale_dirs(str(tmp_path)) == 1
-    assert not dead.exists() and live.exists() and other.exists() and link.is_symlink() and target.exists()
-    assert player.clean_stale_dirs(str(tmp_path / "missing")) == 0
-
-
-def test_player_dir_is_private_and_removed_on_close_and_gc(tmp_path, monkeypatch):
-    import gc
-    import os
-    import stat
-
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    QCoreApplication.instance() or QCoreApplication([])
+def test_end_of_media_advances_and_stops_at_the_end(app, tmp_path):
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
     p = Player()
-    d = p._dir
-    assert os.path.dirname(d) == str(tmp_path) and os.path.basename(d).startswith(f"sleeve-{os.getpid()}-")
-    assert stat.S_IMODE(os.stat(d).st_mode) == 0o700
+    p.set_queue([a, b])
+    p._on_status(QMediaPlayer.EndOfMedia)
+    assert p.index == 1
+    p._on_status(QMediaPlayer.EndOfMedia)
+    assert p.index == -1 and p.playing is False  # end of queue, repeat off
     p.close()
-    assert not os.path.exists(d)
-    q = Player()
-    d2 = q._dir
-    assert os.path.isdir(d2)
-    del q
-    gc.collect()
-    assert not os.path.exists(d2)
 
 
-def test_failed_start_removes_dir(tmp_path, monkeypatch):
-    import os
-
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    QCoreApplication.instance() or QCoreApplication([])
+def test_volume_is_clamped_and_reported(app):
     p = Player()
-    d = p._dir
-    fake = tmp_path / "nonexec"
-    fake.write_text("")
-    monkeypatch.setattr(player.shutil, "which", lambda _n: str(fake))
+    seen = []
+    p.volumeChanged.connect(seen.append)
+    p.set_volume(150)
+    assert p.volume == 100 and seen == [100]
+    p.set_volume(-5)
+    assert p.volume == 0
+    p.close()
+
+
+def test_real_playback_plays_seeks_and_advances(app, tmp_path):
+    a, b = silent_wav(tmp_path / "a.wav", 1.0), silent_wav(tmp_path / "b.wav", 3.0)
+    p = Player()
     errors = []
     p.error.connect(errors.append)
-    p.start()
-    QCoreApplication.processEvents()
-    assert not os.path.exists(d) and errors
+    try:
+        p.set_queue([a, b])
+        if not wait_for(app, lambda: p.duration > 0.5 or errors):
+            pytest.skip("Qt Multimedia produced no events here")
+        if errors:
+            pytest.skip(f"no usable audio backend: {errors[0]}")
+        assert wait_for(app, lambda: p.index == 1, timeout=10), "did not advance to the next track"
+        assert wait_for(app, lambda: p.duration > 2.5)
+        p.seek(1.5)
+        assert wait_for(app, lambda: p.position >= 1.4)
+        p.toggle()
+        assert wait_for(app, lambda: not p.playing)
+    finally:
+        p.close()

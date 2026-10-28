@@ -42,7 +42,7 @@ def cfg(tmp_path):
 
 
 class StubPlayer:
-    "A Player look-alike that never starts mpv."
+    "A Player look-alike that never plays anything."
     def __init__(self):
         from PySide6.QtCore import QObject, Signal
 
@@ -59,11 +59,6 @@ class StubPlayer:
                   "queueChanged", "volumeChanged", "error"):
             setattr(self, n, getattr(self._s, n))
         self.queue, self.index, self.volume, self.calls = [], -1, 80, []
-
-        class P:
-            def state(self):
-                return 1
-        self._proc = P()
 
     def __getattr__(self, name):
         def record(*a, **k):

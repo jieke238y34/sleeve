@@ -28,7 +28,7 @@ Getting into Fedora's official repositories needs a package review (`fedora-revi
 
 `winget install` installs from a manifest that points at a signed installer at a stable URL. That needs, in order:
 
-1. A Windows build: a `PyInstaller` bundle of the app plus a copy of `mpv.exe`, wrapped in an installer
+1. A Windows build: a `PyInstaller` bundle of the app (Qt Multimedia is included, nothing else to ship), wrapped in an installer
    (Inno Setup or MSIX). Build it in CI on a `windows-latest` runner from a release tag.
 2. The installer attached to the GitHub release, with its SHA-256.
 3. A manifest set (version, installer, locale) submitted as a pull request to

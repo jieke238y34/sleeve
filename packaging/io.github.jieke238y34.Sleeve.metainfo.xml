@@ -6,7 +6,7 @@
   <name>Sleeve</name>
   <summary>Music library, player and sync dashboard</summary>
   <description>
-    <p>Sleeve browses your music library, plays it through mpv, and runs the playlist-sync downloader's sorting, genre repair, duplicate and playlist jobs from one window.</p>
+    <p>Sleeve browses your music library, plays it, and runs the playlist-sync downloader's sorting, genre repair, duplicate and playlist jobs from one window.</p>
     <ul>
       <li>Library browser with genre folders and instant search</li>
       <li>Playback with queue, shuffle, repeat, cover art and synced lyrics</li>

@@ -203,8 +203,7 @@ class MainWindow(QMainWindow):
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
 
-        if self.player._proc.state() == 0:
-            p.start()
+        p.start()
         self.rescan()
         self._poll_log()
 

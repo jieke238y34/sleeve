@@ -7,5 +7,5 @@ Exec=sleeve
 Icon=io.github.jieke238y34.Sleeve
 Terminal=false
 Categories=AudioVideo;Audio;Player;Qt;
-Keywords=music;player;library;playlist;mpv;
+Keywords=music;player;library;playlist;
 StartupWMClass=sleeve

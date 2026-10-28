@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "jieke238y34" }]
-keywords = ["music", "player", "library", "playlist", "mpv", "qt", "spotify"]
+keywords = ["music", "player", "library", "playlist", "qt", "spotify"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications :: Qt",
@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Players",
 ]
 dependencies = [
-    "PySide6-Essentials>=6.6,<7",
+    "PySide6>=6.6,<7",
     "mutagen>=1.47,<2",
 ]
 

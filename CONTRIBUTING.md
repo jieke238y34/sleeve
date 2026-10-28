@@ -11,7 +11,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-You also need `mpv` on your `PATH` for the player test (it is skipped without it).
+The playback test is skipped if Qt finds no working audio backend.
 
 ## Before you open a pull request
 
@@ -34,7 +34,7 @@ CI runs the same checks plus `pip-audit` and CodeQL. A pull request must pass th
 
 ## Reporting bugs
 
-Use the bug report form. Include your OS, Python and mpv versions, and the output of `sleeve --version`.
+Use the bug report form. Include your OS, Python and Qt (PySide6) versions, and the output of `sleeve --version`.
 For security problems follow [SECURITY.md](SECURITY.md) instead.
 
 By contributing you agree that your work is licensed under GPL-3.0-or-later.

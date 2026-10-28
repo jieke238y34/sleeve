@@ -37,7 +37,7 @@ The main feature set we're working towards:
 - **Sync dashboard:** start, watch and stop downloads and library jobs, with clear progress and errors.
 - **Easy installation:** `dnf install sleeve` on Fedora and `winget install` on Windows, plus `pipx`.
 - **Safe by default:** read-only unless you press Save, no shell commands built from tags or file names, and
-  hardened mpv. See [SECURITY.md](SECURITY.md).
+  audio files only reach the player after validation. See [SECURITY.md](SECURITY.md).
 
 Not done yet: gapless playback, MPRIS/media keys, smart playlists, installers and packages (the files exist but
 nothing is published), and a settings page.
@@ -46,7 +46,7 @@ nothing is published), and a settings page.
 
 - **Library browser.** Genre folders on the left, a sortable song table on the right, instant search across
   title, artist, album and genre. Tags are cached, so a 4,000 song library opens in a moment.
-- **Player.** Playback through [mpv](https://mpv.io), queue, shuffle, repeat, seek, volume, embedded cover
+- **Player.** Playback through Qt Multimedia (the same on Linux and Windows), queue, shuffle, repeat, seek, volume, embedded cover
   art and synced lyrics from the `.lrc` files `dl.py` fetches.
 - **Playlists.** Reads the `.m3u8` files `dl.py` writes and shows which songs are in the library and which are
   still missing.
@@ -61,7 +61,7 @@ nothing is published), and a settings page.
 ### Fedora
 
 ```sh
-sudo dnf install mpv python3-pyside6 python3-mutagen
+sudo dnf install python3-pyside6 python3-mutagen
 pipx install sleeve          # or: pip install --user sleeve
 ```
 
@@ -69,8 +69,7 @@ An RPM and a `dnf` repository (Copr) are planned; see [packaging/README.md](pack
 
 ### Windows
 
-A `winget install` package is planned; see [packaging/README.md](packaging/README.md). Until then install
-[mpv](https://mpv.io/installation/) and run `pip install sleeve`.
+A `winget install` package is planned; see [packaging/README.md](packaging/README.md). Until then run `pip install sleeve`.
 
 ### From source
 
@@ -92,7 +91,7 @@ sleeve --dl /path/to/dl.py  # or say where it is
 Sleeve reads the `config.ini` that sits next to `dl.py`, so it always agrees with the script about the music
 folder, playlist folder and log location. Set `SLEEVE_DL` to choose `dl.py` without a flag.
 
-Requirements: Python 3.10 or newer, `mpv` on your `PATH`, and a working [playlist-sync](https://github.com/jieke238y34/playlist-sync)
+Requirements: Python 3.10 or newer, and a working [playlist-sync](https://github.com/jieke238y34/playlist-sync)
 checkout for the sync features. Browsing and playing work without running anything.
 
 ## Dependencies
@@ -100,8 +99,7 @@ checkout for the sync features. Browsing and playing work without running anythi
 | Needs | Why |
 |---|---|
 | [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) | downloads, sorts and tags the music Sleeve browses; also written by the same author (listed in [`Dependencies`](Dependencies)) |
-| [mpv](https://mpv.io) | playback |
-| [PySide6](https://pypi.org/project/PySide6/) | the Qt interface |
+| [PySide6](https://pypi.org/project/PySide6/) | the Qt interface and audio playback |
 | [mutagen](https://pypi.org/project/mutagen/) | reading and writing tags |
 
 Python packages are declared in `pyproject.toml`, so GitHub's dependency graph and Dependabot track them.
@@ -109,14 +107,14 @@ Python packages are declared in `pyproject.toml`, so GitHub's dependency graph a
 ## How it works
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: the app never edits `dl.py`'s files except tags you
-change yourself; every `dl.py` action is a fixed argument list; mpv is controlled over a private IPC socket.
+change yourself; every `dl.py` action is a fixed argument list; only validated audio files reach the player.
 
 ## Development
 
 ```sh
 pip install -e ".[dev]"
 ruff check .                 # lint
-pytest                       # tests (the player test needs mpv, otherwise it is skipped)
+pytest                       # tests (the playback test is skipped if no audio backend works)
 bandit -r sleeve             # security lint
 pip-audit                    # known vulnerabilities in dependencies
 ```

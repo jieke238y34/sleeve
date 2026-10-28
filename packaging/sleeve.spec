@@ -12,15 +12,14 @@ BuildRequires:  pyproject-rpm-macros
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 
-# Fedora names the Qt bindings python3-pyside6; the pip name in pyproject.toml is PySide6-Essentials.
+# Fedora names the Qt bindings python3-pyside6; the pip name in pyproject.toml is PySide6.
 Requires:       python3-pyside6
 Requires:       python3-mutagen
-Requires:       mpv
 Recommends:     playlist-sync
 
 %description
 Sleeve is a desktop front end for the playlist-sync downloader. It browses the
-music library, plays it through mpv, and runs sorting, genre repair, duplicate
+music library, plays it, and runs sorting, genre repair, duplicate
 and playlist jobs from one window.
 
 %prep
