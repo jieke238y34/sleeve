@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Sleeve die-cut window with play button</title>
+<defs><linearGradient id="c3s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6bfeb"/><stop offset="1" stop-color="#8d82cf"/></linearGradient></defs>
+<path fill="url(#c3s)" fill-rule="evenodd" d="M148 80h216a68 68 0 0 1 68 68v216a68 68 0 0 1-68 68H148a68 68 0 0 1-68-68V148a68 68 0 0 1 68-68ZM256 140a116 116 0 1 0 0 232a116 116 0 1 0 0-232Z"/>
+<circle cx="256" cy="256" r="116" fill="#15131d"/>
+<circle cx="256" cy="256" r="94" fill="none" stroke="#3d3959" stroke-width="4"/>
+<circle cx="256" cy="256" r="72" fill="none" stroke="#3d3959" stroke-width="4"/>
+<path d="M229 208Q229 196 240 202L314 247Q324 256 314 265L240 310Q229 316 229 304Z" fill="#ff8fb1" transform="translate(-4 0)"/>
+</svg>

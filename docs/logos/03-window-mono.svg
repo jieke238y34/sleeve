@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Sleeve die-cut window with play button (single colour)</title>
+<path fill="currentColor" fill-rule="evenodd" d="M148 80h216a68 68 0 0 1 68 68v216a68 68 0 0 1-68 68H148a68 68 0 0 1-68-68V148a68 68 0 0 1 68-68ZM256 140a116 116 0 1 0 0 232a116 116 0 1 0 0-232Z"/>
+<path d="M229 208Q229 196 240 202L314 247Q324 256 314 265L240 310Q229 316 229 304Z" fill="currentColor" transform="translate(-4 0)"/>
+</svg>

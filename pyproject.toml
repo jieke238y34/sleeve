@@ -51,7 +51,7 @@ sleeve = "sleeve.app:main"
 include = ["sleeve*"]
 
 [tool.setuptools.package-data]
-sleeve = ["data/*"]
+sleeve = ["data/*", "data/docs/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -46,6 +46,7 @@ from . import (
     activity,
     art,
     config,
+    docs,
     health,
     library,
     likes,
@@ -53,6 +54,7 @@ from . import (
     lrc,
     myplaylists,
     playlists,
+    portrait,
     settings,
     sync,
     tags,
@@ -241,9 +243,13 @@ class MainWindow(QMainWindow):
         self.nav.setFrameShape(QListWidget.NoFrame)
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
+        self.portrait_page = portrait.PortraitPage()
+        self.docs_page = docs.DocsPage(accent=self.settings.accent_color)
+        self.portrait_page.set_accent(self.settings.accent_color)
         for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
                            ("Playlists", self._playlists_page()), ("Downloads", self._downloads_page()),
-                           ("Health", self._health_page()), ("Settings", self._settings_page())):
+                           ("Health", self._health_page()), ("Portrait", self.portrait_page),
+                           ("Settings", self._settings_page()), ("Docs", self.docs_page)):
             self.nav.addItem(name)
             self.stack.addWidget(page)
         self.nav.currentRowChanged.connect(self._nav_changed)
@@ -768,6 +774,8 @@ class MainWindow(QMainWindow):
         if self.settings.set("accent", name):
             self.setStyleSheet(theme.build_style(self.settings.accent_color))
             Switch.set_accent(self.settings.accent_color)
+            self.portrait_page.set_accent(self.settings.accent_color)
+            self.docs_page.set_accent(self.settings.accent_color)
             for switch in self.findChildren(Switch):
                 switch.update()
             self._update_toggle_icons()
@@ -900,6 +908,7 @@ class MainWindow(QMainWindow):
         try:
             self._load_playlists()
             self._load_health()
+            self.portrait_page.set_library(self.songs, self.likes.paths)
         except OSError as e:
             self.status.showMessage(f"Could not read playlists or run the health check: {e}", 10000)
             return
@@ -980,6 +989,7 @@ class MainWindow(QMainWindow):
             self._toggle_like([self._current_path])
 
     def _likes_changed(self):
+        self.portrait_page.set_library(self.songs, self.likes.paths)
         if self.folder == LIKED:
             self._apply_filter()                    # an unliked song leaves this list
         elif self.model.songs:

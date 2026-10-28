@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Disc whose label is a waveform</title>
+<defs><linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#211e30"/><stop offset="1" stop-color="#15131d"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="url(#tile)"/>
+<rect x="3" y="3" width="506" height="506" rx="109" fill="none" stroke="#b7afe0" stroke-opacity=".18" stroke-width="2"/>
+<g transform="translate(256 256) scale(.92) translate(-256 -256)"><defs><linearGradient id="c4s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6bfeb"/><stop offset="1" stop-color="#8379c8"/></linearGradient></defs>
+<path fill="url(#c4s)" d="M256 70a186 186 0 1 0 0 372a186 186 0 1 0 0-372Z"/>
+<circle cx="256" cy="256" r="164" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="4"/>
+<circle cx="256" cy="256" r="146" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="4"/>
+<path d="M105.0 239.0a13.0 13.0 0 0 1 26 0v34a13.0 13.0 0 0 1-26 0ZM151.0 214.0a13.0 13.0 0 0 1 26 0v84a13.0 13.0 0 0 1-26 0ZM197.0 184.0a13.0 13.0 0 0 1 26 0v144a13.0 13.0 0 0 1-26 0ZM243.0 159.0a13.0 13.0 0 0 1 26 0v194a13.0 13.0 0 0 1-26 0ZM289.0 199.0a13.0 13.0 0 0 1 26 0v114a13.0 13.0 0 0 1-26 0ZM335.0 224.0a13.0 13.0 0 0 1 26 0v64a13.0 13.0 0 0 1-26 0ZM381.0 244.0a13.0 13.0 0 0 1 26 0v24a13.0 13.0 0 0 1-26 0Z" fill="#15131d"/>
+<path d="M429.1 348.0A196 196 0 0 1 222.0 449.0" fill="none" stroke="#f3e9d2" stroke-width="14" stroke-linecap="round"/></g>
+</svg>

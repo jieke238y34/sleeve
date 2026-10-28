@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - S drawn as a record groove</title>
+<defs><linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#211e30"/><stop offset="1" stop-color="#15131d"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="url(#tile)"/>
+<rect x="3" y="3" width="506" height="506" rx="109" fill="none" stroke="#b7afe0" stroke-opacity=".18" stroke-width="2"/>
+<g transform="translate(256 256) scale(.92) translate(-256 -256)"><circle cx="256" cy="256" r="190" fill="#26233a" stroke="#b7afe0" stroke-opacity=".55" stroke-width="5"/>
+<circle cx="256" cy="256" r="168" fill="none" stroke="#3d3959" stroke-width="4"/>
+<circle cx="256" cy="256" r="146" fill="none" stroke="#3d3959" stroke-width="4"/>
+<path d="M310.1 152.1A66 66 0 1 0 256 256A66 66 0 1 1 201.9 359.9" fill="none" stroke="#b7afe0" stroke-width="56" stroke-linecap="round"/>
+<circle cx="256" cy="256" r="9" fill="#ff8fb1"/></g>
+</svg>
