@@ -14,6 +14,9 @@ sleeve/
   art.py        embedded cover art (ID3, FLAC, MP4)
   player.py     Qt Multimedia playback; the queue lives here
   sync.py       runs dl.py with fixed argument lists, follows dl.log
+  activity.py   turns dl.py's log lines into short plain-English messages
+  theme.py      stylesheet, cover-art backdrop
+  likes.py      liked songs
   app.py        the main window
 ```
 
@@ -25,7 +28,8 @@ sleeve/
 3. The window shows the songs. Double-clicking sends the visible list to `Player.set_queue()`.
 4. `Player` loads one file into a `QMediaPlayer`, relays its position, duration and state, and advances the queue
    when the song ends.
-5. The Sync page runs `dl.py` through `SyncRunner`. When a job ends the library is rescanned.
+5. The Downloads page runs `dl.py` through `SyncRunner`. `activity.py` turns its log into plain-English messages. When a
+   job ends the library is rescanned.
 
 ## Design decisions
 

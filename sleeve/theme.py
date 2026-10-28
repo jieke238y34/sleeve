@@ -47,6 +47,14 @@ QPushButton#play:hover {{ background: {CREAM}; }}
 QPushButton#heart {{ font-size: 15pt; }}
 QPushButton#heart:checked {{ background: rgba(255, 255, 255, 24); color: #ff8fb1; }}
 
+QPushButton#primary {{ background: {LAVENDER}; color: {BG}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
+                       border-radius: 22px; }}
+QPushButton#primary:hover {{ background: {CREAM}; }}
+QPushButton#primary:disabled {{ background: rgba(183, 175, 224, 70); color: rgba(21, 19, 29, 160); }}
+QListWidget#activity {{ font-size: 10.5pt; }}
+QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
+QListWidget#activity::item:selected {{ background: transparent; }}
+
 QSlider::groove:horizontal {{ height: 6px; background: rgba(255, 255, 255, 40); border-radius: 3px; }}
 QSlider::sub-page:horizontal {{ background: {LAVENDER}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {CREAM}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }}

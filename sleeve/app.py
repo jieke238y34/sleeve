@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSize, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -39,11 +39,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, art, config, health, library, likes, lrc, playlists, sync, tags, theme
+from . import __version__, activity, art, config, health, library, likes, lrc, playlists, sync, tags, theme
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
+# dl.py action -> (what the button says, what it does). The action names themselves stay in sync.ACTIONS.
+FRIENDLY = {
+    "Sync playlists": ("Get new music", "Download new songs from your playlists, then sort them into genre folders."),
+    "Sort songs": ("Sort into genres", "Move songs from the music folder into their genre folders."),
+    "Repair genres": ("Fix missing genres", "Look up songs that have no genre and file them in the right folder."),
+    "Dedupe (report only)": ("Find duplicates", "Show which songs are in your library twice. Nothing is moved."),
+    "Build playlist files": ("Update playlist files", "Rebuild the playlist files from your Spotify playlists."),
+    "Fetch lyrics": ("Get lyrics", "Look for lyrics for songs that do not have any."),
+    "Status": ("Check progress", "See whether a download is running and how it is going."),
+}
+KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
+KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
+              activity.STEP: "#b7afe0"}
 COVER = 380                                       # size of the big cover on the Now Playing page
 LIKED = "♥ Liked Songs"
 
@@ -196,7 +209,7 @@ class MainWindow(QMainWindow):
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
         for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
-                           ("Playlists", self._playlists_page()), ("Sync", self._sync_page()),
+                           ("Playlists", self._playlists_page()), ("Downloads", self._downloads_page()),
                            ("Health", self._health_page())):
             self.nav.addItem(name)
             self.stack.addWidget(page)
@@ -226,6 +239,7 @@ class MainWindow(QMainWindow):
         self.runner.line.connect(self._on_sync_line)
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
+        self.runner.finished.connect(self._on_sync_finished)
         for key, slot in ((Qt.Key_Space, p.toggle), (Qt.Key_Left, lambda: self._seek_by(-5)),
                           (Qt.Key_Right, lambda: self._seek_by(5))):
             QShortcut(QKeySequence(key), self, slot)
@@ -397,37 +411,124 @@ class MainWindow(QMainWindow):
         self._show_cover(None, "", "", "")
         return page
 
-    def _sync_page(self):
+    def _downloads_page(self):
+        "The main screen for dl.py: a big button to get new music, the tidy-up jobs, and a plain-English feed."
         page = QWidget()
         lay = QVBoxLayout(page)
-        row = QHBoxLayout()
-        self.sync_buttons = []
-        for name in sync.ACTIONS:
-            b = QPushButton(name)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(12)
+        head = QVBoxLayout()
+        head.setSpacing(0)
+        title = QLabel("Downloads")
+        title.setObjectName("heading")
+        self.dl_state = QLabel("Ready")
+        self.dl_state.setObjectName("muted")
+        self.dl_state.setTextFormat(Qt.PlainText)
+        head.addWidget(title)
+        head.addWidget(self.dl_state)
+
+        self.sync_buttons, self._action_buttons = [], {}
+
+        def action_button(name, primary=False):
+            label, what = FRIENDLY[name]
+            b = QPushButton(label)
+            b.setToolTip(what)
+            if primary:
+                b.setObjectName("primary")
             b.clicked.connect(lambda _=False, n=name: self._run_action(n))
-            row.addWidget(b)
             self.sync_buttons.append(b)
+            self._action_buttons[name] = b
+            return b
+
+        main = QHBoxLayout()
+        main.addWidget(action_button("Sync playlists", primary=True))
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
+        self.stop_btn.setToolTip("Stop what is running")
         self.stop_btn.clicked.connect(self.runner.stop)
-        row.addStretch(1)
-        row.addWidget(self.stop_btn)
+        main.addWidget(self.stop_btn)
+        main.addStretch(1)
+        tidy = QHBoxLayout()
+        tidy.addWidget(QLabel("Tidy up:"))
+        for name in sync.ACTIONS:
+            if name != "Sync playlists":
+                tidy.addWidget(action_button(name))
+        tidy.addStretch(1)
+
         self.sync_bar = QProgressBar()
-        self.sync_bar.setTextVisible(True)
-        self.sync_bar.setFormat("no download progress yet")
+        self.sync_bar.setTextVisible(False)
         self.sync_bar.setRange(0, 1)
-        self.sync_log = QPlainTextEdit()
+        self.sync_bar.setFixedHeight(12)
+        self.dl_progress = QLabel("")
+        self.dl_progress.setObjectName("muted")
+        self.dl_progress.setTextFormat(Qt.PlainText)
+
+        self.activity = QListWidget()
+        self.activity.setObjectName("activity")
+        self.activity.setWordWrap(True)
+        self.activity.setSelectionMode(QAbstractItemView.NoSelection)
+        self.activity.setFocusPolicy(Qt.NoFocus)
+        self.activity.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.activity.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.translator = activity.Translator()
+        self._activity_hint = False
+        self._ext_last, self._external = None, False
+        self._add_activity(activity.INFO, "Nothing has happened yet. Press “Get new music” to start.", hint=True)
+
+        self.details_btn = QPushButton("Show technical details")
+        self.details_btn.setCheckable(True)
+        self.details_btn.toggled.connect(self._toggle_details)
+        clear = QPushButton("Clear")
+        clear.clicked.connect(self._clear_activity)
+        foot = QHBoxLayout()
+        foot.addWidget(self.details_btn)
+        foot.addWidget(clear)
+        foot.addStretch(1)
+        self.sync_note = QLabel(f"Using {self.cfg.dl_path}")
+        self.sync_note.setObjectName("muted")
+        self.sync_note.setTextFormat(Qt.PlainText)
+        foot.addWidget(self.sync_note)
+
+        self.sync_log = QPlainTextEdit()          # what dl.py really printed, for when something needs a closer look
         self.sync_log.setReadOnly(True)
         self.sync_log.setMaximumBlockCount(5000)
         self.sync_log.setFont(QFont("monospace"))
-        self.sync_note = QLabel(f"dl.py: {self.cfg.dl_path}")
-        self.sync_note.setTextFormat(Qt.PlainText)
-        lay.addLayout(row)
+        self.sync_log.setVisible(False)
+
+        lay.addLayout(head)
+        lay.addLayout(main)
+        lay.addLayout(tidy)
         lay.addWidget(self.sync_bar)
-        lay.addWidget(self.sync_log, 1)
-        lay.addWidget(self.sync_note)
+        lay.addWidget(self.dl_progress)
+        lay.addWidget(self.activity, 3)
+        lay.addLayout(foot)
+        lay.addWidget(self.sync_log, 2)
         return page
 
+    def _toggle_details(self, on):
+        self.sync_log.setVisible(on)
+        self.details_btn.setText("Hide technical details" if on else "Show technical details")
+
+    def _clear_activity(self):
+        self._activity_hint = False
+        self.activity.clear()
+        self.sync_log.clear()
+        self.translator.reset()
+
+    def _add_activity(self, kind, text, hint=False):
+        if self._activity_hint and not hint:
+            self.activity.clear()                  # the "nothing yet" hint goes away with the first real message
+        self._activity_hint = hint
+        bar = self.activity.verticalScrollBar()
+        at_end = bar.value() >= bar.maximum() - 4
+        item = QListWidgetItem(f"{KIND_MARK[kind]}   {text}")
+        item.setForeground(QColor(KIND_COLOR[kind]))
+        item.setToolTip(text)
+        self.activity.addItem(item)
+        while self.activity.count() > 600:
+            self.activity.takeItem(0)
+        if at_end:
+            self.activity.scrollToBottom()
     def _health_page(self):
         page = QWidget()
         lay = QHBoxLayout(page)
@@ -867,16 +968,18 @@ class MainWindow(QMainWindow):
 
     # --- sync ---------------------------------------------------------------
     def _run_action(self, name):
-        if self.runner.running:
+        if self.runner.running or self._external:
             return
+        label, what = FRIENDLY.get(name, (name, ""))
         if name != "Status" and name != "Dedupe (report only)":
-            ok = QMessageBox.question(self, name, f"Run “{name}” with dl.py now?") == QMessageBox.Yes
+            ok = QMessageBox.question(self, label, f"{what}\n\nStart now?") == QMessageBox.Yes
             if not ok:
                 return
         self.sync_log.appendPlainText(f"--- {name} ---")
+        self.translator.reset()
         try:
             try:
-                self.runner.run(name)
+                started = self.runner.run(name)
             except sync.DlNotTrustedError:
                 cfg = self.runner.cfg
                 ask = QMessageBox.question(
@@ -891,38 +994,89 @@ class MainWindow(QMainWindow):
                 if ask != QMessageBox.Yes:
                     return
                 sync.trust(cfg.dl_path, cfg.trust_file)
-                self.runner.run(name)
+                started = self.runner.run(name)
+            if started:
+                self._add_activity(activity.STEP, f"Starting: {label}")
         except Exception as e:
-            self.status.showMessage(f"Could not start {name}: {e}", 8000)
-
+            self.status.showMessage(f"Could not start {label}: {e}", 8000)
+            self._add_activity(activity.BAD, f"Could not start {label}: {e}")
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
             b.setEnabled(not running)
         self.stop_btn.setEnabled(running)
+        self.dl_state.setText("Working…" if running else "Ready")
         if not running and not self._closing:
             self.rescan()
 
+    def _on_sync_finished(self, code):
+        if self._closing:
+            return
+        if code == 0:
+            self._add_activity(activity.GOOD, "Finished")
+        elif code in (15, -15, 143, -1) and not self.runner.running:
+            self._add_activity(activity.WARN, "Stopped before it finished")
+        else:
+            self._add_activity(
+                activity.BAD, f"Something went wrong (code {code}). Press “Show technical details” to see why.")
     def _on_sync_line(self, line):
         self.sync_log.appendPlainText(line)
+        self._show_line(line)
 
+    def _show_line(self, line):
+        "One line of dl.py output: shown as a friendly message (or not at all) and as the progress summary."
+        text = activity.progress_text(line)
+        if text:
+            self.dl_progress.setText(text)
+        shown = self.translator.feed(line)
+        if shown:
+            self._add_activity(*shown)
     def _on_sync_progress(self, pl, pls, done, total):
         self.sync_bar.setRange(0, max(total, 1))
         self.sync_bar.setValue(done)
         self.sync_bar.setFormat(f"playlist {pl}/{pls}  -  {done} of {total} new songs")
 
     def _poll_log(self):
-        "Show the progress of a download that was started outside the app (a terminal, a timer)."
+        "Follow a download started outside the app (a terminal, a timer); keep this page from starting another."
         if self.runner.running:
             return
         try:
-            if not sync.log_is_fresh(self.cfg.log_file):
-                return
-            prog = sync.latest_progress(sync.tail_log(self.cfg.log_file))
+            fresh = sync.log_is_fresh(self.cfg.log_file)
+            lines = sync.tail_log(self.cfg.log_file) if fresh else []
         except OSError:
             return
+        self._set_external(fresh)
+        if not fresh:
+            return
+        start = max(0, len(lines) - 60)                       # first look: the recent end of the log
+        if self._ext_last is not None:
+            for i in range(len(lines) - 1, -1, -1):
+                if lines[i] == self._ext_last:
+                    start = i + 1
+                    break
+        for line in lines[start:]:
+            self.sync_log.appendPlainText(line)
+            self._show_line(line)
+        if lines:
+            self._ext_last = lines[-1]
+        prog = sync.latest_progress(lines)
         if prog:
             self._on_sync_progress(*prog)
 
+    def _set_external(self, on):
+        if on == self._external:
+            return
+        self._external = on
+        for name, b in self._action_buttons.items():
+            b.setEnabled(not on or name == "Status")
+            b.setToolTip(FRIENDLY[name][1] if not on or name == "Status" else "A download is already running")
+        if on:
+            self.dl_state.setText("A download is running (started outside Sleeve). Following it here.")
+        else:
+            self.dl_state.setText("Ready")
+            self._add_activity(activity.GOOD, "The download that was running has finished")
+            self._ext_last = None
+            if not self._closing:
+                self.rescan()
     # --- health -------------------------------------------------------------
     def _load_health(self):
         self._health = health.report(self.songs, self.cfg.music_dir)
@@ -1064,7 +1218,8 @@ class MainWindow(QMainWindow):
         self.log_timer.stop()
         for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
                     self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
-                    self.player.error, self.runner.line, self.runner.progress, self.runner.runningChanged):
+                    self.player.error, self.runner.line, self.runner.progress, self.runner.runningChanged,
+                    self.runner.finished):
             try:
                 sig.disconnect()                     # no slot may run on a window that is going away
             except (RuntimeError, TypeError):

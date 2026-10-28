@@ -34,7 +34,7 @@ The main feature set we're working towards:
   entry, light and dark themes that follow the system.
 - **Library management:** fast browsing and search, tag and genre fixing, duplicate and low-quality review, and
   smart playlists, all driven by playlist-sync's own rules so the two never disagree.
-- **Sync dashboard:** start, watch and stop downloads and library jobs, with clear progress and errors.
+- **Downloads page:** get new music, sort, fix genres and more with one click, and watch what is happening in plain English.
 - **Easy installation:** `dnf install sleeve` on Fedora and `winget install` on Windows, plus `pipx`.
 - **Safe by default:** read-only unless you press Save, no shell commands built from tags or file names, and
   audio files only reach the player after validation. See [SECURITY.md](SECURITY.md).
@@ -50,8 +50,9 @@ nothing is published), and a settings page.
   art and synced lyrics from the `.lrc` files `dl.py` fetches.
 - **Playlists.** Reads the `.m3u8` files `dl.py` writes and shows which songs are in the library and which are
   still missing.
-- **Sync dashboard.** Start sorting, genre repair, dedupe reports, playlist building and lyrics from the app, with
-  live output and progress. A download started from a terminal or a timer shows up too.
+- **Downloads.** The main screen for `dl.py`: one big button to get new music, plus sorting, genre repair, duplicate
+  reports, playlist building and lyrics. A plain-English activity feed shows what is happening (the raw log is one
+  click away). A download started from a terminal or a timer is followed too, and a second one is not started on top.
 - **Library health.** Songs without tags or genre, low bitrate files, same artist and title, and everything
   `dl.py --dedupe` moved aside.
 - **Tag editor.** Fix title, artist, album or genre without leaving the app.
