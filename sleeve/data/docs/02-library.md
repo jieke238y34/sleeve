@@ -42,4 +42,6 @@ Open an album to see all its tracks together, with the cover, and play or queue 
 
 ## Portrait
 
-A page that shows the artist or the song in a larger, magazine-style layout.
+Your library in words and numbers: how many songs, artists and albums you have, how much music that is,
+which genres and artists lead, how good the files sound, how much of it you have liked, and the longest and shortest
+songs. It sits in the sidebar between Health and Settings and updates after every scan and every like.
