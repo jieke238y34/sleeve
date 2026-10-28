@@ -97,8 +97,10 @@ def test_window_scans_library_and_filters(qapp, cfg, monkeypatch, tmp_path):
         assert items == ["All songs", "♥ Liked Songs", "Pop", "Rock"]
         win.folders.setCurrentRow(3)
         assert win.model.rowCount() == 2
-        # playlists page: one file, one entry missing
-        assert win.pl_list.count() == 1
+        # playlists page: the Spotify-made file is hidden until asked for
+        assert win.pl_list.count() == 0 and win.pl_spotify_btn.text() == "Show Spotify playlists (1)"
+        win.pl_spotify_btn.click()
+        assert win.pl_list.count() == 1 and win.pl_spotify_btn.text() == "Hide Spotify playlists"
         assert win.pl_table.rowCount() == 2
         assert "1 missing" in win.pl_info.text()
         # health page has all categories

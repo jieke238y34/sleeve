@@ -70,6 +70,7 @@ def test_liked_folder_heart_and_button(qapp, cfg, monkeypatch, tmp_path):  # noq
 def test_like_all_in_playlist_and_save_failure(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
+        win.pl_spotify_btn.click()                         # the Spotify-made playlists are hidden by default
         present = [e.path for e in win._playlist_entries if e.exists]
         assert present
         win._like_playlist()
@@ -112,6 +113,7 @@ def test_double_click_on_a_folder_or_playlist_starts_playing_it(qapp, cfg, monke
         assert name == "set_queue" and args[0] == [win.model.songs[0].path]
         win.folders.itemDoubleClicked.emit(win.folders.item(0))   # a folder that was not selected yet
         assert win.folder == sleeve_app.ALL and len(win.player.calls[-1][1][0]) == 3
+        win.pl_spotify_btn.click()
         win.pl_list.itemDoubleClicked.emit(win.pl_list.item(0))
         assert win.player.calls[-1][0] == "set_queue" and len(win.player.calls[-1][1][0]) == 1
     finally:

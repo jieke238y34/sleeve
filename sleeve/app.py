@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -41,7 +42,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, activity, art, config, health, library, likes, lrc, playlists, settings, sync, tags, theme
+from . import (
+    __version__,
+    activity,
+    art,
+    config,
+    health,
+    library,
+    likes,
+    lrc,
+    myplaylists,
+    playlists,
+    settings,
+    sync,
+    tags,
+    theme,
+)
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
@@ -186,6 +202,7 @@ class MainWindow(QMainWindow):
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
         self.settings = settings.Settings(settings_file)
+        self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
         self.player.apply(self.settings)
@@ -322,26 +339,78 @@ class MainWindow(QMainWindow):
         self.pl_list.setMaximumWidth(260)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
         self.pl_list.itemDoubleClicked.connect(self._play_playlist)
+        new_btn = QPushButton("＋  New playlist")
+        new_btn.setToolTip("Make an empty playlist of your own")
+        new_btn.clicked.connect(lambda: self._new_playlist())
+        self.pl_spotify_btn = QPushButton("Show Spotify playlists")
+        self.pl_spotify_btn.setCheckable(True)
+        self.pl_spotify_btn.setToolTip("The playlist files dl.py made from your Spotify playlists")
+        self.pl_spotify_btn.toggled.connect(self._spotify_toggled)
+        left = QVBoxLayout()
+        left.addWidget(new_btn)
+        left.addWidget(self.pl_list, 1)
+        left.addWidget(self.pl_spotify_btn)
+        side = QWidget()
+        side.setMaximumWidth(260)
+        side.setLayout(left)
+        left.setContentsMargins(0, 0, 0, 0)
+
         self.pl_table = QTableWidget(0, 3)
         self.pl_table.setHorizontalHeaderLabels(["Song", "Time", "In library"])
         self._style_table(self.pl_table)
         self.pl_table.cellDoubleClicked.connect(self._play_playlist_from)
+        self.pl_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.pl_table.customContextMenuRequested.connect(self._playlist_song_menu)
         self.pl_info = QLabel("")
         self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
-        like_all = QPushButton("♥ Like all")
-        like_all.setToolTip("Add every song of this playlist to your liked songs")
-        like_all.clicked.connect(self._like_playlist)
+        self.pl_like_all = QPushButton("♥ Like all")
+        self.pl_like_all.setToolTip("Add every song of this playlist to your liked songs")
+        self.pl_like_all.clicked.connect(self._like_playlist)
         info_row = QHBoxLayout()
         info_row.addWidget(self.pl_info, 1)
-        info_row.addWidget(like_all)
+        info_row.addWidget(self.pl_like_all)
+        self.pl_empty = QLabel("You have no playlists yet.\n\nPress “＋ New playlist”, or right-click songs in your "
+                               "library and choose Add to playlist.\nThe queue can be saved as a playlist too.")
+        self.pl_empty.setAlignment(Qt.AlignCenter)
+        self.pl_empty.setObjectName("muted")
+        self.pl_empty.setWordWrap(True)
+
+        edit_row = QHBoxLayout()
+        self.pl_edit_buttons = []
+        for text, tip, slot in (("Rename", "Rename this playlist", self._rename_playlist),
+                                ("Delete", "Delete this playlist (the songs stay in your library)",
+                                 self._delete_playlist),
+                                ("Remove song", "Take the highlighted songs out of this playlist",
+                                 self._remove_from_playlist),
+                                ("↑", "Move the highlighted song up", lambda: self._move_in_playlist(-1)),
+                                ("↓", "Move the highlighted song down", lambda: self._move_in_playlist(1))):
+            b = QPushButton(text)
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, f=slot: f())
+            edit_row.addWidget(b)
+            self.pl_edit_buttons.append(b)
+        self.pl_copy_btn = QPushButton("Copy to my playlists")
+        self.pl_copy_btn.setToolTip("Make a playlist of your own from this one, which you can then change")
+        self.pl_copy_btn.clicked.connect(self._copy_to_mine)
+        edit_row.addWidget(self.pl_copy_btn)
+        edit_row.addStretch(1)
+        self.pl_edit_note = QLabel("")
+        self.pl_edit_note.setObjectName("muted")
+        self.pl_edit_note.setTextFormat(Qt.PlainText)
+        edit_row.addWidget(self.pl_edit_note)
+
         right = QVBoxLayout()
         right.addLayout(info_row)
+        right.addWidget(self.pl_empty, 1)
         right.addWidget(self.pl_table, 1)
-        lay.addWidget(self.pl_list)
+        right.addLayout(edit_row)
+        self.pl_edit_row = edit_row
+        lay.addWidget(side)
         lay.addLayout(right, 1)
         self._playlist_entries = []
+        self._playlist_files = []
+        self._pl_current = None                           # (name, path, is one of mine)
         return page
-
     def _now_playing_page(self):
         "The playlist with cover thumbnails on the left, the big cover and song details on the right."
         page = QWidget()
@@ -358,9 +427,13 @@ class MainWindow(QMainWindow):
         self.queue_label.setObjectName("muted")
         titles.addWidget(heading)
         titles.addWidget(self.queue_label)
+        save_pl = QPushButton("Save")
+        save_pl.setToolTip("Save this queue as a playlist")
+        save_pl.clicked.connect(self._save_queue_as_playlist)
         clear = QPushButton("Clear")
         clear.clicked.connect(self.player.clear)
         head.addLayout(titles, 1)
+        head.addWidget(save_pl)
         head.addWidget(clear)
         self.queue_list = QListWidget()
         self.queue_list.setObjectName("queue")
@@ -368,6 +441,8 @@ class MainWindow(QMainWindow):
         self.queue_list.setTextElideMode(Qt.ElideRight)
         self.queue_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
+        self.queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.queue_list.customContextMenuRequested.connect(self._queue_menu)
         left.addLayout(head)
         left.addWidget(self.queue_list, 1)
         side = self.np_side = QWidget()
@@ -832,6 +907,7 @@ class MainWindow(QMainWindow):
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
         all_liked = all(s.path in self.likes for s in sel)
         m.addAction("Unlike" if all_liked else "Like", lambda: self._toggle_like([s.path for s in sel]))
+        self._add_to_playlist_menu(m, sel)
         m.addSeparator()
         m.addAction("Edit tags…", lambda: self._edit_tags(sel[0]))
         folder = str(Path(sel[0].path).parent)
@@ -913,31 +989,79 @@ class MainWindow(QMainWindow):
             return False
 
     # --- playlists ----------------------------------------------------------
-    def _load_playlists(self):
+    def _load_playlists(self, select=None):
+        "Fill the list: the playlists made in Sleeve first (marked with a star), then the ones dl.py wrote."
+        keep = select or (self._pl_current[0] if self._pl_current else None)
+        spotify = playlists.list_playlists(self.cfg.playlist_dir)
+        show = self.settings.show_spotify_playlists
+        self._playlist_files = ([(n, p, True) for n, p in self.my_playlists.names()]
+                                + ([(n, p, False) for n, p in spotify] if show else []))
+        self.pl_spotify_btn.blockSignals(True)
+        self.pl_spotify_btn.setChecked(show)
+        self.pl_spotify_btn.setText("Hide Spotify playlists" if show else f"Show Spotify playlists ({len(spotify)})")
+        self.pl_spotify_btn.setVisible(bool(spotify))
+        self.pl_spotify_btn.blockSignals(False)
         self.pl_list.blockSignals(True)
         self.pl_list.clear()
-        self._playlist_files = playlists.list_playlists(self.cfg.playlist_dir)
-        for name, _ in self._playlist_files:
-            self.pl_list.addItem(name)
+        for name, _, mine in self._playlist_files:
+            self.pl_list.addItem(f"★  {name}" if mine else name)
         self.pl_list.blockSignals(False)
         if self._playlist_files:
-            self.pl_list.setCurrentRow(0)
-            self._playlist_selected(0)
+            row = next((i for i, f in enumerate(self._playlist_files) if f[0] == keep), 0)
+            self.pl_list.setCurrentRow(row)
+            self._playlist_selected(row)
         else:
-            self.pl_info.setText(
-                f"No playlist files in {self.cfg.playlist_dir}. Run “Build playlist files” on the Sync page.")
+            self._pl_current = None
+            self._playlist_entries = []
+            self.pl_table.setRowCount(0)
+            self.pl_info.setText("")
+            self._set_edit_buttons(False, anything=False)
 
-    def _playlist_selected(self, row):
-        if not 0 <= row < len(self._playlist_files):
+    def _set_edit_buttons(self, on, anything=True):
+        "Enable the edit buttons for one of your playlists; with no playlist at all, show the empty state instead."
+        self.pl_empty.setVisible(not anything)
+        self.pl_table.setVisible(anything)
+        self.pl_like_all.setVisible(anything)
+        for b in self.pl_edit_buttons:
+            b.setEnabled(on)
+            b.setVisible(anything)
+        self.pl_copy_btn.setVisible(anything and not on)
+        self.pl_edit_note.setText("" if on or not anything else "This one came from Spotify and cannot be changed. "
+                                  "Copy it to make one you can.")
+
+    def _spotify_toggled(self, on):
+        self._set_setting("show_spotify_playlists", on)
+        self._load_playlists()
+
+    def _copy_to_mine(self):
+        if not self._pl_current or self._pl_current[2]:
+            return
+        songs = self._songs_for([e.path for e in self._playlist_entries])
+        if not songs:
+            self.status.showMessage("None of its songs are in your library", 5000)
             return
         try:
-            entries = playlists.read_m3u8(self._playlist_files[row][1], self.cfg.music_dir)
+            used = self.my_playlists.create(self._pl_current[0], songs)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        self._load_playlists(select=used)
+        self.status.showMessage(f"Copied to “{used}” ({len(songs)} songs). It is yours to change.", 8000)
+    def _playlist_selected(self, row, select_rows=()):
+        if not 0 <= row < len(self._playlist_files):
+            return
+        name, path, mine = self._playlist_files[row]
+        self._pl_current = (name, path, mine)
+        self._set_edit_buttons(mine)
+        try:
+            entries = playlists.read_m3u8(path, self.cfg.music_dir)
         except OSError as e:
             self.pl_info.setText(f"Could not read the playlist: {e}")
             return
         self._playlist_entries = entries
         have = sum(1 for e in entries if e.exists)
         self.pl_info.setText(f"{len(entries)} songs, {have} in the library, {len(entries) - have} missing")
+        self.pl_table.clearSelection()
         self.pl_table.setRowCount(len(entries))
         for r, e in enumerate(entries):
             song = self.by_path.get(e.path)
@@ -951,7 +1075,155 @@ class MainWindow(QMainWindow):
                 if not e.exists:
                     it.setForeground(self.palette().placeholderText())
                 self.pl_table.setItem(r, c, it)
+        model = self.pl_table.selectionModel()
+        for r in select_rows:
+            if 0 <= r < len(entries):
+                model.select(self.pl_table.model().index(r, 0),
+                             model.SelectionFlag.Select | model.SelectionFlag.Rows)
 
+    # --- playlists of your own ------------------------------------------------
+    def _ask_name(self, title, default=""):
+        name, ok = QInputDialog.getText(self, title, "Name:", text=default)
+        return name.strip() if ok and myplaylists.clean_name(name) else None
+
+    def _playlist_error(self, e):
+        self.status.showMessage(f"Could not change the playlist: {e}", 8000)
+
+    def _songs_for(self, paths):
+        return [self.by_path[p] for p in paths if p in self.by_path]
+
+    def _new_playlist(self, songs=()):
+        "Make a playlist (optionally with songs already in it) and show it. Returns its name or None."
+        name = self._ask_name("New playlist")
+        if not name:
+            return None
+        try:
+            used = self.my_playlists.create(name, songs)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return None
+        self._load_playlists(select=used)
+        self.status.showMessage(f"Made the playlist “{used}” with {len(songs)} songs", 6000)
+        return used
+
+    def _add_to_playlist(self, name, songs):
+        try:
+            added = self.my_playlists.add(name, songs)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        if self._pl_current and self._pl_current[0] == name:
+            self._load_playlists(select=name)
+        self.status.showMessage(f"Added {added} songs to “{name}”" + (f" ({len(songs) - added} were already in it)"
+                                if added < len(songs) else ""), 6000)
+
+    def _add_to_playlist_menu(self, menu, songs):
+        "A submenu for choosing one of your playlists (or making a new one) for these songs."
+        if not songs:
+            return
+        sub = menu.addMenu("Add to playlist")
+        for name, _ in self.my_playlists.names():
+            sub.addAction(name, lambda n=name: self._add_to_playlist(n, songs))
+        if sub.actions():
+            sub.addSeparator()
+        sub.addAction("＋  New playlist…", lambda: self._new_playlist(songs))
+
+    def _save_queue_as_playlist(self):
+        songs = self._songs_for(self.player.queue)
+        if not songs:
+            self.status.showMessage("The queue is empty", 5000)
+            return
+        self._new_playlist(songs)
+
+    def _queue_menu(self, pos):
+        row = self.queue_list.currentRow()
+        songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
+        m = QMenu(self)
+        if songs:
+            m.addAction("Unlike" if songs[0].path in self.likes else "Like",
+                        lambda: self._toggle_like([songs[0].path]))
+            self._add_to_playlist_menu(m, songs)
+        m.addAction("Save the whole queue as a playlist…", self._save_queue_as_playlist)
+        m.exec(self.queue_list.viewport().mapToGlobal(pos))
+
+    def _playlist_song_menu(self, pos):
+        rows = sorted({i.row() for i in self.pl_table.selectionModel().selectedRows()})
+        songs = self._songs_for([self._playlist_entries[r].path for r in rows if r < len(self._playlist_entries)])
+        if not songs:
+            return
+        m = QMenu(self)
+        m.addAction("Play now", lambda: self.player.set_queue([s.path for s in songs]))
+        m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
+        m.addAction("Unlike" if all(s.path in self.likes for s in songs) else "Like",
+                    lambda: self._toggle_like([s.path for s in songs]))
+        self._add_to_playlist_menu(m, songs)
+        m.exec(self.pl_table.viewport().mapToGlobal(pos))
+
+    def _mine(self):
+        "The name of the playlist on show if it is one of yours, else None."
+        return self._pl_current[0] if self._pl_current and self._pl_current[2] else None
+
+    def _rename_playlist(self):
+        old = self._mine()
+        new = old and self._ask_name("Rename playlist", old)
+        if not new:
+            return
+        try:
+            used = self.my_playlists.rename(old, new)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        self._load_playlists(select=used)
+
+    def _delete_playlist(self):
+        name = self._mine()
+        if not name:
+            return
+        ask = QMessageBox.question(self, "Delete playlist", f"Delete the playlist “{name}”?\n\nThe songs stay in your "
+                                   "library.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if ask != QMessageBox.Yes:
+            return
+        try:
+            self.my_playlists.delete(name)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        self._pl_current = None
+        self._load_playlists()
+
+    def _selected_playlist_rows(self):
+        return sorted({i.row() for i in self.pl_table.selectionModel().selectedRows()})
+
+    def _remove_from_playlist(self):
+        name, rows = self._mine(), self._selected_playlist_rows()
+        if not name or not rows:
+            self.status.showMessage("Highlight the songs to take out first", 5000)
+            return
+        keep = [e for i, e in enumerate(self._playlist_entries) if i not in rows]
+        try:
+            self.my_playlists.save(name, keep)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        self._load_playlists(select=name)
+
+    def _move_in_playlist(self, delta):
+        name, rows = self._mine(), self._selected_playlist_rows()
+        if not name or len(rows) != 1:
+            self.status.showMessage("Highlight one song to move", 5000)
+            return
+        r, target = rows[0], rows[0] + delta
+        if not 0 <= target < len(self._playlist_entries):
+            return
+        entries = list(self._playlist_entries)
+        entries[r], entries[target] = entries[target], entries[r]
+        try:
+            self.my_playlists.save(name, entries)
+        except (OSError, ValueError) as e:
+            self._playlist_error(e)
+            return
+        self._load_playlists(select=name)
+        self._playlist_selected(self.pl_list.currentRow(), select_rows=[target])
     def _play_folder(self, item):
         "Double-click on a folder (Liked Songs, a genre...) plays what it shows, from the top."
         if self.folder != item.text():

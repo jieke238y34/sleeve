@@ -17,6 +17,7 @@ DEFAULTS = {
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
     "accent": "Lavender",      # a key of ACCENTS
+    "show_spotify_playlists": False,   # list the playlist files dl.py made from Spotify (off: only your own)
 }
 
 
@@ -24,7 +25,7 @@ def _valid(key, value):
     if key in ("volume", "max_volume"):
         low = 30 if key == "max_volume" else 0
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= 100
-    if key in ("gapless", "same_volume"):
+    if key in ("gapless", "same_volume", "show_spotify_playlists"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS
