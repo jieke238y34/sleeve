@@ -11,10 +11,12 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, activity, art, config, health, library, likes, lrc, playlists, sync, tags, theme
+from . import __version__, activity, art, config, health, library, likes, lrc, playlists, settings, sync, tags, theme
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
@@ -179,12 +181,18 @@ class TagDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, cfg, player=None, likes_file=None):
+    def __init__(self, cfg, player=None, likes_file=None, settings_file=None):
         super().__init__()
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
+        self.settings = settings.Settings(settings_file)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self.player.apply(self.settings)
+        self._vol_timer = QTimer(self)                    # the volume is saved a moment after the slider stops
+        self._vol_timer.setSingleShot(True)
+        self._vol_timer.setInterval(600)
+        self._vol_timer.timeout.connect(self._save_settings)
         self.runner = sync.SyncRunner(cfg, self)
         self.worker = None
         self._closing = self._rescan_again = False
@@ -196,7 +204,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Sleeve")
         self.resize(1180, 760)
 
-        self.setStyleSheet(theme.STYLE)
+        self.setStyleSheet(theme.build_style(self.settings.accent_color))
         root = self.backdrop = theme.Backdrop()
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -210,7 +218,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
                            ("Playlists", self._playlists_page()), ("Downloads", self._downloads_page()),
-                           ("Health", self._health_page())):
+                           ("Health", self._health_page()), ("Settings", self._settings_page())):
             self.nav.addItem(name)
             self.stack.addWidget(page)
         self.nav.currentRowChanged.connect(self._nav_changed)
@@ -529,6 +537,118 @@ class MainWindow(QMainWindow):
             self.activity.takeItem(0)
         if at_end:
             self.activity.scrollToBottom()
+    def _settings_page(self):
+        "Preferences. Each change is applied at once and saved."
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(10)
+        title = QLabel("Settings")
+        title.setObjectName("heading")
+        note = QLabel("Changes are applied and saved as you make them.")
+        note.setObjectName("muted")
+        lay.addWidget(title)
+        lay.addWidget(note)
+
+        def section(text):
+            lab = QLabel(text)
+            lab.setObjectName("heading")
+            lay.addSpacing(10)
+            lay.addWidget(lab)
+
+        def hint(text):
+            lab = QLabel(text)
+            lab.setObjectName("muted")
+            lab.setWordWrap(True)
+            lab.setTextFormat(Qt.PlainText)
+            return lab
+
+        section("Sound")
+        row = QHBoxLayout()
+        self.ceiling_slider = ClickSlider(Qt.Horizontal)
+        self.ceiling_slider.setRange(30, 100)
+        self.ceiling_slider.setValue(self.settings.max_volume)
+        self.ceiling_slider.setMaximumWidth(280)
+        self.ceiling_label = QLabel(f"{self.settings.max_volume}%")
+        self.ceiling_slider.valueChanged.connect(self._ceiling_changed)
+        row.addWidget(QLabel("Loudest volume"))
+        row.addWidget(self.ceiling_slider)
+        row.addWidget(self.ceiling_label)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("How loud the volume slider gets when it is all the way up. Lower it if everything "
+                           "feels too loud."))
+        self.gapless_box = QCheckBox("Gapless playback (no pause between songs)")
+        self.gapless_box.setChecked(self.settings.gapless)
+        self.gapless_box.toggled.connect(self._gapless_toggled)
+        lay.addWidget(self.gapless_box)
+        self.same_volume_box = QCheckBox("Play songs at the same volume")
+        self.same_volume_box.setChecked(self.settings.same_volume)
+        self.same_volume_box.toggled.connect(lambda on: self._set_setting("same_volume", on))
+        lay.addWidget(self.same_volume_box)
+        lay.addWidget(hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and measures "
+                           "the rest in the background if ffmpeg is installed."))
+
+        section("Look")
+        row = QHBoxLayout()
+        self.accent_box = QComboBox()
+        self.accent_box.addItems(list(settings.ACCENTS))
+        self.accent_box.setCurrentText(self.settings.accent)
+        self.accent_box.currentTextChanged.connect(self._accent_changed)
+        row.addWidget(QLabel("Accent colour"))
+        row.addWidget(self.accent_box)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        section("Your files")
+        grid = QGridLayout()
+        for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir), ("dl.py", self.cfg.dl_path),
+                                            ("Liked songs", self.likes.file), ("Settings", self.settings.file))):
+            value_label = QLabel(str(value))
+            value_label.setTextFormat(Qt.PlainText)
+            value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setObjectName("muted")
+            grid.addWidget(QLabel(label), r, 0)
+            grid.addWidget(value_label, r, 1)
+        grid.setColumnStretch(1, 1)
+        lay.addLayout(grid)
+        buttons = QHBoxLayout()
+        open_music = QPushButton("Open music folder")
+        open_music.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.cfg.music_dir))))
+        rescan = QPushButton("Rescan library")
+        rescan.clicked.connect(self.rescan)
+        buttons.addWidget(open_music)
+        buttons.addWidget(rescan)
+        buttons.addStretch(1)
+        lay.addLayout(buttons)
+        lay.addStretch(1)
+        lay.addWidget(hint(f"Sleeve {__version__}"))
+        return page
+
+    def _set_setting(self, key, value):
+        if self.settings.set(key, value):
+            self._save_settings()
+
+    def _save_settings(self):
+        try:
+            self.settings.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save your settings: {e}", 8000)
+
+    def _ceiling_changed(self, value):
+        self.ceiling_label.setText(f"{value}%")
+        self.player.set_max_volume(value)
+        self._set_setting("max_volume", value)
+
+    def _gapless_toggled(self, on):
+        self.player.set_gapless(on)
+        self._set_setting("gapless", on)
+
+    def _accent_changed(self, name):
+        if self.settings.set("accent", name):
+            self.setStyleSheet(theme.build_style(self.settings.accent_color))
+            self._save_settings()
+
     def _health_page(self):
         page = QWidget()
         lay = QHBoxLayout(page)
@@ -1135,6 +1255,8 @@ class MainWindow(QMainWindow):
     def _on_volume(self, value):
         if not self.volume.isSliderDown():           # do not fight the user's drag
             self._set_slider_silently(self.volume, value)
+        if self.settings.set("volume", int(value)):
+            self._vol_timer.start()
 
     def _set_slider_silently(self, slider, value):
         slider.blockSignals(True)
@@ -1247,6 +1369,9 @@ class MainWindow(QMainWindow):
             worker.requestInterruption()             # the scan loop checks this and stops early
             worker.wait(10000)
         QApplication.instance().removeEventFilter(self)
+        if self._vol_timer.isActive():               # the volume was changed in the last moment
+            self._vol_timer.stop()
+            self._save_settings()
         self.runner.shutdown()
         self.player.close()
         super().closeEvent(event)

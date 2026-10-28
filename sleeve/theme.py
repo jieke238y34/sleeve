@@ -7,7 +7,10 @@ from PySide6.QtWidgets import QWidget
 LAVENDER, CREAM = "#b7afe0", "#f3e9d2"
 BG, TEXT, MUTED = "#15131d", "#ece9f6", "#a29cbd"
 
-STYLE = f"""
+def build_style(accent=LAVENDER):
+    "The window stylesheet in the given accent colour (a #rrggbb string)."
+    rgb = ", ".join(str(int(accent[i:i + 2], 16)) for i in (1, 3, 5))     # for the see-through tints
+    return f"""
 QMainWindow, QDialog {{ background: {BG}; }}
 QWidget {{ color: {TEXT}; font-size: 10pt; }}
 QStackedWidget, QSplitter, QLabel, QCheckBox {{ background: transparent; }}
@@ -16,14 +19,14 @@ QToolTip {{ background: #24202f; color: {TEXT}; border: 1px solid #3a3450; paddi
 QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
     background: rgba(10, 8, 16, 120); border: none; border-radius: 12px; outline: 0;
     alternate-background-color: rgba(255, 255, 255, 10);
-    selection-background-color: rgba(183, 175, 224, 80); selection-color: #ffffff;
+    selection-background-color: rgba({rgb}, 80); selection-color: #ffffff;
 }}
 QListWidget::item {{ padding: 4px 6px; border-radius: 8px; }}
-QListWidget::item:selected {{ background: rgba(183, 175, 224, 80); }}
+QListWidget::item:selected {{ background: rgba({rgb}, 80); }}
 QListWidget#nav {{ background: rgba(10, 8, 16, 170); border-radius: 0; padding: 10px 8px; font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {MUTED}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {TEXT}; }}
-QListWidget#nav::item:selected {{ background: {LAVENDER}; color: {BG}; font-weight: 600; }}
+QListWidget#nav::item:selected {{ background: {accent}; color: {BG}; font-weight: 600; }}
 QListWidget#queue::item {{ padding: 6px 8px; }}
 QHeaderView {{ background: transparent; border: none; }}
 QHeaderView::section {{ background: transparent; color: {MUTED}; border: none; padding: 8px; font-weight: 600; }}
@@ -31,32 +34,32 @@ QTableView::item, QTableWidget::item {{ padding: 4px 8px; }}
 QTableCornerButton::section {{ background: transparent; border: none; }}
 
 QLineEdit {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 15px;
-             padding: 6px 14px; selection-background-color: {LAVENDER}; selection-color: {BG}; }}
-QLineEdit:focus {{ border-color: {LAVENDER}; }}
+             padding: 6px 14px; selection-background-color: {accent}; selection-color: {BG}; }}
+QLineEdit:focus {{ border-color: {accent}; }}
 
 QPushButton {{ background: rgba(255, 255, 255, 24); border: none; border-radius: 15px; padding: 6px 16px; }}
 QPushButton:hover {{ background: rgba(255, 255, 255, 42); }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
-QPushButton:checked {{ background: {LAVENDER}; color: {BG}; }}
+QPushButton:checked {{ background: {accent}; color: {BG}; }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 80); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
-                    padding: 0; font-size: 18pt; background: {LAVENDER}; color: {BG}; }}
+                    padding: 0; font-size: 18pt; background: {accent}; color: {BG}; }}
 QPushButton#play:hover {{ background: {CREAM}; }}
 QPushButton#heart {{ font-size: 15pt; }}
 QPushButton#heart:checked {{ background: rgba(255, 255, 255, 24); color: #ff8fb1; }}
 
-QPushButton#primary {{ background: {LAVENDER}; color: {BG}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
+QPushButton#primary {{ background: {accent}; color: {BG}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
 QPushButton#primary:hover {{ background: {CREAM}; }}
-QPushButton#primary:disabled {{ background: rgba(183, 175, 224, 70); color: rgba(21, 19, 29, 160); }}
+QPushButton#primary:disabled {{ background: rgba({rgb}, 70); color: rgba(21, 19, 29, 160); }}
 QListWidget#activity {{ font-size: 10.5pt; }}
 QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#activity::item:selected {{ background: transparent; }}
 
 QSlider::groove:horizontal {{ height: 6px; background: rgba(255, 255, 255, 40); border-radius: 3px; }}
-QSlider::sub-page:horizontal {{ background: {LAVENDER}; border-radius: 3px; }}
+QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {CREAM}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }}
 
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
@@ -67,14 +70,23 @@ QScrollBar::handle:horizontal {{ background: rgba(255, 255, 255, 50); border-rad
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
+QCheckBox {{ spacing: 10px; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 80);
+                        background: rgba(255, 255, 255, 15); }}
+QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
+QComboBox {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 13px;
+             padding: 5px 14px; min-width: 120px; }}
+QComboBox::drop-down {{ border: none; width: 24px; }}
+QComboBox QAbstractItemView {{ background: #1e1a2a; border: 1px solid rgba(255, 255, 255, 30); padding: 4px;
+                               selection-background-color: {accent}; selection-color: {BG}; outline: 0; }}
 QProgressBar {{ background: rgba(255, 255, 255, 30); border: none; border-radius: 6px; text-align: center; }}
-QProgressBar::chunk {{ background: {LAVENDER}; border-radius: 6px; }}
+QProgressBar::chunk {{ background: {accent}; border-radius: 6px; }}
 QStatusBar {{ background: transparent; color: {MUTED}; }}
 QSplitter::handle {{ background: transparent; }}
 
 QMenu {{ background: #1e1a2a; border: 1px solid rgba(255, 255, 255, 30); border-radius: 10px; padding: 6px; }}
 QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
-QMenu::item:selected {{ background: {LAVENDER}; color: {BG}; }}
+QMenu::item:selected {{ background: {accent}; color: {BG}; }}
 QMenu::separator {{ height: 1px; background: rgba(255, 255, 255, 30); margin: 5px 8px; }}
 
 QWidget#playerbar {{ background: rgba(10, 8, 16, 170); }}
@@ -83,6 +95,9 @@ QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {MUTED}; }}
 QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
 """
+
+
+STYLE = build_style()
 
 
 def rounded_pixmap(pix, size, radius):

@@ -21,11 +21,11 @@ TAIL_MS = 250         # the finished player is kept this long so the last notes 
 MAX_GAIN = 0.75       # full slider is 75% of the loudest the output can do: desktop Linux tends to be loud
 
 
-def gain(volume):
+def gain(volume, ceiling=MAX_GAIN):
     "Qt's linear gain for a 0-100 slider position. Hearing is logarithmic, so a straight line sounds dead above half."
     scale = QtAudio.VolumeScale
     perceptual = QtAudio.convertVolume(volume / 100, scale.LogarithmicVolumeScale, scale.LinearVolumeScale)
-    return max(0.0, perceptual) * MAX_GAIN
+    return max(0.0, perceptual) * ceiling
 
 
 def next_index(index, count, repeat, shuffle, rng=random):
@@ -83,6 +83,7 @@ class Player(QObject):
         self.queue, self.index = [], -1
         self.shuffle, self.repeat = False, REPEAT_OFF
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
+        self.max_gain, self.gapless = MAX_GAIN, True
         self._errors = 0
         self._slots = [_Slot(self), _Slot(self)]
         self._cur = 0                      # the slot that is playing; the other one is loaded with the next song
@@ -92,7 +93,7 @@ class Player(QObject):
         self._switch_timer.setSingleShot(True)
         self._switch_timer.timeout.connect(self._switch)
         for i, slot in enumerate(self._slots):
-            slot.audio.setVolume(gain(self.volume))
+            slot.audio.setVolume(gain(self.volume, self.max_gain))
             m = slot.media
             m.positionChanged.connect(lambda ms, i=i: self._on_position(ms) if i == self._cur else None)
             m.durationChanged.connect(lambda ms, i=i: self._on_duration(ms) if i == self._cur else None)
@@ -111,6 +112,22 @@ class Player(QObject):
     def start(self):
         "Kept for the window; nothing has to be started any more."
         return True
+
+    def apply(self, settings):
+        "Take the saved preferences (see sleeve.settings.Settings)."
+        self.max_gain = settings.max_volume / 100
+        self.gapless = settings.gapless
+        self.set_volume(settings.volume)
+        self._replan()
+
+    def set_max_volume(self, percent):
+        "How much of the output's loudest level the full slider means."
+        self.max_gain = max(0.3, min(1.0, percent / 100))
+        self.set_volume(self.volume)
+
+    def set_gapless(self, on):
+        self.gapless = bool(on)
+        self._replan()
 
     # --- events from the players ------------------------------------------
     def _on_position(self, ms):
@@ -204,7 +221,7 @@ class Player(QObject):
             return
         n = next_index(self.index, len(self.queue), self.repeat, self.shuffle)
         self._plan = (self.index, n)
-        if n is None:
+        if n is None or not self.gapless:      # gapless off: the next song is loaded when this one ends
             idle.unload()
             return
         path = self.queue[n]
@@ -220,8 +237,8 @@ class Player(QObject):
 
     def _arm_switch(self):
         "Schedule the hand-over to the preloaded song for just before this one ends."
-        if (not self.playing or self.duration <= 0 or not self._plan or self._plan[0] != self.index
-                or self._plan[1] is None):
+        if (not self.gapless or not self.playing or self.duration <= 0 or not self._plan
+                or self._plan[0] != self.index or self._plan[1] is None):
             self._switch_timer.stop()
             return
         since = self._clock.elapsed() if self._clock.isValid() else 0
@@ -374,7 +391,7 @@ class Player(QObject):
     def set_volume(self, v):
         self.volume = max(0, min(100, int(v)))
         for slot in self._slots:
-            slot.audio.setVolume(gain(self.volume))
+            slot.audio.setVolume(gain(self.volume, self.max_gain))
         self.volumeChanged.emit(self.volume)
 
     def cycle_repeat(self):
