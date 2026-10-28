@@ -94,3 +94,25 @@ def test_every_existing_song_of_a_playlist_file_gets_liked(tmp_path):
     lk = likes.Likes(tmp_path / "liked.json")
     assert lk.add(e.path for e in entries if e.exists) == 1
     assert lk.paths == {str(music / "Rock" / "a.mp3")}
+
+
+def test_double_click_on_a_folder_or_playlist_starts_playing_it(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.folders.setCurrentRow(1)                       # Liked Songs, still empty
+        win.player.calls.clear()
+        win.folders.itemDoubleClicked.emit(win.folders.item(1))
+        assert not [c for c in win.player.calls if c[0] == "set_queue"]
+        assert "Nothing in" in win.status.currentMessage()
+        win.folders.setCurrentRow(0)
+        win._toggle_like([win.model.songs[0].path])
+        win.folders.setCurrentRow(1)
+        win.folders.itemDoubleClicked.emit(win.folders.item(1))
+        name, args = win.player.calls[-1]
+        assert name == "set_queue" and args[0] == [win.model.songs[0].path]
+        win.folders.itemDoubleClicked.emit(win.folders.item(0))   # a folder that was not selected yet
+        assert win.folder == sleeve_app.ALL and len(win.player.calls[-1][1][0]) == 3
+        win.pl_list.itemDoubleClicked.emit(win.pl_list.item(0))
+        assert win.player.calls[-1][0] == "set_queue" and len(win.player.calls[-1][1][0]) == 1
+    finally:
+        win.close()

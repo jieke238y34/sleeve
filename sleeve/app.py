@@ -225,6 +225,7 @@ class MainWindow(QMainWindow):
         self.folders = QListWidget()
         self.folders.setMaximumWidth(190)
         self.folders.currentTextChanged.connect(self._folder_changed)
+        self.folders.itemDoubleClicked.connect(self._play_folder)
         right = QVBoxLayout()
         top = QHBoxLayout()
         self.search = QLineEdit()
@@ -276,6 +277,7 @@ class MainWindow(QMainWindow):
         self.pl_list = QListWidget()
         self.pl_list.setMaximumWidth(260)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
+        self.pl_list.itemDoubleClicked.connect(self._play_playlist)
         self.pl_table = QTableWidget(0, 3)
         self.pl_table.setHorizontalHeaderLabels(["Song", "Time", "In library"])
         self._style_table(self.pl_table)
@@ -667,6 +669,27 @@ class MainWindow(QMainWindow):
                 if not e.exists:
                     it.setForeground(self.palette().placeholderText())
                 self.pl_table.setItem(r, c, it)
+
+    def _play_folder(self, item):
+        "Double-click on a folder (Liked Songs, a genre...) plays what it shows, from the top."
+        if self.folder != item.text():
+            self._folder_changed(item.text())
+        paths = [s.path for s in self.model.songs]
+        if paths:
+            self.player.set_queue(paths)
+        else:
+            self.status.showMessage(f"Nothing in {item.text()} yet", 5000)
+
+    def _play_playlist(self, item):
+        "Double-click on a playlist name plays it from the top."
+        row = self.pl_list.row(item)
+        if self.pl_list.currentRow() != row:
+            self.pl_list.setCurrentRow(row)
+        paths = [e.path for e in self._playlist_entries if e.exists]
+        if paths:
+            self.player.set_queue(paths)
+        else:
+            self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
     def _play_playlist_from(self, row, _col):
         if not 0 <= row < len(self._playlist_entries) or not self._playlist_entries[row].exists:
