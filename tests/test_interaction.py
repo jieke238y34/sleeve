@@ -125,3 +125,52 @@ def test_shuffle_and_repeat_show_their_state_in_the_icon(qapp, cfg, monkeypatch,
         assert key(win.repeat_btn) != key(win.shuffle_btn)
     finally:
         win.close()
+
+
+def solid(qapp, colours, size=64):  # noqa: F811
+    "A test cover: vertical stripes of the given colours."
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+
+    pix = QPixmap(size, size)
+    painter = QPainter(pix)
+    step = size // len(colours)
+    for i, c in enumerate(colours):
+        painter.fillRect(i * step, 0, step + 1, size, QColor(c))
+    painter.end()
+    return pix
+
+
+def test_the_backdrop_takes_its_colours_from_the_cover(qapp):  # noqa: F811
+    from PySide6.QtGui import QColor
+
+    from sleeve import theme
+
+    assert theme.palette_from(None) == [] and theme.palette_from(solid(qapp, ["#ff0000"]).scaled(0, 0)) == []
+    red_blue = theme.palette_from(solid(qapp, ["#d01020", "#d01020", "#d01020", "#1030d0"]))
+    assert len(red_blue) == 3
+    hues = [round(c.hueF() * 360) for c in red_blue[:2]]
+    assert hues[0] < 20 or hues[0] > 340                          # the dominant colour comes first: red
+    assert 200 < hues[1] < 260                                    # then the other one: blue
+    assert all(c.valueF() <= 0.53 for c in red_blue)              # dark enough for the light text
+    grey = theme.palette_from(solid(qapp, ["#808080", "#909090"]))
+    assert len(grey) == 3 and all(isinstance(c, QColor) for c in grey)          # a grey cover still works
+    one = theme.palette_from(solid(qapp, ["#20a060"]))
+    assert len(one) == 3 and len({c.name() for c in one}) > 1                    # a one-colour cover gets shades
+
+
+def test_the_backdrop_fades_to_the_new_colours(qapp):  # noqa: F811
+    import time
+
+    from sleeve import theme
+
+    b = theme.Backdrop()
+    b.resize(200, 120)
+    before = [c.name() for c in b._now]
+    b.set_cover(solid(qapp, ["#d01020"]))
+    end = time.time() + 2
+    while time.time() < end and b._fade.state() != b._fade.State.Stopped:
+        qapp.processEvents()
+        time.sleep(0.02)
+    assert [c.name() for c in b._now] != before and b._now[0].red() > b._now[0].blue()
+    assert not b.grab().isNull()                                   # it paints
+    b.set_cover(None)                                              # no cover: back to the calm default

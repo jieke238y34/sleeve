@@ -1,7 +1,7 @@
 """How the window looks: a dark lavender theme, and a backdrop made from the playing song's cover."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, Qt, QVariantAnimation
+from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
 LAVENDER, CREAM = "#b7afe0", "#f3e9d2"
@@ -168,40 +168,98 @@ def rounded_pixmap(pix, size, radius):
     return out
 
 
+NEUTRAL = ("#2a2640", "#1d1a2c", "#16131f")        # the backdrop when there is no cover (or it has no colour)
+
+
+def _distance(a, b):
+    return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
+
+
+def palette_from(pix, count=3):
+    """The main colours of a cover as `count` QColors, vivid ones first, darkened so white text stays readable.
+    Greys and near-blacks only fill in when the cover has nothing more colourful. [] for a missing cover."""
+    if pix is None or pix.isNull():
+        return []
+    img = pix.toImage().scaled(32, 32, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    img = img.convertToFormat(QImage.Format_RGB32)
+    buckets = {}                                         # (r, g, b in 32 steps) -> [weight, r sum, g sum, b sum]
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = QColor(img.pixel(x, y))
+            h, sat, val, _ = c.getHsvF()
+            weight = 0.15 + 3.0 * sat * min(1.0, val * 2.0)      # colourful and not-too-dark pixels count most
+            key = (c.red() >> 5, c.green() >> 5, c.blue() >> 5)
+            b = buckets.setdefault(key, [0.0, 0.0, 0.0, 0.0])
+            b[0] += weight
+            b[1] += c.red() * weight
+            b[2] += c.green() * weight
+            b[3] += c.blue() * weight
+    ranked = sorted(buckets.values(), key=lambda b: -b[0])
+    chosen = []
+    for w, r, g, b in ranked:
+        colour = QColor(int(r / w), int(g / w), int(b / w))
+        if all(_distance(colour, other) > 110 for other in chosen):     # different enough from the ones already taken
+            chosen.append(colour)
+        if len(chosen) == count:
+            break
+    while len(chosen) < count:                                           # a one-colour cover: shades of it
+        base = chosen[-1] if chosen else QColor(NEUTRAL[0])
+        chosen.append(base.darker(130))
+    out = []
+    for colour in chosen:
+        h, sat, val, _ = colour.getHsvF()
+        out.append(QColor.fromHsvF(max(h, 0.0), min(1.0, sat), min(val, 0.52), 1.0))   # dark enough for text
+    return out
+
+
 class Backdrop(QWidget):
-    "Paints the window background: the playing cover blurred and darkened, or a plain dark gradient."
+    "Paints the window background: a smooth gradient in the colours of the playing cover (eased from the last one)."
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("backdrop")
-        self._small = None                    # the cover shrunk to a few pixels; scaling it back up blurs it
-        self._scaled, self._scaled_for = None, None
+        self._now = [QColor(c) for c in NEUTRAL]
+        self._from = list(self._now)
+        self._to = list(self._now)
+        self._t = 1.0
+        self._fade = QVariantAnimation(self)
+        self._fade.setDuration(600)
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
+        self._fade.valueChanged.connect(self._fading)
 
     def set_cover(self, pix):
-        if pix is None or pix.isNull():
-            self._small = None
-        else:
-            img = pix.toImage().scaled(40, 40, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-            self._small = QPixmap.fromImage(img)
-        self._scaled = self._scaled_for = None
+        colours = palette_from(pix) or [QColor(c) for c in NEUTRAL]
+        self._from, self._to = list(self._now), colours
+        self._fade.stop()
+        self._fade.start()
+
+    def _fading(self, t):
+        self._now = [self._mix(a, b, t) for a, b in zip(self._from, self._to, strict=True)]
         self.update()
+
+    @staticmethod
+    def _mix(a, b, t):
+        return QColor(round(a.red() + (b.red() - a.red()) * t), round(a.green() + (b.green() - a.green()) * t),
+                      round(a.blue() + (b.blue() - a.blue()) * t))
 
     def paintEvent(self, _event):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(BG))
-        if self._small is not None:
-            if self._scaled_for != self.size():
-                self._scaled = self._small.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                self._scaled_for = self.size()
-            p.drawPixmap((self.width() - self._scaled.width()) // 2, (self.height() - self._scaled.height()) // 2,
-                         self._scaled)
-        shade = QLinearGradient(0, 0, 0, self.height())
-        top, bottom = (130, 225) if self._small is not None else (0, 0)
-        shade.setColorAt(0, QColor(21, 19, 29, top))
-        shade.setColorAt(1, QColor(21, 19, 29, bottom))
+        w, h = self.width(), self.height()
+        c1, c2, c3 = self._now
+        base = QLinearGradient(0, 0, w, h)                   # corner to corner
+        base.setColorAt(0.0, c1)
+        base.setColorAt(0.55, c2)
+        base.setColorAt(1.0, c3)
+        p.fillRect(self.rect(), base)
+        glow = QRadialGradient(QPointF(w * 0.78, h * 0.18), max(w, h) * 0.55)       # a soft light behind the cover
+        light = QColor(c1)
+        light.setAlpha(110)
+        glow.setColorAt(0.0, light)
+        light.setAlpha(0)
+        glow.setColorAt(1.0, light)
+        p.fillRect(self.rect(), glow)
+        shade = QLinearGradient(0, 0, 0, h)                  # a little darker towards the player bar
+        shade.setColorAt(0.0, QColor(21, 19, 29, 40))
+        shade.setColorAt(1.0, QColor(21, 19, 29, 170))
         p.fillRect(self.rect(), shade)
-        if self._small is None:
-            plain = QLinearGradient(0, 0, self.width(), self.height())
-            plain.setColorAt(0, QColor("#1b1828"))
-            plain.setColorAt(1, QColor("#120f1a"))
-            p.fillRect(self.rect(), plain)
