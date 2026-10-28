@@ -37,8 +37,9 @@ not reached.
 4. **Defaults beat configuration.** foobar2000 and MusicBee both lose newcomers to setup. Sleeve should keep working
    with no settings and add a settings page only for things people will actually change.
 5. **Small annoyances get remembered.** Elisa's timeline not seeking on click and its unsorted artists, and Plexamp's
-   lyrics vanishing on song change, are the kind of thing reviewers write down. Sleeve's seek slider jumps on click
-   and its artists sort, but lyrics and cover art should be checked on real songs.
+   lyrics vanishing on song change, are the kind of thing reviewers write down. Worth checking in Sleeve on real
+   songs: does clicking the seek bar jump to that spot (a stock Qt slider only steps by a page), do lyrics survive a
+   song change, and does cover art load for every format.
 6. **Platform support matters.** MusicBee is Windows only and foobar2000 is weak on macOS; both get that complaint. Moving
    off mpv was the right call for Windows, and the Windows build and installer are now the open item.
 7. **Missing everywhere, or poorly done:** a way to see and fix library problems (Sleeve's Health page), and one place to
