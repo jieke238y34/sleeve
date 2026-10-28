@@ -4,11 +4,15 @@ The queue lives here, in Python. mpv plays one file at a time and tells us when 
 mpv is started without the user's config, scripts, youtube-dl hook or auto-loading of neighbouring files, and only
 absolute paths of real audio files ever reach it.
 """
+
 import json
 import os
 import random
+import re
 import shutil
+import stat
 import tempfile
+import weakref
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
@@ -19,11 +23,21 @@ from .library import AUDIO_EXT
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
 
 MPV_ARGS = [
-    "--idle=yes", "--no-video", "--no-terminal", "--audio-display=no", "--force-window=no",
-    "--no-config", "--ytdl=no", "--load-scripts=no", "--sub-auto=no", "--audio-file-auto=no",
-    "--cover-art-auto=no", "--load-unsafe-playlists=no", "--no-input-default-bindings",
+    "--idle=yes",
+    "--no-video",
+    "--no-terminal",
+    "--audio-display=no",
+    "--force-window=no",
+    "--no-config",
+    "--ytdl=no",
+    "--load-scripts=no",
+    "--sub-auto=no",
+    "--audio-file-auto=no",
+    "--cover-art-auto=no",
+    "--load-unsafe-playlists=no",
+    "--no-input-default-bindings",
 ]
-MAX_PENDING = 100                # commands kept while mpv is still starting
+MAX_PENDING = 100  # commands kept while mpv is still starting
 
 
 def parse_events(buffer):
@@ -62,11 +76,55 @@ def is_playable(path):
         return False
 
 
+_DIR_RE = re.compile(r"sleeve-(\d+)-[A-Za-z0-9_]+")
+
+
+def _pid_alive(pid):
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:  # EPERM etc.: exists but is not ours
+        return True
+    return True
+
+
+def _remove_dir(path):
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def clean_stale_dirs(base):
+    "Remove sleeve-<pid>-* socket folders under base left by processes that no longer exist. Returns the count."
+    if os.name == "nt" or not base:
+        return 0
+    removed = 0
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return 0
+    for name in names:
+        m = _DIR_RE.fullmatch(name)
+        if not m or _pid_alive(int(m.group(1))):
+            continue
+        path = os.path.join(base, name)
+        try:
+            st = os.lstat(path)
+            if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():  # never follow links or touch others' dirs
+                continue
+        except OSError:
+            continue
+        _remove_dir(path)
+        removed += not os.path.exists(path)
+    return removed
+
+
 class Player(QObject):
     positionChanged = Signal(float)
     durationChanged = Signal(float)
     playingChanged = Signal(bool)
-    trackChanged = Signal(int, str)        # index in the queue, path ("" when stopped)
+    trackChanged = Signal(int, str)  # index in the queue, path ("" when stopped)
     queueChanged = Signal()
     volumeChanged = Signal(int)
     error = Signal(str)
@@ -81,7 +139,13 @@ class Player(QObject):
         self._sock = QLocalSocket(self)
         self._buf = b""
         run = os.environ.get("XDG_RUNTIME_DIR")
-        self._dir = tempfile.mkdtemp(prefix="sleeve-", dir=run if run and os.path.isdir(run) else None)   # mode 0700
+        base = run if run and os.path.isdir(run) else None
+        clean_stale_dirs(base or tempfile.gettempdir())
+        self._dir = tempfile.mkdtemp(prefix=f"sleeve-{os.getpid()}-", dir=base)  # mode 0700
+        # runs on normal exit, or when this Player is garbage collected, whichever is first (not on SIGKILL;
+        # the next start sweeps those)
+        self._cleanup = weakref.finalize(self, _remove_dir, self._dir)
+        self._cleanup.atexit = True
         if os.name == "nt":
             self._name = f"sleeve-{os.getpid()}-{os.path.basename(self._dir)}"
             self._ipc = "\\\\.\\pipe\\" + self._name
@@ -110,6 +174,10 @@ class Player(QObject):
             args.append(f"--ao={self._ao}")
         self._tries = 0
         self._proc.start(exe, args)
+        if self._proc.state() == QProcess.NotRunning and self._proc.error() == QProcess.FailedToStart:
+            self._cleanup()
+            self.error.emit("mpv failed to start")
+            return False
         QTimer.singleShot(100, self._connect)
         return True
 
@@ -131,7 +199,7 @@ class Player(QObject):
             self.error.emit("could not connect to mpv")
 
     def _on_socket_error(self, _err):
-        if not self._ready:                  # mpv may have created the socket but not be listening yet
+        if not self._ready:  # mpv may have created the socket but not be listening yet
             self._retry()
 
     def _on_disconnected(self):
@@ -141,6 +209,8 @@ class Player(QObject):
             self.error.emit("lost the connection to mpv")
 
     def _on_proc_error(self, err):
+        if err == QProcess.FailedToStart:
+            self._cleanup()
         if not self._closing:
             self.error.emit(f"mpv: {err}")
 
@@ -177,7 +247,7 @@ class Player(QObject):
         elif ev == "start-file":
             self._awaiting_start = False
         elif ev == "end-file":
-            if self._awaiting_start:          # an end that was already on its way when we loaded another song
+            if self._awaiting_start:  # an end that was already on its way when we loaded another song
                 return
             reason = m.get("reason")
             if reason == "eof":
@@ -186,7 +256,7 @@ class Player(QObject):
             elif reason == "error":
                 self._errors += 1
                 self.error.emit(f"cannot play {Path(self.current()).name or 'file'}")
-                if self._errors >= max(1, len(self.queue)):     # nothing in the queue plays: stop, do not loop
+                if self._errors >= max(1, len(self.queue)):  # nothing in the queue plays: stop, do not loop
                     self._set_stopped()
                     self.trackChanged.emit(-1, "")
                 else:
@@ -231,7 +301,7 @@ class Player(QObject):
         if self._proc.state() != QProcess.NotRunning:
             self._proc.kill()
             self._proc.waitForFinished(1000)
-        shutil.rmtree(self._dir, ignore_errors=True)
+        self._cleanup()
 
     # --- queue --------------------------------------------------------------
     def current(self):
@@ -256,7 +326,7 @@ class Player(QObject):
     def enqueue(self, paths, next_up=False):
         good = self._playable(list(paths))
         if next_up:
-            self.queue[self.index + 1:self.index + 1] = good
+            self.queue[self.index + 1 : self.index + 1] = good
         else:
             self.queue += good
         self.queueChanged.emit()
@@ -289,7 +359,7 @@ class Player(QObject):
 
     def _advance(self, skip=False):
         n = next_index(self.index, len(self.queue), self.repeat, self.shuffle)
-        if skip and self.repeat == REPEAT_ONE:                 # a broken song must not repeat forever
+        if skip and self.repeat == REPEAT_ONE:  # a broken song must not repeat forever
             n = (self.index + 1) % len(self.queue) if len(self.queue) > 1 else None
         if n is None:
             self._set_stopped()
@@ -311,7 +381,7 @@ class Player(QObject):
         if not n:
             return
         if self.shuffle and n > 1:
-            self.play_index(random.choice([i for i in range(n) if i != self.index]))   # nosec B311
+            self.play_index(random.choice([i for i in range(n) if i != self.index]))  # nosec B311
         else:
             self.play_index((self.index + 1) % n)
 

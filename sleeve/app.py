@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
+from PySide6.QtGui import QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -152,6 +152,7 @@ class MainWindow(QMainWindow):
         self.folder = ALL
         self._dragging = False
         self._lyrics = []
+        self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
         self.resize(1180, 760)
 
@@ -195,6 +196,9 @@ class MainWindow(QMainWindow):
         self.runner.line.connect(self._on_sync_line)
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
+        for key, slot in ((Qt.Key_Space, p.toggle), (Qt.Key_Left, lambda: self._seek_by(-5)),
+                          (Qt.Key_Right, lambda: self._seek_by(5))):
+            QShortcut(QKeySequence(key), self, slot)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -370,6 +374,7 @@ class MainWindow(QMainWindow):
         self.seek.setRange(0, 0)
         self.seek.sliderPressed.connect(lambda: setattr(self, "_dragging", True))
         self.seek.sliderReleased.connect(self._seek_released)
+        self.seek.valueChanged.connect(self._seek_moved)       # keyboard and clicks on the groove
         self.dur_label = QLabel("0:00")
         self.volume = QSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
@@ -426,8 +431,12 @@ class MainWindow(QMainWindow):
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
-        self._load_playlists()
-        self._load_health()
+        try:
+            self._load_playlists()
+            self._load_health()
+        except OSError as e:
+            self.status.showMessage(f"Could not read playlists or run the health check: {e}", 10000)
+            return
         self.status.showMessage(f"{len(songs)} songs in {len(groups)} folders", 6000)
 
     def _folder_changed(self, name):
@@ -471,7 +480,11 @@ class MainWindow(QMainWindow):
         except Exception as e:                       # mutagen raises many kinds of errors
             QMessageBox.warning(self, "Could not save tags", str(e))
             return
-        new = library.read_song(song.path, self.cfg.music_dir)
+        try:
+            new = library.read_song(song.path, self.cfg.music_dir)
+        except Exception as e:
+            self.status.showMessage(f"Tags saved, but the file could not be re-read: {e}", 8000)
+            return
         old = self.by_path.get(song.path)
         if old is not None and old in self.songs:
             self.songs[self.songs.index(old)] = new
@@ -558,7 +571,23 @@ class MainWindow(QMainWindow):
             if not ok:
                 return
         self.sync_log.appendPlainText(f"--- {name} ---")
-        self.runner.run(name)
+        try:
+            try:
+                self.runner.run(name)
+            except sync.DlNotTrustedError:
+                cfg = self.runner.cfg
+                ask = QMessageBox.question(
+                    self,
+                    "Trust dl.py?",
+                    f"Sleeve will run this script on your behalf:\n\n{cfg.dl_path}\n\n"
+                    "Only continue if you wrote it or have read it. Trust it?",
+                )
+                if ask != QMessageBox.Yes:
+                    return
+                sync.trust(cfg.dl_path, cfg.trust_file)
+                self.runner.run(name)
+        except Exception as e:
+            self.status.showMessage(f"Could not start {name}: {e}", 8000)
 
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
@@ -577,9 +606,14 @@ class MainWindow(QMainWindow):
 
     def _poll_log(self):
         "Show the progress of a download that was started outside the app (a terminal, a timer)."
-        if self.runner.running or not sync.log_is_fresh(self.cfg.log_file):
+        if self.runner.running:
             return
-        prog = sync.latest_progress(sync.tail_log(self.cfg.log_file))
+        try:
+            if not sync.log_is_fresh(self.cfg.log_file):
+                return
+            prog = sync.latest_progress(sync.tail_log(self.cfg.log_file))
+        except OSError:
+            return
         if prog:
             self._on_sync_progress(*prog)
 
@@ -611,6 +645,8 @@ class MainWindow(QMainWindow):
                 self.health_table.setItem(r, c, QTableWidgetItem(text))
 
     def _play_health_row(self, row, _col):
+        if not 0 <= row < len(self._health_rows):
+            return
         it = self._health_rows[row]
         self.player.set_queue([it.path if isinstance(it, library.Song) else it])
 
@@ -635,7 +671,18 @@ class MainWindow(QMainWindow):
         self._dragging = False
         self.player.seek(self.seek.value() / 10)
 
+    def _seek_moved(self, value):
+        "A change not made by the position feed (that one blocks signals) or a drag (applied on release)."
+        if not self._dragging:
+            self.player.seek(value / 10)
+
+    def _seek_by(self, delta):
+        if self.player.current():
+            target = max(0.0, self._pos + delta)
+            self.player.seek(min(target, self._dur) if self._dur > 0 else target)
+
     def _on_position(self, pos):
+        self._pos = pos
         self.pos_label.setText(fmt_time(pos))
         if not self._dragging:
             self._set_slider_silently(self.seek, int(pos * 10))
@@ -645,8 +692,11 @@ class MainWindow(QMainWindow):
                 self.lyrics.setCurrentRow(i)
 
     def _on_duration(self, dur):
+        self._dur = dur
         self.dur_label.setText(fmt_time(dur))
+        self.seek.blockSignals(True)                 # a range change can move the value: not a seek
         self.seek.setRange(0, int(dur * 10))
+        self.seek.blockSignals(False)
 
     def _on_playing(self, playing):
         icon = QStyle.SP_MediaPause if playing else QStyle.SP_MediaPlay
@@ -660,11 +710,20 @@ class MainWindow(QMainWindow):
             self.lyrics.clear()
             self._lyrics = []
             self.setWindowTitle("Sleeve")
+            self._on_duration(0)
+            self._on_position(0)
             return
-        s = self.by_path.get(path) or library.read_song(path, self.cfg.music_dir)
+        try:
+            s = self.by_path.get(path) or library.read_song(path, self.cfg.music_dir)
+        except Exception as e:
+            self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
+            return
         self.now.setText(f"{s.name}\n{s.artist}")
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
-        data = art.cover_bytes(path)
+        try:
+            data = art.cover_bytes(path)
+        except Exception:
+            data = None
         pix = QPixmap()
         if data and pix.loadFromData(data):
             self.cover.setPixmap(pix)
@@ -690,6 +749,13 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
         self.log_timer.stop()
+        for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
+                    self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
+                    self.player.error, self.runner.line, self.runner.progress, self.runner.runningChanged):
+            try:
+                sig.disconnect()                     # no slot may run on a window that is going away
+            except (RuntimeError, TypeError):
+                pass
         worker = self.worker
         if worker is not None and worker.isRunning():
             worker.requestInterruption()             # the scan loop checks this and stops early

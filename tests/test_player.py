@@ -1,4 +1,5 @@
 """Player tests: the pure helpers, and a real mpv process with silent output (skipped if mpv is missing)."""
+
 import random
 import shutil
 import time
@@ -25,7 +26,7 @@ def test_next_index_rules():
     assert next_index(0, 0, REPEAT_ALL, False) is None
     for _ in range(20):
         assert next_index(1, 4, REPEAT_OFF, True, random.Random()) != 1
-    assert next_index(0, 1, REPEAT_OFF, True) is None      # one song, shuffle: nothing else to pick
+    assert next_index(0, 1, REPEAT_OFF, True) is None  # one song, shuffle: nothing else to pick
 
 
 def silent_wav(path, seconds=2.0, rate=8000):
@@ -64,7 +65,7 @@ def test_real_mpv_plays_seeks_and_advances(app, tmp_path):
         assert wait_for(app, lambda: p.playing and p.duration > 0.5), "playback did not start"
         assert p.current() == a
         assert wait_for(app, lambda: p.index == 1, timeout=10), "did not advance to the next track"
-        assert wait_for(app, lambda: p.duration > 2.5)             # now on the 3 second file
+        assert wait_for(app, lambda: p.duration > 2.5)  # now on the 3 second file
         p.seek(1.5)
         assert wait_for(app, lambda: p.position >= 1.4)
         p.toggle()
@@ -110,6 +111,7 @@ def test_queue_operations_without_a_process(app, tmp_path):
 def test_player_constructor_takes_parent_first(app):
     "Regression: MainWindow passed itself as the first argument, which used to be the audio output."
     from PySide6.QtCore import QObject
+
     owner = QObject()
     p = Player(owner)
     assert p.parent() is owner and p._ao is None
@@ -119,12 +121,12 @@ def test_player_constructor_takes_parent_first(app):
 def test_is_playable_refuses_everything_but_absolute_audio_files(tmp_path):
     good = songs(tmp_path, "a.mp3")[0]
     assert player.is_playable(good)
-    assert not player.is_playable("a.mp3")                        # relative
+    assert not player.is_playable("a.mp3")  # relative
     assert not player.is_playable("http://evil.example/x.mp3")
     assert not player.is_playable("edl://x.mp3")
     assert not player.is_playable(str(tmp_path / "missing.mp3"))
     assert not player.is_playable(songs(tmp_path, "list.m3u8")[0])  # a playlist is not a song
-    assert not player.is_playable(str(tmp_path))                  # a folder
+    assert not player.is_playable(str(tmp_path))  # a folder
     assert not player.is_playable(None)
 
 
@@ -146,7 +148,7 @@ def test_playing_flag_follows_play_index_and_clear(app, tmp_path):
     seen = []
     p.playingChanged.connect(seen.append)
     p.set_queue([a, b])
-    assert p.playing is True and seen == [True]           # no mpv pause event is needed for the first play
+    assert p.playing is True and seen == [True]  # no mpv pause event is needed for the first play
     p.clear()
     assert p.playing is False and seen == [True, False]
     p.close()
@@ -156,12 +158,12 @@ def test_stale_end_of_file_after_loading_another_song_is_ignored(app, tmp_path):
     a, b, c = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3")
     p = Player()
     p.set_queue([a, b, c], start=0)
-    p.play_index(2)                                        # the user picked song 3 ...
-    p._handle({"event": "end-file", "reason": "eof"})      # ... while song 1's end was already on its way
+    p.play_index(2)  # the user picked song 3 ...
+    p._handle({"event": "end-file", "reason": "eof"})  # ... while song 1's end was already on its way
     assert p.index == 2
     p._handle({"event": "start-file"})
-    p._handle({"event": "end-file", "reason": "eof"})      # now song 3 really ended
-    assert p.index == -1                                   # end of queue, repeat off
+    p._handle({"event": "end-file", "reason": "eof"})  # now song 3 really ended
+    assert p.index == -1  # end of queue, repeat off
     p.close()
 
 
@@ -173,7 +175,7 @@ def test_errors_do_not_loop_forever(app, tmp_path):
         p.set_queue([a, b])
         stopped = []
         p.trackChanged.connect(lambda i, path, s=stopped: s.append(i))
-        for _ in range(10):                                # far more failures than songs
+        for _ in range(10):  # far more failures than songs
             p._handle({"event": "start-file"})
             p._handle({"event": "end-file", "reason": "error"})
             if p.index == -1:
@@ -189,7 +191,7 @@ def test_repeat_one_skips_a_broken_song(app, tmp_path):
     p.set_queue([a, b])
     p._handle({"event": "start-file"})
     p._handle({"event": "end-file", "reason": "error"})
-    assert p.index == 1                                    # moved on instead of retrying song 1
+    assert p.index == 1  # moved on instead of retrying song 1
     p.close()
 
 
@@ -207,10 +209,76 @@ def test_prev_next_with_nothing_playing(app, tmp_path):
     for _ in range(10):
         before = p.index
         p.next()
-        assert p.index != before                           # shuffle never repeats the current song
+        assert p.index != before  # shuffle never repeats the current song
     p.close()
 
 
 def test_mpv_is_started_without_user_config_scripts_or_downloaders():
     for flag in ("--no-config", "--ytdl=no", "--load-scripts=no", "--load-unsafe-playlists=no", "--sub-auto=no"):
         assert flag in player.MPV_ARGS
+
+
+# --- socket folder cleanup (no mpv or audio needed) ---------------------------
+def _dead_pid():
+    import subprocess
+    import sys
+
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    return p.pid
+
+
+def test_clean_stale_dirs_removes_only_dead_process_dirs(tmp_path):
+    import os
+
+    dead = tmp_path / f"sleeve-{_dead_pid()}-abc_12"
+    live = tmp_path / f"sleeve-{os.getpid()}-abc_12"
+    other = tmp_path / "unrelated"
+    for d in (dead, live, other):
+        d.mkdir()
+    (dead / "mpv.sock").write_text("")
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / f"sleeve-{_dead_pid()}-lnk"
+    link.symlink_to(target)
+    assert player.clean_stale_dirs(str(tmp_path)) == 1
+    assert not dead.exists() and live.exists() and other.exists() and link.is_symlink() and target.exists()
+    assert player.clean_stale_dirs(str(tmp_path / "missing")) == 0
+
+
+def test_player_dir_is_private_and_removed_on_close_and_gc(tmp_path, monkeypatch):
+    import gc
+    import os
+    import stat
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    QCoreApplication.instance() or QCoreApplication([])
+    p = Player()
+    d = p._dir
+    assert os.path.dirname(d) == str(tmp_path) and os.path.basename(d).startswith(f"sleeve-{os.getpid()}-")
+    assert stat.S_IMODE(os.stat(d).st_mode) == 0o700
+    p.close()
+    assert not os.path.exists(d)
+    q = Player()
+    d2 = q._dir
+    assert os.path.isdir(d2)
+    del q
+    gc.collect()
+    assert not os.path.exists(d2)
+
+
+def test_failed_start_removes_dir(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    QCoreApplication.instance() or QCoreApplication([])
+    p = Player()
+    d = p._dir
+    fake = tmp_path / "nonexec"
+    fake.write_text("")
+    monkeypatch.setattr(player.shutil, "which", lambda _n: str(fake))
+    errors = []
+    p.error.connect(errors.append)
+    p.start()
+    QCoreApplication.processEvents()
+    assert not os.path.exists(d) and errors

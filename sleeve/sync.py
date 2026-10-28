@@ -1,5 +1,7 @@
 """Run dl.py from the app and follow its log."""
+
 import codecs
+import hmac
 import os
 import re
 import sys
@@ -8,10 +10,12 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
+from . import config
+
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # "ETA about 2 weeks 6 days left in this pass (...) | playlist 1/73 | 130 of 5429 new songs | ~159 s/song"
 PROGRESS = re.compile(r"playlist (\d+)/(\d+) \| (\d+) of (\d+) new songs")
-STALE_LOG_SECONDS = 600                    # a log that has not changed for 10 minutes is not a running download
+STALE_LOG_SECONDS = 600  # a log that has not changed for 10 minutes is not a running download
 
 # What the buttons may run. Only these fixed argument lists reach dl.py (no user text is passed).
 ACTIONS = {
@@ -54,6 +58,24 @@ def check_dl(path):
     return None
 
 
+class DlNotTrustedError(PermissionError):
+    "dl.py has not been approved by the user, or its path/content changed since it was approved."
+
+
+def is_trusted(path, trust_file=None):
+    "True only if the SHA-256 of dl.py's path+content equals the one the user approved (see trust())."
+    try:
+        approved = config.read_trusted(trust_file)
+        return bool(approved) and hmac.compare_digest(approved, config.dl_fingerprint(path))
+    except OSError:
+        return False
+
+
+def trust(path, trust_file=None):
+    "Record the user's approval of this exact dl.py (path+content). Call only after explicit confirmation in the UI."
+    config.write_trusted(config.dl_fingerprint(path), trust_file)
+
+
 class SyncRunner(QObject):
     line = Signal(str)
     progress = Signal(int, int, int, int)
@@ -73,7 +95,7 @@ class SyncRunner(QObject):
         env.insert("NO_COLOR", "1")
         self._proc.setProcessEnvironment(env)
         self._buf = ""
-        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")     # a character split over two reads
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")  # a character split over two reads
         self._kill_timer = QTimer(self)
         self._kill_timer.setSingleShot(True)
         self._kill_timer.timeout.connect(self._kill)
@@ -83,13 +105,19 @@ class SyncRunner(QObject):
         return self._proc.state() != QProcess.NotRunning
 
     def run(self, action):
-        "Start one of ACTIONS. Returns False if something is already running, the action is unknown or dl.py is unsafe."
+        """Start one of ACTIONS. Returns False if busy, the action is unknown or dl.py is unsafe.
+
+        Raises DlNotTrustedError unless is_trusted(cfg.dl_path, cfg.trust_file): the UI should catch it, ask
+        the user to confirm, call trust(cfg.dl_path, cfg.trust_file) and retry. Re-approval is needed whenever
+        dl.py's path or content changes."""
         if self.running or action not in ACTIONS:
             return False
         problem = check_dl(self.cfg.dl_path)
         if problem:
             self.line.emit(f"Refusing to run: {problem}")
             return False
+        if not is_trusted(self.cfg.dl_path, self.cfg.trust_file):
+            raise DlNotTrustedError(f"{self.cfg.dl_path} has not been approved (or changed since approval)")
         self._decoder.reset()
         self._proc.setWorkingDirectory(str(self.cfg.dl_path.parent))
         self.runningChanged.emit(True)
@@ -99,14 +127,14 @@ class SyncRunner(QObject):
     def stop(self):
         if self.running:
             self._proc.terminate()
-            self._kill_timer.start(5000)          # one timer for this process; _done stops it
+            self._kill_timer.start(5000)  # one timer for this process; _done stops it
 
     def _kill(self):
         if self.running:
             self._proc.kill()
 
     def _on_error(self, err):
-        if err == QProcess.FailedToStart:        # no "finished" signal follows a failed start
+        if err == QProcess.FailedToStart:  # no "finished" signal follows a failed start
             self.line.emit(f"Could not start dl.py: {self._proc.errorString()}")
             self.finished.emit(-1)
             self.runningChanged.emit(False)
@@ -124,7 +152,7 @@ class SyncRunner(QObject):
 
     def _done(self, code, _status):
         self._kill_timer.stop()
-        self._read()                              # anything still in the pipe
+        self._read()  # anything still in the pipe
         if self._buf.strip():
             self.line.emit(clean(self._buf))
         self._buf = ""

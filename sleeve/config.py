@@ -1,5 +1,8 @@
 """Find dl.py and read its config.ini, so the app and the script agree on every folder."""
+
 import configparser
+import hashlib
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +12,37 @@ DL_CANDIDATES = [
     HOME / "claude-projects" / "playlist-sync-templates" / "dl.py",
     HOME / "claude-projects" / "playlist-sync" / "dl.py",
 ]
+TRUST_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "sleeve" / "trusted_dl.json"
+
+
+def dl_fingerprint(path):
+    "SHA-256 (hex) over the resolved path and the content of dl.py. Raises OSError if unreadable."
+    p = Path(path).resolve()
+    h = hashlib.sha256()
+    h.update(str(p).encode("utf-8", "surrogateescape") + b"\0")
+    h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def read_trusted(trust_file=None):
+    "The approved fingerprint stored in Sleeve's own config (not dl.py's config.ini), or '' if none."
+    try:
+        data = json.loads(Path(trust_file or TRUST_FILE).read_text(encoding="utf-8"))
+        value = data.get("dl_sha256", "") if isinstance(data, dict) else ""
+        return value if isinstance(value, str) else ""
+    except (OSError, ValueError):
+        return ""
+
+
+def write_trusted(fingerprint, trust_file=None):
+    "Store the approved fingerprint (file mode 0600, replaced atomically)."
+    target = Path(trust_file or TRUST_FILE)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"dl_sha256": fingerprint}, fh)
+    os.replace(tmp, target)
 
 
 @dataclass
@@ -19,6 +53,7 @@ class Config:
     state_dir: Path
     playlist_dir: Path
     playlists_file: Path
+    trust_file: Path = TRUST_FILE
 
     @property
     def log_file(self):
@@ -52,5 +87,6 @@ def load(dl_path=None):
     pl_dir = Path(os.path.expanduser(folder))
     if not pl_dir.is_absolute():
         pl_dir = music / pl_dir
-    return Config(dl, ini, music, state, pl_dir.resolve(),
-                  _path(cp, "paths", "playlists_file", dl.with_name("playlists.txt")))
+    return Config(
+        dl, ini, music, state, pl_dir.resolve(), _path(cp, "paths", "playlists_file", dl.with_name("playlists.txt"))
+    )
