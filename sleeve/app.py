@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QSlider,
     QSplitter,
     QStackedWidget,
-    QStyle,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -38,11 +37,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import __version__, art, config, health, library, likes, lrc, playlists, sync, tags
+from . import __version__, art, config, health, library, likes, lrc, playlists, sync, tags, theme
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
+COVER = 320                                       # size of the big cover on the Now Playing page
 LIKED = "♥ Liked Songs"
 
 
@@ -164,18 +164,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Sleeve")
         self.resize(1180, 760)
 
-        root = QWidget()
+        self.setStyleSheet(theme.STYLE)
+        root = self.backdrop = theme.Backdrop()
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         body = QHBoxLayout()
         self.nav = QListWidget()
-        self.nav.setFixedWidth(150)
+        self.nav.setObjectName("nav")
+        self.nav.setFixedWidth(190)
         self.nav.setFrameShape(QListWidget.NoFrame)
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
-        for name, page in (("Library", self._library_page()), ("Playlists", self._playlists_page()),
-                           ("Queue", self._queue_page()), ("Sync", self._sync_page()),
+        for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
+                           ("Playlists", self._playlists_page()), ("Sync", self._sync_page()),
                            ("Health", self._health_page())):
             self.nav.addItem(name)
             self.stack.addWidget(page)
@@ -191,7 +193,7 @@ class MainWindow(QMainWindow):
         outer.addWidget(self._player_bar())
         self.setCentralWidget(root)
         self.status = self.statusBar()
-        self.nav.setCurrentRow(0)
+        self.nav.setCurrentRow(1)
 
         p = self.player
         p.positionChanged.connect(self._on_position)
@@ -221,7 +223,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         lay = QHBoxLayout(page)
         self.folders = QListWidget()
-        self.folders.setMaximumWidth(220)
+        self.folders.setMaximumWidth(190)
         self.folders.currentTextChanged.connect(self._folder_changed)
         right = QVBoxLayout()
         top = QHBoxLayout()
@@ -242,7 +244,7 @@ class MainWindow(QMainWindow):
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
         head.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, width in ((1, 210), (2, 230), (3, 140)):
+        for col, width in ((1, 160), (2, 180), (3, 105)):
             head.setSectionResizeMode(col, QHeaderView.Interactive)
             head.resizeSection(col, width)
         head.setSectionResizeMode(4, QHeaderView.ResizeToContents)
@@ -294,19 +296,62 @@ class MainWindow(QMainWindow):
         self._playlist_entries = []
         return page
 
-    def _queue_page(self):
+    def _now_playing_page(self):
+        "The playlist with cover thumbnails on the left, the big cover and song details on the right."
         page = QWidget()
-        lay = QVBoxLayout(page)
-        bar = QHBoxLayout()
-        self.queue_label = QLabel("Queue")
+        lay = QHBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(20)
+        left = QVBoxLayout()
+        head = QHBoxLayout()
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        heading = QLabel("Playlist")
+        heading.setObjectName("heading")
+        self.queue_label = QLabel("Nothing queued")
+        self.queue_label.setObjectName("muted")
+        titles.addWidget(heading)
+        titles.addWidget(self.queue_label)
         clear = QPushButton("Clear")
         clear.clicked.connect(self.player.clear)
-        bar.addWidget(self.queue_label, 1)
-        bar.addWidget(clear)
+        head.addLayout(titles, 1)
+        head.addWidget(clear)
         self.queue_list = QListWidget()
+        self.queue_list.setObjectName("queue")
+        self.queue_list.setIconSize(QSize(44, 44))
+        self.queue_list.setTextElideMode(Qt.ElideRight)
+        self.queue_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
-        lay.addLayout(bar)
-        lay.addWidget(self.queue_list, 1)
+        left.addLayout(head)
+        left.addWidget(self.queue_list, 1)
+        side = QWidget()
+        side.setFixedWidth(360)
+        side.setLayout(left)
+        left.setContentsMargins(0, 0, 0, 0)
+
+        right = QVBoxLayout()
+        right.addStretch(1)
+        self.np_cover = QLabel()
+        self.np_cover.setFixedSize(COVER, COVER)
+        self.np_title, self.np_artist, self.np_album = QLabel(), QLabel(), QLabel()
+        for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
+            lab.setObjectName(name)
+            lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
+            lab.setAlignment(Qt.AlignHCenter)
+            lab.setWordWrap(True)
+        right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
+        right.addSpacing(18)
+        for lab in (self.np_title, self.np_artist, self.np_album):
+            right.addWidget(lab)
+        right.addStretch(2)
+        lay.addWidget(side)
+        lay.addLayout(right, 1)
+        self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
+        self._thumb_timer = QTimer(self)
+        self._thumb_timer.setSingleShot(True)
+        self._thumb_timer.setInterval(20)
+        self._thumb_timer.timeout.connect(self._load_thumbs)
+        self._show_cover(None, "", "", "")
         return page
 
     def _sync_page(self):
@@ -367,28 +412,22 @@ class MainWindow(QMainWindow):
         self.now.setTextFormat(Qt.PlainText)
         self.now.setMinimumWidth(220)
         self.now.setMaximumWidth(320)
-        st = self.style()
 
-        def button(icon, tip, slot, checkable=False):
-            b = QPushButton()
-            b.setIcon(st.standardIcon(icon))
+        def button(glyph, tip, slot, name="round", checkable=False):
+            b = QPushButton(glyph)
+            b.setObjectName(name)
             b.setToolTip(tip)
             b.setCheckable(checkable)
             b.clicked.connect(slot)
-            b.setFlat(True)
             return b
-        self.shuffle_btn = button(QStyle.SP_BrowserReload, "Shuffle", self.player.set_shuffle, True)
-        self.prev_btn = button(QStyle.SP_MediaSkipBackward, "Previous", self.player.prev)
-        self.play_btn = button(QStyle.SP_MediaPlay, "Play / pause", self.player.toggle)
-        self.next_btn = button(QStyle.SP_MediaSkipForward, "Next", self.player.next)
-        self.like_btn = QPushButton("♡")
-        self.like_btn.setToolTip("Like this song")
-        self.like_btn.setFlat(True)
+        self.shuffle_btn = button("⇄", "Shuffle", self.player.set_shuffle, checkable=True)
+        self.prev_btn = button("⏮", "Previous", self.player.prev)
+        self.play_btn = button("▶", "Play / pause", self.player.toggle, "play")
+        self.next_btn = button("⏭", "Next", self.player.next)
+        self.like_btn = button("♡", "Like this song", self._like_current)
+        self.like_btn.setObjectName("round")
         self.like_btn.setEnabled(False)
-        self.like_btn.clicked.connect(self._like_current)
-        self.repeat_btn = QPushButton("Repeat: off")
-        self.repeat_btn.setFlat(True)
-        self.repeat_btn.clicked.connect(self._cycle_repeat)
+        self.repeat_btn = button("↻", "Repeat: off", self._cycle_repeat, checkable=True)
         self.pos_label = QLabel("0:00")
         self.seek = QSlider(Qt.Horizontal)
         self.seek.setRange(0, 0)
@@ -528,6 +567,7 @@ class MainWindow(QMainWindow):
         on = self._current_path in self.likes
         self.like_btn.setEnabled(bool(self._current_path))
         self.like_btn.setText("♥" if on else "♡")
+        self.like_btn.setStyleSheet("color: #ff8fb1;" if on else "")
         self.like_btn.setToolTip("Unlike this song" if on else "Like this song")
 
     def _like_playlist(self):
@@ -629,16 +669,69 @@ class MainWindow(QMainWindow):
     # --- queue --------------------------------------------------------------
     def _refresh_queue(self):
         self.queue_list.clear()
+        left = 0.0
         for i, path in enumerate(self.player.queue):
             s = self.by_path.get(path)
-            text = f"{s.artist} - {s.name}" if s and s.artist else (s.name if s else Path(path).stem)
-            it = QListWidgetItem(text)
+            title = s.name if s else Path(path).stem
+            it = QListWidgetItem(f"{title}\n{s.artist}" if s and s.artist else title)
+            it.setToolTip(path)
+            if s and i >= max(self.player.index, 0):
+                left += s.length
             if i == self.player.index:
                 f = it.font()
                 f.setBold(True)
                 it.setFont(f)
+            if path in self._thumbs:
+                it.setIcon(self._thumbs[path])
             self.queue_list.addItem(it)
-        self.queue_label.setText(f"Queue: {len(self.player.queue)} songs")
+        n = len(self.player.queue)
+        if not n:
+            self.queue_label.setText("Nothing queued")
+        else:
+            m = round(left / 60)
+            span = f"{m // 60} h {m % 60} min" if m >= 60 else (f"{m} minutes" if m > 1 else "about a minute")
+            self.queue_label.setText(f"{n} songs, {span} remaining")
+        if 0 <= self.player.index < n:
+            self.queue_list.setCurrentRow(self.player.index)
+        self._thumb_timer.start()
+
+    def _load_thumbs(self):
+        "Cover thumbnails for the queue, two songs per tick so the window never stalls."
+        todo = [p for p in self.player.queue if p not in self._thumbs][:2]
+        for path in todo:
+            try:
+                data = art.cover_bytes(path)
+            except Exception:
+                data = None
+            pix = QPixmap()
+            if data and pix.loadFromData(data):
+                self._thumbs[path] = QIcon(theme.rounded_pixmap(pix, 44, 8))
+            else:
+                self._thumbs[path] = QIcon(self._placeholder_thumb())
+        for i, path in enumerate(self.player.queue):
+            icon = self._thumbs.get(path)
+            item = self.queue_list.item(i)
+            if icon is not None and item is not None and item.icon().isNull():
+                item.setIcon(icon)
+        if any(p not in self._thumbs for p in self.player.queue) and not self._closing:
+            self._thumb_timer.start()
+
+    def _placeholder_thumb(self):
+        logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(44, 44)
+        return theme.rounded_pixmap(logo, 44, 8) if not logo.isNull() else logo
+
+    def _show_cover(self, pix, title, artist, album):
+        "The Now Playing page and the window backdrop for one song (pix None: nothing playing)."
+        if pix is not None and not pix.isNull():
+            self.np_cover.setPixmap(theme.rounded_pixmap(pix, COVER, 24))
+        else:
+            logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(COVER // 2, COVER // 2)
+            self.np_cover.setPixmap(logo)
+            self.np_cover.setAlignment(Qt.AlignCenter)
+        self.backdrop.set_cover(pix)
+        self.np_title.setText(title or "Nothing playing")
+        self.np_artist.setText(artist)
+        self.np_album.setText(album)
 
     # --- sync ---------------------------------------------------------------
     def _run_action(self, name):
@@ -746,7 +839,10 @@ class MainWindow(QMainWindow):
 
     def _cycle_repeat(self):
         mode = self.player.cycle_repeat()
-        self.repeat_btn.setText("Repeat: " + {0: "off", REPEAT_ALL: "all", REPEAT_ONE: "one"}[mode])
+        name = {0: "off", REPEAT_ALL: "all", REPEAT_ONE: "one"}[mode]
+        self.repeat_btn.setChecked(mode != 0)
+        self.repeat_btn.setText("↻" if mode != REPEAT_ONE else "↻1")
+        self.repeat_btn.setToolTip(f"Repeat: {name}")
 
     def _seek_released(self):
         self._dragging = False
@@ -780,8 +876,7 @@ class MainWindow(QMainWindow):
         self.seek.blockSignals(False)
 
     def _on_playing(self, playing):
-        icon = QStyle.SP_MediaPause if playing else QStyle.SP_MediaPlay
-        self.play_btn.setIcon(self.style().standardIcon(icon))
+        self.play_btn.setText("⏸" if playing else "▶")
 
     def _on_track(self, index, path):
         self._refresh_queue()
@@ -793,6 +888,7 @@ class MainWindow(QMainWindow):
             self.lyrics.clear()
             self._lyrics = []
             self.setWindowTitle("Sleeve")
+            self._show_cover(None, "", "", "")
             self._on_duration(0)
             self._on_position(0)
             return
@@ -809,9 +905,11 @@ class MainWindow(QMainWindow):
             data = None
         pix = QPixmap()
         if data and pix.loadFromData(data):
-            self.cover.setPixmap(pix)
+            self.cover.setPixmap(theme.rounded_pixmap(pix, 56, 10))
+            self._show_cover(pix, s.name, s.artist, s.album)
         else:
-            self.cover.setPixmap(self.style().standardIcon(QStyle.SP_MediaVolume).pixmap(48, 48))
+            self.cover.setPixmap(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(56, 56))
+            self._show_cover(None, s.name, s.artist, s.album)
         self._load_lyrics(s)
 
     def _load_lyrics(self, song):
