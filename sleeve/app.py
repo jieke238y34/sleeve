@@ -660,8 +660,24 @@ class MainWindow(QMainWindow):
         self.folder = name or ALL
         self._apply_filter()
 
+    def _deselect_on_click(self, obj, ev):
+        "A plain click on a row that is already highlighted clears the highlight. The sidebar keeps showing its page."
+        view = obj.parent() if isinstance(obj, QWidget) else None
+        if (not isinstance(view, QAbstractItemView) or obj is not view.viewport() or view is self.nav
+                or not self.isAncestorOf(view) or view.selectionMode() == QAbstractItemView.NoSelection):
+            return False
+        if ev.button() != Qt.LeftButton or ev.modifiers() != Qt.NoModifier:   # ctrl/shift clicks still multi-select
+            return False
+        index = view.indexAt(ev.position().toPoint())
+        if index.isValid() and view.selectionModel().isSelected(index):
+            view.clearSelection()
+            return True
+        return False
+
     def eventFilter(self, obj, ev):
         "Window shortcuts (space, left, right) must not steal those keys from a widget that uses them."
+        if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
+            return True
         if ev.type() == QEvent.ShortcutOverride and isinstance(obj, QWidget) and self.isAncestorOf(obj):
             key = ev.key()
             text_like = isinstance(obj, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
