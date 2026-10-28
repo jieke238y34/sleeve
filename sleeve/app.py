@@ -364,7 +364,8 @@ class MainWindow(QMainWindow):
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
         self.np_cover.setCursor(Qt.PointingHandCursor)
-        self.np_cover.mousePressEvent = lambda _e: self._toggle_fullscreen() if self._fullscreen else self._toggle_cover()
+        self.np_cover.mousePressEvent = lambda _e: (
+            self._toggle_fullscreen() if self._fullscreen else self._toggle_cover())
         right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
         right.addSpacing(18)
         for lab in (self.np_title, self.np_artist, self.np_album):

@@ -1,23 +1,31 @@
-"""The player: plays one file at a time through Qt Multimedia, so there is nothing to install besides Sleeve itself.
+"""The player: plays through Qt Multimedia, so there is nothing to install besides Sleeve itself.
 
-The queue lives here, in Python. QMediaPlayer plays a song and tells us when it ends. Only absolute paths of real
-audio files ever reach it (no URLs, playlists or devices).
+The queue lives here, in Python. Two QMediaPlayers take turns: while one plays, the other has the next song loaded, and
+playback is handed over a moment before the current song ends, so albums play without a gap. Only absolute paths of
+real audio files ever reach either of them (no URLs, playlists or devices).
 """
 
 import random
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QElapsedTimer, QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QtAudio
 
 from .library import AUDIO_EXT
 
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
+LEAD_MS = 60          # the next song starts this long before the current one ends
+TAIL_MS = 250         # the finished player is kept this long so the last notes are not cut off
+
+
+MAX_GAIN = 0.75       # full slider is 75% of the loudest the output can do: desktop Linux tends to be loud
+
 
 def gain(volume):
     "Qt's linear gain for a 0-100 slider position. Hearing is logarithmic, so a straight line sounds dead above half."
     scale = QtAudio.VolumeScale
-    return max(0.0, QtAudio.convertVolume(volume / 100, scale.LogarithmicVolumeScale, scale.LinearVolumeScale))
+    perceptual = QtAudio.convertVolume(volume / 100, scale.LogarithmicVolumeScale, scale.LinearVolumeScale)
+    return max(0.0, perceptual) * MAX_GAIN
 
 
 def next_index(index, count, repeat, shuffle, rng=random):
@@ -42,6 +50,25 @@ def is_playable(path):
         return False
 
 
+class _Slot:
+    "A QMediaPlayer with its own audio output, and the path of the song loaded in it."
+
+    def __init__(self, parent):
+        self.audio = QAudioOutput(parent)
+        self.media = QMediaPlayer(parent)
+        self.media.setAudioOutput(self.audio)
+        self.path = ""
+        self.failed = False
+
+    def ready(self):
+        return not self.failed and self.media.mediaStatus() in (QMediaPlayer.LoadedMedia, QMediaPlayer.BufferedMedia)
+
+    def unload(self):
+        self.media.stop()
+        self.media.setSource(QUrl())
+        self.path, self.failed = "", False
+
+
 class Player(QObject):
     positionChanged = Signal(float)
     durationChanged = Signal(float)
@@ -57,46 +84,74 @@ class Player(QObject):
         self.shuffle, self.repeat = False, REPEAT_OFF
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self._errors = 0
-        self._audio = QAudioOutput(self)
-        self._audio.setVolume(gain(self.volume))
-        self._media = QMediaPlayer(self)
-        self._media.setAudioOutput(self._audio)
-        self._media.positionChanged.connect(self._on_position)
-        self._media.durationChanged.connect(self._on_duration)
-        self._media.playbackStateChanged.connect(self._on_state)
-        self._media.mediaStatusChanged.connect(self._on_status)
-        self._media.errorOccurred.connect(self._on_error)
+        self._slots = [_Slot(self), _Slot(self)]
+        self._cur = 0                      # the slot that is playing; the other one is loaded with the next song
+        self._plan = None                  # (index now, index of the song after it or None)
+        self._clock = QElapsedTimer()      # time since the last position report, to aim the hand-over precisely
+        self._switch_timer = QTimer(self)
+        self._switch_timer.setSingleShot(True)
+        self._switch_timer.timeout.connect(self._switch)
+        for i, slot in enumerate(self._slots):
+            slot.audio.setVolume(gain(self.volume))
+            m = slot.media
+            m.positionChanged.connect(lambda ms, i=i: self._on_position(ms) if i == self._cur else None)
+            m.durationChanged.connect(lambda ms, i=i: self._on_duration(ms) if i == self._cur else None)
+            m.playbackStateChanged.connect(lambda st, i=i: self._on_state(st) if i == self._cur else None)
+            m.mediaStatusChanged.connect(lambda st, i=i: self._on_status(st) if i == self._cur else None)
+            m.errorOccurred.connect(lambda err, text="", i=i: self._on_slot_error(i, err, text))
+
+    @property
+    def _media(self):
+        return self._slots[self._cur].media
+
+    @property
+    def _idle(self):
+        return self._slots[1 - self._cur]
 
     def start(self):
         "Kept for the window; nothing has to be started any more."
         return True
 
+    # --- events from the players ------------------------------------------
     def _on_position(self, ms):
         if self.index < 0:
             return
         self.position = ms / 1000
         if ms > 0:
             self._errors = 0
+        self._clock.restart()
         self.positionChanged.emit(self.position)
+        self._arm_switch()
 
     def _on_duration(self, ms):
         if self.index < 0:
             return
         self.duration = ms / 1000
         self.durationChanged.emit(self.duration)
+        self._arm_switch()
 
     def _on_state(self, state):
         if self.index < 0:
             return
         if state == QMediaPlayer.PlayingState:
             self._set_playing(True)
+            self._arm_switch()
         elif state == QMediaPlayer.PausedState:
             self._set_playing(False)
+            self._switch_timer.stop()
 
     def _on_status(self, status):
         if status == QMediaPlayer.EndOfMedia and self.index >= 0:
             self._errors = 0
             self._advance()
+
+    def _on_slot_error(self, i, err, text=""):
+        if err == QMediaPlayer.NoError:
+            return
+        if i == self._cur:
+            self._on_error(err, text)
+        else:
+            self._slots[i].failed = True    # the preloaded song cannot be read: it will be loaded the normal way
 
     def _on_error(self, err, text=""):
         if err == QMediaPlayer.NoError or self.index < 0:
@@ -117,22 +172,91 @@ class Player(QObject):
 
     def _set_stopped(self):
         self.index = -1
+        self._plan = None
+        self._switch_timer.stop()
         self._set_playing(False)
-        self._media.setSource(QUrl())  # let go of the file
+        for slot in self._slots:
+            slot.unload()                  # let go of the files
         self.position = self.duration = 0.0
         self.positionChanged.emit(0.0)
         self.durationChanged.emit(0.0)
 
     def close(self):
-        "Stop playback and let go of the file."
-        for sig in (self._media.positionChanged, self._media.durationChanged, self._media.playbackStateChanged,
-                    self._media.mediaStatusChanged, self._media.errorOccurred):
-            try:
-                sig.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-        self._media.stop()
-        self._media.setSource(QUrl())
+        "Stop playback and let go of the files."
+        self._switch_timer.stop()
+        for slot in self._slots:
+            m = slot.media
+            for sig in (m.positionChanged, m.durationChanged, m.playbackStateChanged, m.mediaStatusChanged,
+                        m.errorOccurred):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+            slot.unload()
+
+    # --- gapless hand-over --------------------------------------------------
+    def _plan_next(self):
+        "Work out which song follows this one and load it into the idle player, so it can start with no gap."
+        idle = self._idle
+        if self.index < 0 or not self.queue:
+            self._plan = None
+            idle.unload()
+            return
+        n = next_index(self.index, len(self.queue), self.repeat, self.shuffle)
+        self._plan = (self.index, n)
+        if n is None:
+            idle.unload()
+            return
+        path = self.queue[n]
+        if idle.failed:
+            idle.unload()
+        if idle.path != path:
+            idle.path = path
+            idle.media.setSource(QUrl.fromLocalFile(path))
+
+    def _replan(self):
+        if self.index >= 0:
+            self._plan_next()
+
+    def _arm_switch(self):
+        "Schedule the hand-over to the preloaded song for just before this one ends."
+        if (not self.playing or self.duration <= 0 or not self._plan or self._plan[0] != self.index
+                or self._plan[1] is None):
+            self._switch_timer.stop()
+            return
+        since = self._clock.elapsed() if self._clock.isValid() else 0
+        left = self.duration * 1000 - self.position * 1000 - since
+        self._switch_timer.start(max(0, int(left) - LEAD_MS))
+
+    def _switch(self):
+        if self.index >= 0 and self._plan and self._plan[0] == self.index and self._plan[1] is not None:
+            self._take_over(self._plan[1], TAIL_MS)     # if the next song is not ready, EndOfMedia loads it instead
+
+    def _take_over(self, n, tail_ms=0):
+        "Start song n on the idle player, which already has it loaded. False if it is not ready."
+        idle, old = self._idle, self._slots[self._cur]
+        if not 0 <= n < len(self.queue) or idle.path != self.queue[n] or not idle.ready():
+            return False
+        self._switch_timer.stop()
+        self._cur = 1 - self._cur
+        self.index, self._errors, self._plan = n, 0, None
+        idle.media.play()
+        self.position = 0.0
+        self.duration = idle.media.duration() / 1000
+        self.positionChanged.emit(0.0)
+        self.durationChanged.emit(self.duration)
+        self._set_playing(True)
+        self.trackChanged.emit(n, self.queue[n])
+        finished = old.path
+        QTimer.singleShot(tail_ms, lambda: self._release(old, finished))
+        return True
+
+    def _release(self, slot, path):
+        "Let go of the player that just finished, unless it has been given another song since."
+        if slot is self._slots[self._cur] or slot.path != path:
+            return
+        slot.unload()
+        self._plan_next()
 
     # --- queue --------------------------------------------------------------
     def current(self):
@@ -168,17 +292,14 @@ class Player(QObject):
         self.queueChanged.emit()
         if self.index < 0 and good:
             self.play_index(at)
+        else:
+            self._replan()
 
     def clear(self):
-        self.queue, self.index = [], -1
-        self._media.stop()
-        self._media.setSource(QUrl())
+        self.queue = []
+        self._set_stopped()
         self.queueChanged.emit()
         self.trackChanged.emit(-1, "")
-        self._set_playing(False)
-        self.position = self.duration = 0.0
-        self.positionChanged.emit(0.0)
-        self.durationChanged.emit(0.0)
 
     def play_index(self, i):
         if not 0 <= i < len(self.queue):
@@ -187,23 +308,33 @@ class Player(QObject):
         self.position = self.duration = 0.0
         self.positionChanged.emit(0.0)
         self.durationChanged.emit(0.0)
+        self._switch_timer.stop()
+        if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
+            self._idle.media.stop()        # the tail of a song that was handed over from, still ringing
+        slot = self._slots[self._cur]
         url = QUrl.fromLocalFile(self.queue[i])
-        if self._media.source() == url:  # setSource ignores the same file, so repeat-one needs a rewind instead
-            self._media.setPosition(0)
+        if slot.media.source() == url:     # setSource ignores the same file, so repeat-one needs a rewind instead
+            slot.media.setPosition(0)
         else:
-            self._media.setSource(url)
-        self._media.play()
+            slot.media.setSource(url)
+        slot.path = self.queue[i]
+        slot.failed = False
+        slot.media.play()
         self._set_playing(True)
         self.trackChanged.emit(i, self.queue[i])
+        self._plan_next()
 
     def _advance(self, skip=False):
-        n = next_index(self.index, len(self.queue), self.repeat, self.shuffle)
+        if self._plan and self._plan[0] == self.index:
+            n = self._plan[1]              # the song that was already loaded (shuffle picked it once, up front)
+        else:
+            n = next_index(self.index, len(self.queue), self.repeat, self.shuffle)
         if skip and self.repeat == REPEAT_ONE:  # a broken song must not repeat forever
             n = (self.index + 1) % len(self.queue) if len(self.queue) > 1 else None
         if n is None:
             self._set_stopped()
             self.trackChanged.emit(-1, "")
-        else:
+        elif skip or not self._take_over(n):
             self.play_index(n)
 
     # --- controls -----------------------------------------------------------
@@ -242,12 +373,15 @@ class Player(QObject):
 
     def set_volume(self, v):
         self.volume = max(0, min(100, int(v)))
-        self._audio.setVolume(gain(self.volume))
+        for slot in self._slots:
+            slot.audio.setVolume(gain(self.volume))
         self.volumeChanged.emit(self.volume)
 
     def cycle_repeat(self):
         self.repeat = (self.repeat + 1) % 3
+        self._replan()
         return self.repeat
 
     def set_shuffle(self, on):
         self.shuffle = bool(on)
+        self._replan()

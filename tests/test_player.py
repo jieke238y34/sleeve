@@ -239,3 +239,55 @@ def test_repeat_one_rewinds_instead_of_reloading_the_same_source(app, tmp_path):
     p._on_status(QMediaPlayer.EndOfMedia)
     assert p.index == 0 and p._media.source() == src
     p.close()
+
+
+def test_shuffle_plays_the_song_that_was_picked_up_front(app, tmp_path):
+    files = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3", "d.mp3", "e.mp3")
+    for _ in range(10):
+        p = Player()
+        p.shuffle = True
+        p.set_queue(files)
+        planned = p._plan[1]                       # what the idle player was told to load
+        assert planned is not None and planned != p.index
+        assert p._idle.path == files[planned]
+        p._on_status(QMediaPlayer.EndOfMedia)
+        assert p.index == planned
+        p.close()
+
+
+def test_plan_follows_repeat_shuffle_and_queue_changes(app, tmp_path):
+    a, b, c = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3")
+    p = Player()
+    p.set_queue([a, b])
+    assert p._plan == (0, 1) and p._idle.path == b
+    p.enqueue([c], next_up=True)                   # inserted right after the current song
+    assert p._plan == (0, 1) and p._idle.path == c
+    p.index = 2
+    p._plan_next()
+    assert p._plan == (2, None) and p._idle.path == ""   # end of queue, repeat off: nothing to preload
+    p.cycle_repeat()                               # repeat all: it wraps round to the first song
+    assert p._plan == (2, 0) and p._idle.path == p.queue[0]
+    p.close()
+
+
+def test_real_playback_hands_over_without_the_end_of_song_path(app, tmp_path):
+    "The next song is already loaded and takes over by timer, so the normal 'song ended' reload never runs."
+    a, b = silent_wav(tmp_path / "a.wav", 1.2), silent_wav(tmp_path / "b.wav", 1.2)
+    p = Player()
+    errors, advanced, changes = [], [], []
+    p.error.connect(errors.append)
+    p.trackChanged.connect(lambda i, path: changes.append((i, time.time())))
+    original = p._advance
+    p._advance = lambda skip=False: (advanced.append(1), original(skip))
+    try:
+        p.set_queue([a, b])
+        if not wait_for(app, lambda: p.duration > 0.5 or errors):
+            pytest.skip("Qt Multimedia produced no events here")
+        if errors:
+            pytest.skip(f"no usable audio backend: {errors[0]}")
+        assert wait_for(app, lambda: p.index == 1, timeout=10), "did not reach the second song"
+        assert not advanced, "the second song had to be loaded after the first ended (that is the gap)"
+        assert [i for i, _ in changes] == [0, 1]
+        assert wait_for(app, lambda: p.position > 0.2 and p.duration > 1.0)   # and it is really playing
+    finally:
+        p.close()
