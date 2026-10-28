@@ -29,12 +29,22 @@ The playlists `dl.py` builds from your Spotify playlists are hidden at first. Pr
 list them, and Hide Spotify playlists to put them away again. They cannot be changed in Sleeve. Press
 Copy to my playlists to make a playlist of your own from one.
 
-A song listed in a playlist but not in your library is shown as missing.
+A song listed in a playlist but not in your library is shown as missing. Playlists whose lines are written relative to
+your music folder, or with Windows-style backslashes, are understood too.
 
 ## Like all
 
 Like all adds every song of the playlist you are looking at to your liked songs.
 
-## Importing a playlist <!-- planned -->
+## Importing a playlist
 
-Import a `.m3u8` file from somewhere else and it becomes one of your playlists.
+Drag one or more `.m3u8` (or `.m3u`) files from your file manager onto the Playlists page, or press **Import…** and
+choose them. Each file becomes a playlist of your own, named after the file.
+
+Sleeve matches every song in the file to your library: first by its path, then by its file name, so a playlist made on
+another computer still works. Songs it cannot find are left out, and the message at the bottom says how many. A file
+with none of your songs in it is not imported.
+
+## Adding the song that is playing
+
+The button after repeat in the player bar adds the current song to one of your playlists, or to a new one.

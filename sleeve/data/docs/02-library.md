@@ -40,8 +40,17 @@ Rescan (also on the [Settings](08-settings) page).
 
 Open an album to see all its tracks together, with the cover, and play or queue the whole album at once.
 
-## Portrait
+## Identity
 
-Your library in words and numbers: how many songs, artists and albums you have, how much music that is,
-which genres and artists lead, how good the files sound, how much of it you have liked, and the longest and shortest
-songs. It sits in the sidebar between Health and Settings and updates after every scan and every like.
+Your library in words and numbers, built only from your own tags and playlist names. At the top is a persona such as
+"The Explorer" or "The Devotee", chosen from how your library behaves, with a short description underneath. Below it
+are seven trait meters from 0 to 100: Discovery (artists with just one song), Loyalty (the share held by your ten
+biggest artists), Range (how evenly your genres are spread), Fidelity (lossless or 256 kbps and up), Tidiness (songs
+with both a genre and an album), Languages (non-Latin writing systems) and Heart (songs you liked).
+
+Further down are the big numbers (songs, artists, albums, listening time), bar charts of your genres and most
+collected artists, the sound quality of your files, how much you have liked, and your longest and shortest songs.
+Languages and scripts such as Japanese, Korean or Cyrillic appear as small chips, and so do moods found in your
+playlist names (summer, late nights, workout and so on); each only shows when something was found. A closing note
+says when many songs have no real genre, and reminds you that this is a snapshot of your tags, not of everything you
+like. It sits in the sidebar between Health and Settings and updates after every scan and every like.

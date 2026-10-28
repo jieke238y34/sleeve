@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QPoint, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -50,13 +50,13 @@ from . import (
     docs,
     filedrop,
     health,
+    identity,
     library,
     likes,
     loudness,
     lrc,
     myplaylists,
     playlists,
-    portrait,
     settings,
     sync,
     tags,
@@ -245,12 +245,12 @@ class MainWindow(QMainWindow):
         self.nav.setFrameShape(QListWidget.NoFrame)
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
-        self.portrait_page = portrait.PortraitPage()
+        self.identity_page = identity.IdentityPage()
         self.docs_page = docs.DocsPage(accent=self.settings.accent_color)
-        self.portrait_page.set_accent(self.settings.accent_color)
+        self.identity_page.set_accent(self.settings.accent_color)
         for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
                            ("Playlists", self._playlists_page()), ("Downloads", self._downloads_page()),
-                           ("Health", self._health_page()), ("Portrait", self.portrait_page),
+                           ("Health", self._health_page()), ("Identity", self.identity_page),
                            ("Settings", self._settings_page()), ("Docs", self.docs_page)):
             self.nav.addItem(name)
             self.stack.addWidget(page)
@@ -787,7 +787,7 @@ class MainWindow(QMainWindow):
         if self.settings.set("accent", name):
             self.setStyleSheet(theme.build_style(self.settings.accent_color))
             Switch.set_accent(self.settings.accent_color)
-            self.portrait_page.set_accent(self.settings.accent_color)
+            self.identity_page.set_accent(self.settings.accent_color)
             self.docs_page.set_accent(self.settings.accent_color)
             for switch in self.findChildren(Switch):
                 switch.update()
@@ -838,7 +838,10 @@ class MainWindow(QMainWindow):
         self.like_btn.setEnabled(False)
         self.repeat_btn = button("", "Repeat: off", self._cycle_repeat, checkable=True)
         self._repeat_mode = 0
-        for b in (self.shuffle_btn, self.repeat_btn):
+        self.add_pl_btn = button("", "Add this song to a playlist", self._add_current_to_playlist)
+        self.add_pl_btn.setIcon(QIcon(theme.playlist_add_icon(theme.TEXT)))
+        self.add_pl_btn.setEnabled(False)
+        for b in (self.shuffle_btn, self.repeat_btn, self.add_pl_btn):
             b.setIconSize(QSize(22, 22))
         self.shuffle_btn.toggled.connect(self._update_toggle_icons)
         self._update_toggle_icons()
@@ -865,7 +868,8 @@ class MainWindow(QMainWindow):
         middle.setSpacing(4)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        for w in (self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn):
+        for w in (self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn,
+                  self.add_pl_btn):
             buttons.addWidget(w)
         buttons.addStretch(1)
         seek_row = QHBoxLayout()
@@ -921,7 +925,7 @@ class MainWindow(QMainWindow):
         try:
             self._load_playlists()
             self._load_health()
-            self.portrait_page.set_library(self.songs, self.likes.paths)
+            self._refresh_identity()
         except OSError as e:
             self.status.showMessage(f"Could not read playlists or run the health check: {e}", 10000)
             return
@@ -1001,8 +1005,14 @@ class MainWindow(QMainWindow):
         if self._current_path:
             self._toggle_like([self._current_path])
 
+    def _refresh_identity(self):
+        "Show the library on the Identity page (the names of all your playlists feed its moods)."
+        mine = [n for n, _ in self.my_playlists.names()]
+        names = mine + [n for n, _ in playlists.list_playlists(self.cfg.playlist_dir)]
+        self.identity_page.set_library(self.songs, self.likes.paths, names)
+
     def _likes_changed(self):
-        self.portrait_page.set_library(self.songs, self.likes.paths)
+        self._refresh_identity()
         if self.folder == LIKED:
             self._apply_filter()                    # an unliked song leaves this list
         elif self.model.songs:
@@ -1012,6 +1022,7 @@ class MainWindow(QMainWindow):
     def _update_like_button(self):
         on = self._current_path in self.likes
         self.like_btn.setEnabled(bool(self._current_path))
+        self.add_pl_btn.setEnabled(self._current_path in self.by_path)
         self.like_btn.setText("♥" if on else "♡")
         self.like_btn.setStyleSheet("color: #ff8fb1;" if on else "")
         self.like_btn.setToolTip("Unlike this song" if on else "Like this song")
@@ -1201,7 +1212,7 @@ class MainWindow(QMainWindow):
         names, last, total_missing, made = self._songs_by_name(), None, 0, 0
         for file in files:
             try:
-                entries = playlists.read_m3u8(file)
+                entries = playlists.read_m3u8(file, base=self.cfg.music_dir)
             except (OSError, ValueError) as e:
                 self.status.showMessage(f"Could not read {Path(file).name}: {e}", 8000)
                 continue
@@ -1242,16 +1253,31 @@ class MainWindow(QMainWindow):
         self.status.showMessage(f"Added {added} songs to “{name}”" + (f" ({len(songs) - added} were already in it)"
                                 if added < len(songs) else ""), 6000)
 
+    def _playlist_choices(self, menu, songs):
+        "Fill a menu with your playlists, and a way to make a new one, for these songs."
+        for name, _ in self.my_playlists.names():
+            menu.addAction(name, lambda n=name: self._add_to_playlist(n, songs))
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction("＋  New playlist…", lambda: self._new_playlist(songs))
+
     def _add_to_playlist_menu(self, menu, songs):
         "A submenu for choosing one of your playlists (or making a new one) for these songs."
-        if not songs:
+        if songs:
+            self._playlist_choices(menu.addMenu("Add to playlist"), songs)
+
+    def _add_current_to_playlist(self):
+        "The player-bar button: the song that is playing goes into a playlist you choose."
+        song = self.by_path.get(self._current_path)
+        if song is None:
             return
-        sub = menu.addMenu("Add to playlist")
-        for name, _ in self.my_playlists.names():
-            sub.addAction(name, lambda n=name: self._add_to_playlist(n, songs))
-        if sub.actions():
-            sub.addSeparator()
-        sub.addAction("＋  New playlist…", lambda: self._new_playlist(songs))
+        menu = QMenu(self)
+        self._playlist_choices(menu, [song])
+        self._popup_menu(menu, self.add_pl_btn)
+
+    def _popup_menu(self, menu, widget):
+        "Open a menu just above a widget (the player bar sits at the bottom of the window)."
+        menu.exec(widget.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
 
     def _save_queue_as_playlist(self):
         songs = self._songs_for(self.player.queue)

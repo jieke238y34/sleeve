@@ -151,3 +151,29 @@ def test_a_declined_name_or_dialog_changes_nothing(qapp, cfg, monkeypatch, tmp_p
         assert [n for n, _ in win.my_playlists.names()] == ["Keep"]
     finally:
         win.close()
+
+
+def test_the_player_bar_button_adds_the_playing_song_to_a_playlist(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make(qapp, cfg, monkeypatch, tmp_path, name="Gym")
+    try:
+        assert not win.add_pl_btn.isEnabled()                                  # nothing playing
+        song = sorted(win.songs, key=lambda s: s.path)[0]
+        win._on_track(0, song.path)
+        assert win.add_pl_btn.isEnabled() and win.add_pl_btn.toolTip() == "Add this song to a playlist"
+        shown = []
+        monkeypatch.setattr(win, "_popup_menu", lambda menu, widget: shown.append([a.text() for a in menu.actions()]))
+        win.add_pl_btn.click()
+        assert shown == [["＋  New playlist…"]]                                  # no playlists yet: just the way to make one
+        win._new_playlist([song])
+        win.add_pl_btn.click()
+        assert shown[1] == ["Gym", "", "＋  New playlist…"] and win.my_playlists.names()[0][0] == "Gym"
+        # choosing an existing playlist from that menu
+        other = sorted(win.songs, key=lambda s: s.path)[1]
+        win._on_track(1, other.path)
+        monkeypatch.setattr(win, "_popup_menu", lambda menu, widget: {a.text(): a for a in menu.actions()}["Gym"].trigger())
+        win.add_pl_btn.click()
+        assert [e.path for e in win.my_playlists.read("Gym")] == [song.path, other.path]
+        win._on_track(-1, "")                                                   # stopped: disabled again
+        assert not win.add_pl_btn.isEnabled()
+    finally:
+        win.close()

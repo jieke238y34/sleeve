@@ -1,12 +1,14 @@
-"""A portrait of the library: numbers worked out from the tags, told in a few sentences and drawn as soft cards."""
+"""Identity: who your library is. Numbers worked out from tags and playlist names, told in words and drawn as cards."""
+import math
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from .theme import LAVENDER, MUTED, TEXT
 
@@ -15,6 +17,37 @@ REST = "Everything else"                         # the last bar: all the genres 
 LOSSLESS_EXT = {".flac", ".wav"}
 QUALITY = ("lossless", "high", "ok", "low")
 TOP_N = 6
+NO_GENRE = {"", "other", "unknown", "unknown genre", "none", "n/a"}
+CAVEAT_SHARE = 0.05                              # this share of songs without a real genre earns a gentle note
+
+# Writing systems by Unicode block: (label shown, ranges). Kana wins over ideographs, so Japanese is not "Chinese".
+SCRIPTS = (
+    ("日本語", ((0x3040, 0x30FF), (0x31F0, 0x31FF), (0xFF66, 0xFF9F))),
+    ("한국어", ((0xAC00, 0xD7AF), (0x1100, 0x11FF), (0x3130, 0x318F))),
+    ("中文", ((0x4E00, 0x9FFF), (0x3400, 0x4DBF))),
+    ("Кириллица", ((0x0400, 0x052F),)),
+    ("العربية", ((0x0600, 0x06FF), (0x0750, 0x077F))),
+    ("עברית", ((0x0590, 0x05FF),)),
+    ("Ελληνικά", ((0x0370, 0x03FF), (0x1F00, 0x1FFF))),
+    ("ไทย", ((0x0E00, 0x0E7F),)),
+    ("हिन्दी", ((0x0900, 0x097F),)),
+)
+
+# Playlist-name themes: (label, words a name may start with).
+MOODS = (
+    ("Summer", ("summer", "beach", "sunshine", "holiday")),
+    ("Winter", ("winter", "snow", "christmas", "xmas", "cozy", "cosy")),
+    ("Autumn", ("autumn", "fall ", "rainy", "rain")),
+    ("Spring", ("spring", "bloom")),
+    ("Late nights", ("night", "midnight", "moonlight", "insomnia", "3am")),
+    ("Workout", ("workout", "gym", "cardio", "training", "lifting")),
+    ("Road trips", ("road", "drive", "driving", "travel", "highway", "journey")),
+    ("Focus", ("focus", "study", "concentrat", "deep work", "homework")),
+    ("Nostalgia", ("nostalg", "throwback", "memories", "oldies", "childhood")),
+    ("Gaming", ("gaming", "game", "gamer")),
+    ("Parties", ("party", "dance", "club", "festival")),
+    ("Calm", ("chill", "calm", "relax", "sleep", "lofi", "lo-fi", "ambient")),
+)
 
 
 class Share(NamedTuple):
@@ -29,15 +62,27 @@ class Track(NamedTuple):
     length: float
 
 
+class Persona(NamedTuple):
+    title: str
+    tagline: str
+
+
+class Trait(NamedTuple):
+    key: str
+    label: str
+    value: int           # 0 to 100
+    meaning: str
+
+
 @dataclass
-class Portrait:
+class Identity:
     songs: int = 0
     artists: int = 0
     albums: int = 0
     genres: int = 0
     total_seconds: float = 0.0
     average_seconds: float = 0.0
-    top_genres: list = field(default_factory=list)       # [Share], with an "Everything else" tail when there are more
+    top_genres: list = field(default_factory=list)       # [Share], with a REST tail when there are more
     top_artists: list = field(default_factory=list)      # [(name, songs)]
     top_albums: list = field(default_factory=list)       # [(name, songs)]
     longest: Track | None = None
@@ -50,6 +95,11 @@ class Portrait:
     liked_share: float = 0.0
     folders: list = field(default_factory=list)          # [(genre folder, songs)]
     words: list = field(default_factory=list)
+    persona: Persona = Persona("The Blank Page", "Nothing here yet, so every song you add will tell the story.")
+    traits: list = field(default_factory=list)           # [Trait]
+    scripts: list = field(default_factory=list)          # [(label, songs)], most songs first
+    moods: list = field(default_factory=list)            # [(label, playlists)]
+    no_genre_share: float = 0.0                          # songs whose genre is blank, Other or Unknown
 
 
 def quality_of(song):
@@ -58,6 +108,26 @@ def quality_of(song):
         return "lossless"
     b = song.bitrate
     return "" if b <= 0 else "high" if b >= 256 else "ok" if b >= 128 else "low"
+
+
+def scripts_of(text):
+    "Labels of the non-Latin writing systems found in text. Kana makes a text Japanese, not Chinese."
+    found = {label for label, spans in SCRIPTS if any(lo <= ord(ch) <= hi for ch in text for lo, hi in spans)}
+    if "日本語" in found:
+        found.discard("中文")
+    return found
+
+
+def moods_of(playlist_names):
+    "[(label, playlists)] for the themes found in playlist names, most playlists first."
+    hits = Counter()
+    for name in playlist_names:
+        low = " " + str(name).lower() + " "
+        for label, words in MOODS:
+            if any(re.search(r"\b" + re.escape(w.strip()) + (r"\b" if w.endswith(" ") else ""), low) for w in words):
+                hits[label] += 1
+    order = [m for m, _ in MOODS]
+    return sorted(hits.items(), key=lambda kv: (-kv[1], order.index(kv[0])))
 
 
 def _ranked(songs, key):
@@ -96,16 +166,62 @@ def _plural(n, word):
     return f"{n:,} {word}" if n == 1 else f"{n:,} {word}s"
 
 
+def _traits(p, songs, artist_counts, genre_counts):
+    n = len(songs)
+    one = sum(1 for _, c in artist_counts if c == 1) / len(artist_counts) if artist_counts else 0.0
+    top10 = sum(c for _, c in artist_counts[:10]) / n if artist_counts else 0.0
+    k = len(genre_counts)
+    tagged = sum(c for _, c in genre_counts)
+    spread = (-sum(c / tagged * math.log(c / tagged) for _, c in genre_counts) / math.log(k)) if k > 1 else 0.0
+    known = sum(p.quality.values())
+    fidelity = (p.quality["lossless"] + p.quality["high"]) / known if known else 0.0
+    tidy = (p.genre_tagged + p.album_tagged) / 2
+    langs = len(p.scripts)
+    pct = lambda x: int(round(max(0.0, min(x, 1.0)) * 100))                 # noqa: E731
+    return [
+        Trait("discovery", "Discovery", pct(one), f"{one:.0%} of your artists have just one song."),
+        Trait("loyalty", "Loyalty", pct(top10), f"Your ten biggest artists hold {top10:.0%} of the library."),
+        Trait("range", "Range", pct(spread),
+              f"{_plural(k, 'genre')}, spread {'evenly' if spread >= 0.7 else 'unevenly'}."),
+        Trait("fidelity", "Fidelity", pct(fidelity), f"{fidelity:.0%} of songs are lossless or 256 kbps and up."),
+        Trait("tidiness", "Tidiness", pct(tidy), f"{tidy:.0%} of songs carry both a genre and an album."),
+        Trait("languages", "Languages", pct(min(langs, 5) / 5),
+              f"{langs} non-Latin writing system{'s' if langs != 1 else ''} found." if langs
+              else "Only Latin letters."),
+        Trait("heart", "Heart", pct(p.liked_share), f"{p.liked_share:.0%} of songs are liked."),
+    ]
+
+
+def _persona(p):
+    "The first rule that fits, from most to least distinctive. Always returns something."
+    t = {x.key: x.value for x in p.traits}
+    if p.songs < 20:
+        return Persona("The Beginner", "A young collection with plenty of room to grow.")
+    if len(p.scripts) >= 3:
+        return Persona("The Polyglot", "Your music speaks many languages and writing systems.")
+    if p.songs >= 1000 and t["fidelity"] >= 70:
+        return Persona("The Archivist", "A big library, kept in high quality and built to last.")
+    if t["heart"] >= 35:
+        return Persona("The Romantic", "You hold on to what you love: a large part of it is liked.")
+    if t["loyalty"] >= 40:
+        return Persona("The Devotee", "A few artists have your heart, and you follow them deeply.")
+    if t["discovery"] >= 70 and t["loyalty"] <= 25:
+        return Persona("The Explorer", "Most artists appear once. You collect moments, not discographies.")
+    if t["tidiness"] >= 85:
+        return Persona("The Curator", "Balanced, well labelled and clearly looked after.")
+    return Persona("The Collector", "A bit of everything, gathered at your own pace.")
+
+
 def _words(p):
     if not p.songs:
-        return ["Your library is empty for now. Add some music and a portrait of it will appear here."]
+        return ["Your library is empty for now. Add some music and your identity will take shape here."]
     long_play = ", enough to play non-stop for more than a day" if p.total_seconds >= 86400 else ""
     out = [f"Your library holds {_plural(p.songs, 'song')} from {_plural(p.artists, 'artist')}, "
            f"about {_span(p.total_seconds)} of music{long_play}."]
     if p.top_artists:
         name, n = p.top_artists[0]
-        top10 = sum(c for _, c in p.top_artists[:10]) / p.songs
-        more = f", and your biggest artists make up {top10:.0%} of everything" if len(p.top_artists) > 3 else ""
+        top10 = next(t.value for t in p.traits if t.key == "loyalty")
+        more = f", and your biggest artists make up {top10}% of everything" if len(p.top_artists) > 3 else ""
         out.append(f"{name} leads with {_plural(n, 'song')}{more}.")
     named = [g for g in p.top_genres if g.name not in (UNKNOWN, REST, "Other")]
     if named:
@@ -121,17 +237,19 @@ def _words(p):
     return out[:4]
 
 
-def compute(songs, liked_paths=()):
-    "The Portrait of a list of Songs; liked_paths is the set of liked song paths."
+def compute(songs, liked_paths=(), playlist_names=()):
+    "The Identity of a list of Songs; liked_paths is the set of liked paths, playlist_names the user's playlists."
     songs = list(songs)
     n = len(songs)
-    p = Portrait(songs=n)
+    p = Identity(songs=n)
+    p.moods = moods_of(playlist_names)
     if not n:
         p.words = _words(p)
         return p
     artists = _ranked(songs, lambda s: s.artist)
     albums = _ranked(songs, lambda s: s.album)
-    p.artists, p.albums, p.genres = len(artists), len(albums), len(_ranked(songs, lambda s: s.genre))
+    genres = _ranked(songs, lambda s: s.genre)
+    p.artists, p.albums, p.genres = len(artists), len(albums), len(genres)
     p.top_artists, p.top_albums = artists[:TOP_N], albums[:TOP_N]
     p.top_genres = _top_genres(songs)
     timed = [s for s in songs if s.length > 0]
@@ -140,18 +258,24 @@ def compute(songs, liked_paths=()):
     if timed:
         p.longest, p.shortest = (Track(s.name, s.artist.strip() or UNKNOWN, s.length)
                                  for s in (max(timed, key=lambda s: s.length), min(timed, key=lambda s: s.length)))
+    seen = Counter()
     for s in songs:
         q = quality_of(s)
         if q:
             p.quality[q] += 1
         else:
             p.quality_unknown += 1
+        seen.update(scripts_of(f"{s.title} {s.artist}"))
+    p.scripts = sorted(seen.items(), key=lambda kv: -kv[1])
     p.genre_tagged = sum(1 for s in songs if s.genre.strip()) / n
     p.album_tagged = sum(1 for s in songs if s.album.strip()) / n
+    p.no_genre_share = sum(1 for s in songs if s.genre.strip().lower() in NO_GENRE) / n
     liked = set(liked_paths)
     p.liked = sum(1 for s in songs if s.path in liked)
     p.liked_share = p.liked / n
     p.folders = sorted(Counter(s.folder for s in songs).items(), key=lambda kv: (-kv[1], kv[0]))
+    p.traits = _traits(p, songs, artists, [(g, c) for g, c in genres if g.lower() not in NO_GENRE])
+    p.persona = _persona(p)
     p.words = _words(p)
     return p
 
@@ -321,13 +445,115 @@ def _label(text="", size=10.0, colour=TEXT, bold=False, wrap=False):
     return lab
 
 
-class PortraitPage(QWidget):
-    "The Portrait page: a lead paragraph, big numbers, charts and a few quiet facts."
+
+class Meter(QWidget):
+    "A trait: its name and score, a thin gradient meter, and one line of meaning."
+    H = 52
+
+    def __init__(self):
+        super().__init__()
+        self.trait, self.accent = None, LAVENDER
+        self.setFixedHeight(self.H)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_trait(self, trait, accent):
+        self.trait, self.accent = trait, accent
+        self.update()
+
+    def paintEvent(self, _):
+        if not self.trait:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = self.width()
+        f = p.font()
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor(TEXT))
+        p.drawText(QRectF(0, 0, w - 50, 20), Qt.AlignVCenter | Qt.AlignLeft, self.trait.label)
+        p.setPen(QColor(self.accent))
+        p.drawText(QRectF(w - 50, 0, 50, 20), Qt.AlignVCenter | Qt.AlignRight, str(self.trait.value))
+        f.setBold(False)
+        p.setFont(f)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 16))
+        p.drawRoundedRect(QRectF(0, 25, w, 5), 2.5, 2.5)
+        fill = max(w * self.trait.value / 100, 5 if self.trait.value else 0)
+        g = QLinearGradient(0, 0, max(fill, 1), 0)
+        g.setColorAt(0, _rgba(self.accent, 90))
+        g.setColorAt(1, QColor(self.accent))
+        p.setBrush(g)
+        p.drawRoundedRect(QRectF(0, 25, fill, 5), 2.5, 2.5)
+        p.setPen(QColor(MUTED))
+        small = p.font()
+        small.setPointSizeF(max(small.pointSizeF() - 1, 7))
+        p.setFont(small)
+        p.drawText(QRectF(0, 34, w, 18), Qt.AlignVCenter | Qt.AlignLeft,
+                   p.fontMetrics().elidedText(self.trait.meaning, Qt.ElideRight, w))
+
+
+class Chips(QWidget):
+    "Small rounded pills that wrap onto as many lines as they need."
+    PAD, GAP, H = 12, 8, 28
+
+    def __init__(self):
+        super().__init__()
+        self.items, self.accent = [], LAVENDER
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+    def set_items(self, items, accent):
+        "items: [(text, count text)]"
+        self.items, self.accent = list(items), accent
+        self.updateGeometry()
+        self.update()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def _place(self, width):
+        fm = self.fontMetrics()
+        x = y = 0
+        out = []
+        for text, extra in self.items:
+            w = self.PAD * 2 + fm.horizontalAdvance(text) + (fm.horizontalAdvance(extra) + 8 if extra else 0)
+            if x and x + w > width:
+                x, y = 0, y + self.H + self.GAP
+            out.append((QRectF(x, y, w, self.H), text, extra))
+            x += w + self.GAP
+        return out, y + self.H
+
+    def heightForWidth(self, width):
+        return self._place(width)[1] if self.items else 0
+
+    def sizeHint(self):
+        return self.minimumSizeHint()
+
+    def minimumSizeHint(self):
+        return QSize(100, self.heightForWidth(self.width() or 400))
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        fm = p.fontMetrics()
+        for r, text, extra in self._place(self.width())[0]:
+            p.setPen(QPen(_rgba(self.accent, 90), 1))
+            p.setBrush(_rgba(self.accent, 28))
+            p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), self.H / 2, self.H / 2)
+            p.setPen(QColor(TEXT))
+            p.drawText(QRectF(r.x() + self.PAD, r.y(), r.width(), r.height()), Qt.AlignVCenter | Qt.AlignLeft, text)
+            if extra:
+                p.setPen(QColor(self.accent))
+                p.drawText(QRectF(r.x() + self.PAD + fm.horizontalAdvance(text) + 8, r.y(), r.width(), r.height()),
+                           Qt.AlignVCenter | Qt.AlignLeft, extra)
+
+
+class IdentityPage(QWidget):
+    "The Identity page: a persona, trait meters, big numbers, charts, languages, moods and honest caveats."
 
     def __init__(self):
         super().__init__()
         self.accent = LAVENDER
-        self.portrait = compute([])
+        self.identity = compute([])
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -344,11 +570,31 @@ class PortraitPage(QWidget):
         col.setContentsMargins(30, 26, 30, 30)
         col.setSpacing(18)
 
-        col.addWidget(_label("Portrait", 22, bold=True))
-        self.lead = _label("", 13, TEXT, wrap=True)
-        self.lead.setMaximumWidth(760)
-        col.addWidget(self.lead)
-        col.addSpacing(4)
+        hero = Card()
+        hero.box.setContentsMargins(30, 26, 30, 28)
+        hero.box.setSpacing(6)
+        hero.box.addWidget(_label("IDENTITY", 8.5, MUTED, bold=True))
+        self.persona_title = _label("", 30, bold=True)
+        self.persona_tag = _label("", 13.5, TEXT, wrap=True)
+        self.lead = _label("", 11, MUTED, wrap=True)
+        hero.box.addWidget(self.persona_title)
+        hero.box.addWidget(self.persona_tag)
+        hero.box.addSpacing(10)
+        hero.box.addWidget(self.lead)
+        col.addWidget(hero)
+
+        card = Card("Traits")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(36)
+        grid.setVerticalSpacing(14)
+        self.meters = [Meter() for _ in range(7)]
+        for i, m in enumerate(self.meters):
+            grid.addWidget(m, i // 2, i % 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        card.box.addSpacing(4)
+        card.box.addLayout(grid)
+        col.addWidget(card)
 
         self.stat_values, self.stat_notes = {}, {}
         row = QHBoxLayout()
@@ -400,10 +646,25 @@ class PortraitPage(QWidget):
         card = Card("Longest and shortest")
         self.long_line = _label("", 10.5, wrap=True)
         self.short_line = _label("", 10.5, wrap=True)
-        self.tags_line = _label("", 9, MUTED, wrap=True)
-        for w in (self.long_line, self.short_line, self.tags_line):
+        for w in (self.long_line, self.short_line):
             card.box.addWidget(w)
         col.addWidget(card)
+
+        self.script_card, self.script_chips = Card("Languages and scripts"), Chips()
+        self.script_card.box.addWidget(self.script_chips)
+        self.script_card.box.addStretch(1)
+        self.mood_card, self.mood_chips = Card("Moods in your playlists"), Chips()
+        self.mood_card.box.addWidget(self.mood_chips)
+        self.mood_card.box.addStretch(1)
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        row.addWidget(self.script_card, 1)
+        row.addWidget(self.mood_card, 1)
+        col.addLayout(row)
+
+        self.notes = _label("", 9.5, MUTED, wrap=True)
+        self.notes.setContentsMargins(6, 4, 6, 0)
+        col.addWidget(self.notes)
         col.addStretch(1)
         self._paint()
 
@@ -411,13 +672,18 @@ class PortraitPage(QWidget):
         self.accent = accent
         self._paint()
 
-    def set_library(self, songs, liked_paths=()):
-        self.portrait = compute(songs, liked_paths)
+    def set_library(self, songs, liked_paths=(), playlist_names=()):
+        self.identity = compute(songs, liked_paths, playlist_names)
         self._paint()
 
     def _paint(self):
-        p, a = self.portrait, self.accent
+        p, a = self.identity, self.accent
+        self.persona_title.setText(p.persona.title)
+        self.persona_title.setStyleSheet(f"color: {a}; background: transparent; font-size: 30pt; font-weight: 700;")
+        self.persona_tag.setText(p.persona.tagline)
         self.lead.setText(" ".join(p.words))
+        for m, t in zip(self.meters, p.traits or [Trait("", "", 0, "")] * 7, strict=True):
+            m.set_trait(t if t.key else None, a)
         sv, sn = self.stat_values, self.stat_notes
         sv["songs"].setText(f"{p.songs:,}")
         sn["songs"].setText(_plural(p.genres, "genre"))
@@ -439,8 +705,16 @@ class PortraitPage(QWidget):
                                 else "No songs yet.")
         self.long_line.setText(self._track_line("Longest", p.longest))
         self.short_line.setText(self._track_line("Shortest", p.shortest))
-        self.tags_line.setText(f"{p.genre_tagged:.0%} of songs have a genre tag and {p.album_tagged:.0%} an "
-                               "album tag." if p.songs else "")
+        self.script_chips.set_items([(name, _plural(c, "song")) for name, c in p.scripts], a)
+        self.mood_chips.set_items([(name, _plural(c, "playlist")) for name, c in p.moods], a)
+        self.script_card.setVisible(bool(p.scripts))
+        self.mood_card.setVisible(bool(p.moods))
+        notes = []
+        if p.no_genre_share >= CAVEAT_SHARE:
+            notes.append(f"{p.no_genre_share:.0%} of your songs sit in genres called Other or Unknown, so the genre "
+                         "picture is partly missing tags rather than taste.")
+        notes.append("This is a snapshot of your tags, not of everything you like.")
+        self.notes.setText("  ".join(notes))
 
     @staticmethod
     def _track_line(label, t):

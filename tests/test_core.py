@@ -352,3 +352,23 @@ def test_search_matches_every_word_and_ignores_case():
     assert library.search([a, b], "b.mp3") == [b]
     assert library.search([a, b], "") == [a, b]
     assert "_hay" not in __import__("dataclasses").asdict(a)  # the cached search text never reaches the disk cache
+
+
+def test_playlist_lines_relative_to_the_music_folder_are_found(tmp_path):
+    "Some exporters write 'Genre/song.mp3' in a playlist that lives in a subfolder (Playlists/My Playlists)."
+    from sleeve import playlists
+
+    music = tmp_path / "Music"
+    (music / "Rock").mkdir(parents=True)
+    (music / "Rock" / "a.mp3").write_bytes(b"x")
+    (music / "Rock" / "b.mp3").write_bytes(b"x")
+    folder = music / "Playlists" / "My Playlists"
+    folder.mkdir(parents=True)
+    f = folder / "Mix.m3u8"
+    f.write_text("#EXTM3U\n#EXTINF:10,A\nRock/a.mp3\nRock\\b.mp3\n../../Rock/a.mp3\nRock/gone.mp3\n", encoding="utf-8")
+    entries = playlists.read_m3u8(f, music)
+    assert [e.exists for e in entries] == [True, True, True, False]                  # music-relative, backslashes, normal
+    assert [os.path.basename(e.path) for e in entries][:3] == ["a.mp3", "b.mp3", "a.mp3"]
+    assert entries[0].path == str(music / "Rock" / "a.mp3")
+    assert not playlists.read_m3u8(f)[0].exists                                      # no music folder given: as before
+    assert playlists.read_m3u8(f, base=music)[0].exists                              # base alone also works

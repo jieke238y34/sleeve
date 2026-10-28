@@ -160,6 +160,24 @@ def toggle_icon(kind, color, on, one=False, size=22):
     return pix
 
 
+def playlist_add_icon(color, size=22):
+    "A painted 'add to playlist' icon: three list lines and a plus."
+    scale = 3
+    pix = QPixmap(size * scale, size * scale)
+    pix.setDevicePixelRatio(scale)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(size / 22, size / 22)
+    p.setPen(QPen(QColor(color), 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    for y, right in ((5.5, 15), (10.5, 15), (15.5, 10)):
+        p.drawLine(QPointF(3, y), QPointF(right, y))
+    p.drawLine(QPointF(17, 12.5), QPointF(17, 19.5))                 # the plus
+    p.drawLine(QPointF(13.5, 16), QPointF(20.5, 16))
+    p.end()
+    return pix
+
+
 def rounded_pixmap(pix, size, radius):
     "pix cropped to a square of `size` pixels with rounded corners."
     pix = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
