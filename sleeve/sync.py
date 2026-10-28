@@ -186,12 +186,35 @@ def tail_log(path, max_bytes=200_000):
         return []
 
 
-def log_is_fresh(path, now=None):
-    "True if dl.log changed in the last ten minutes, i.e. a download is probably running."
+def log_is_fresh(path, now=None, seconds=STALE_LOG_SECONDS):
+    "True if dl.log changed recently, i.e. a download is probably running."
     try:
-        return (now or time.time()) - Path(path).stat().st_mtime < STALE_LOG_SECONDS
+        return (now or time.time()) - Path(path).stat().st_mtime < seconds
     except OSError:
         return False
+
+
+def other_dl_running(proc="/proc"):
+    """True if another process (a terminal, a timer) is running a dl.py, False if none is, None where this
+    cannot be told (no /proc: Windows, macOS). Unlike the log, this notices a stopped download at once."""
+    root = Path(proc)
+    if not root.is_dir():
+        return None
+    me = str(os.getpid())
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return None
+    for d in entries:
+        if not d.name.isdigit() or d.name == me:
+            continue
+        try:
+            argv = (d / "cmdline").read_bytes().split(b"\0")
+        except OSError:                       # the process ended while we looked, or is not ours to read
+            continue
+        if len(argv) > 1 and b"py" in os.path.basename(argv[0]).lower() and os.path.basename(argv[1]) == b"dl.py":
+            return True
+    return False
 
 
 def latest_progress(lines):

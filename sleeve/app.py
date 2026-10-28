@@ -1040,7 +1040,9 @@ class MainWindow(QMainWindow):
         if self.runner.running:
             return
         try:
-            fresh = sync.log_is_fresh(self.cfg.log_file)
+            fresh = sync.other_dl_running()
+            if fresh is None:                                 # this system cannot list processes: go by the log
+                fresh = sync.log_is_fresh(self.cfg.log_file, seconds=180)
             lines = sync.tail_log(self.cfg.log_file) if fresh else []
         except OSError:
             return
@@ -1073,7 +1075,7 @@ class MainWindow(QMainWindow):
             self.dl_state.setText("A download is running (started outside Sleeve). Following it here.")
         else:
             self.dl_state.setText("Ready")
-            self._add_activity(activity.GOOD, "The download that was running has finished")
+            self._add_activity(activity.GOOD, "The download that was running has stopped")
             self._ext_last = None
             if not self._closing:
                 self.rescan()

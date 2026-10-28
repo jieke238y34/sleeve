@@ -1,6 +1,5 @@
 """The Downloads page: the plain-English translation of dl.py's log, and following a run started elsewhere."""
 import os
-import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -93,6 +92,8 @@ def test_lines_from_a_run_show_as_friendly_messages_and_raw_log(qapp, cfg, monke
 
 def test_a_run_started_elsewhere_is_followed_and_blocks_a_second_one(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make(cfg, monkeypatch, tmp_path)
+    running = [True]
+    monkeypatch.setattr(sync, "other_dl_running", lambda: running[0])
     try:
         log = cfg.log_file
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -110,10 +111,30 @@ def test_a_run_started_elsewhere_is_followed_and_blocks_a_second_one(qapp, cfg, 
         win.player.calls.clear()
         win._run_action("Sync playlists")                         # refused while the other download runs
         assert not win.runner.running
-        old = time.time() - sync.STALE_LOG_SECONDS - 60
-        os.utime(log, (old, old))                                 # the log goes quiet: that download is over
+        running[0] = False                                        # the user stops it: noticed on the very next look
         win._poll_log()
         assert not win._external and win._action_buttons["Sync playlists"].isEnabled()
-        assert any("has finished" in win.activity.item(i).text() for i in range(win.activity.count()))
+        assert any("has stopped" in win.activity.item(i).text() for i in range(win.activity.count()))
     finally:
         win.close()
+
+
+def test_other_dl_running_reads_the_process_list(tmp_path):
+    def proc(pid, *argv):
+        d = tmp_path / str(pid)
+        d.mkdir()
+        (d / "cmdline").write_bytes(b"\0".join(a.encode() for a in argv) + b"\0")
+
+    assert sync.other_dl_running(tmp_path / "missing") is None                  # no /proc here: cannot tell
+    assert sync.other_dl_running(tmp_path) is False                             # nothing in it
+    proc(11, "/usr/bin/python3", "/home/me/other_script.py")
+    proc(12, "/usr/bin/vim", "dl.py")                                           # not python
+    (tmp_path / "self").mkdir()                                                 # not a pid
+    (tmp_path / "13").mkdir()                                                   # a process that ended: no cmdline
+    assert sync.other_dl_running(tmp_path) is False
+    proc(14, "/usr/bin/python3.13", "/home/me/playlist-sync/dl.py", "--sort")
+    assert sync.other_dl_running(tmp_path) is True
+    (tmp_path / "14" / "cmdline").unlink()                                      # it is stopped
+    assert sync.other_dl_running(tmp_path) is False
+    proc(os.getpid(), "/usr/bin/python3", "/x/dl.py")                           # Sleeve's own process never counts
+    assert sync.other_dl_running(tmp_path) is False
