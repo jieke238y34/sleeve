@@ -42,7 +42,7 @@ from .player import REPEAT_ALL, REPEAT_ONE, Player
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
-COVER = 320                                       # size of the big cover on the Now Playing page
+COVER = 380                                       # size of the big cover on the Now Playing page
 LIKED = "♥ Liked Songs"
 
 
@@ -324,7 +324,7 @@ class MainWindow(QMainWindow):
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
         left.addLayout(head)
         left.addWidget(self.queue_list, 1)
-        side = QWidget()
+        side = self.np_side = QWidget()
         side.setFixedWidth(360)
         side.setLayout(left)
         left.setContentsMargins(0, 0, 0, 0)
@@ -339,11 +339,20 @@ class MainWindow(QMainWindow):
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
+        self.np_cover.setCursor(Qt.PointingHandCursor)
+        self.np_cover.mousePressEvent = lambda _e: self._toggle_cover()
         right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
         right.addSpacing(18)
         for lab in (self.np_title, self.np_artist, self.np_album):
             right.addWidget(lab)
+        self.expand_btn = QPushButton("⤢")
+        self.expand_btn.setObjectName("round")
+        self.expand_btn.setToolTip("Expand the album art")
+        self.expand_btn.clicked.connect(self._toggle_cover)
+        right.addSpacing(8)
+        right.addWidget(self.expand_btn, 0, Qt.AlignHCenter)
         right.addStretch(2)
+        self._np_pix, self._cover_expanded = None, False
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
@@ -722,16 +731,44 @@ class MainWindow(QMainWindow):
 
     def _show_cover(self, pix, title, artist, album):
         "The Now Playing page and the window backdrop for one song (pix None: nothing playing)."
-        if pix is not None and not pix.isNull():
-            self.np_cover.setPixmap(theme.rounded_pixmap(pix, COVER, 24))
-        else:
-            logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(COVER // 2, COVER // 2)
-            self.np_cover.setPixmap(logo)
-            self.np_cover.setAlignment(Qt.AlignCenter)
-        self.backdrop.set_cover(pix)
+        self._np_pix = pix if pix is not None and not pix.isNull() else None
+        self._apply_cover_size()
+        self.backdrop.set_cover(self._np_pix)
         self.np_title.setText(title or "Nothing playing")
         self.np_artist.setText(artist)
         self.np_album.setText(album)
+
+    def _cover_size(self):
+        if not self._cover_expanded:
+            return COVER
+        # what is left of the page after the button and the margins (the song details are hidden meanwhile)
+        room = min(self.stack.height() - 120, self.stack.width() - 60)
+        return max(COVER, room)
+
+    def _apply_cover_size(self):
+        size = self._cover_size()
+        self.np_cover.setFixedSize(size, size)
+        if self._np_pix is not None:
+            self.np_cover.setPixmap(theme.rounded_pixmap(self._np_pix, size, size // 14))
+        else:
+            logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(size // 2, size // 2)
+            self.np_cover.setPixmap(logo)
+            self.np_cover.setAlignment(Qt.AlignCenter)
+
+    def _toggle_cover(self):
+        "Expand the album art over the whole page (the playlist is hidden), or go back."
+        self._cover_expanded = not self._cover_expanded
+        self.np_side.setVisible(not self._cover_expanded)
+        for lab in (self.np_title, self.np_artist, self.np_album):
+            lab.setVisible(not self._cover_expanded)
+        self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
+        self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
+        self._apply_cover_size()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "_cover_expanded", False):
+            self._apply_cover_size()
 
     # --- sync ---------------------------------------------------------------
     def _run_action(self, name):
