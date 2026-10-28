@@ -105,7 +105,8 @@ STYLE = build_style()
 
 def toggle_icon(kind, color, on, one=False, size=22):
     """A painted icon for the shuffle and repeat buttons ("shuffle" or "repeat"): crisp at any scale, drawn in `color`.
-    A dot under it shows the feature is on; `one` puts a 1 inside the repeat arrows."""
+    Shuffle changes shape (straight arrows in order, crossed when shuffled); repeat gets a dot under it when on;
+    `one` puts a 1 inside the repeat arrows."""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
@@ -151,7 +152,7 @@ def toggle_icon(kind, color, on, one=False, size=22):
             p.setFont(font)
             p.setPen(QColor(color))
             p.drawText(QRectF(7.5, 6.5, 7, 7), Qt.AlignCenter, "1")
-    if on:
+    if on and kind != "shuffle":             # shuffle says it with its shape; repeat gets a dot under it
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(color))
         p.drawEllipse(QPointF(11, 19.6), 1.5, 1.5)

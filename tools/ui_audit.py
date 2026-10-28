@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from PySide6.QtCore import QPoint, QRect  # noqa: E402
+from PySide6.QtCore import QPoint, QRect, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QAbstractItemView,
@@ -165,6 +165,36 @@ class Auditor:
         return out
 
 
+DEMO_COLOURS = {"Rock": ("#c9485b", "#f2a65a"), "Pop": ("#2a9d8f", "#e9c46a"), "Jazz": ("#3a506b", "#bf9acb"),
+                "Electronic": ("#5f0f40", "#00b4d8")}
+
+
+def demo_cover(path):
+    "PNG bytes of a generated cover (a gradient with a disc) in the colours of the song's folder."
+    from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QPointF
+    from PySide6.QtGui import QLinearGradient, QPainter
+
+    one, two = DEMO_COLOURS.get(Path(path).parent.name, ("#444466", "#aa99cc"))
+    img = QImage(300, 300, QImage.Format_RGB32)
+    p = QPainter(img)
+    grad = QLinearGradient(0, 0, 300, 300)
+    grad.setColorAt(0, QColor(one))
+    grad.setColorAt(1, QColor(two))
+    p.fillRect(img.rect(), grad)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(255, 255, 255, 60))
+    p.drawEllipse(QPointF(190, 120), 90, 90)
+    p.setBrush(QColor(0, 0, 0, 70))
+    p.drawEllipse(QPointF(100, 210), 60, 60)
+    p.end()
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(data)
+
+
 def build_window(args, tmp):
     from test_app import StubPlayer
 
@@ -190,6 +220,8 @@ def build_window(args, tmp):
         (tmp / "config.ini").write_text(f"[paths]\nmusic_dir = {music}\nstate_dir = {tmp}/state\n"
                                         "[playlists]\nfolder = Lists\n")
         mutagen.File = lambda path, easy=False: FakeAudio(*table[os.path.basename(path)])
+        from sleeve import art
+        art.cover_bytes = demo_cover                          # generated covers, so Now Playing has colour
         cfg = config.load(tmp / "dl.py")
     else:
         real = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
