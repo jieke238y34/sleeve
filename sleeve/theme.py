@@ -1,6 +1,6 @@
 """How the window looks: a dark lavender theme, and a backdrop made from the playing song's cover."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QVariantAnimation
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
@@ -26,6 +26,7 @@ QListWidget::item {{ padding: 4px 6px; border-radius: 8px; }}
 QListWidget::item:selected {{ background: rgba({rgb}, 80); }}
 QListWidget::item, QListWidget::item:focus, QListWidget::item:selected:!active {{ border: none; outline: none; }}
 QListWidget::item:selected:!active {{ background: rgba({rgb}, 80); }}
+QListWidget#nav:focus {{ border: none; }}
 QListWidget#nav {{ background: rgba(10, 8, 16, 170); border-radius: 0; padding: 10px 8px; font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {MUTED}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {TEXT}; }}
@@ -44,6 +45,11 @@ QLineEdit:focus {{ border-color: {accent}; }}
 
 QPushButton {{ background: rgba(255, 255, 255, 24); border: none; border-radius: 15px; padding: 6px 16px; }}
 QPushButton:hover {{ background: rgba(255, 255, 255, 42); }}
+QPushButton:focus {{ border: 2px solid {accent}; padding: 4px 14px; }}
+QPushButton#round:focus, QPushButton#play:focus {{ padding: 0; }}
+QPushButton#primary:focus {{ padding: 10px 28px; border-color: {CREAM}; }}
+QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
+QListWidget:focus, QTableView:focus, QTableWidget:focus {{ border: 1px solid rgba({rgb}, 160); }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
@@ -289,6 +295,7 @@ class Backdrop(QWidget):
         self._fade.setStartValue(0.0)
         self._fade.setEndValue(1.0)
         self._fade.valueChanged.connect(self._fading)
+        self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
 
     def set_cover(self, pix):
         colours = palette_from(pix) or [QColor(c) for c in NEUTRAL]
@@ -305,8 +312,22 @@ class Backdrop(QWidget):
         return QColor(round(a.red() + (b.red() - a.red()) * t), round(a.green() + (b.green() - a.green()) * t),
                       round(a.blue() + (b.blue() - a.blue()) * t))
 
-    def paintEvent(self, _event):
+    def paintEvent(self, event):
+        "Repaints only copy the finished picture: the window repaints often (the seek bar ticks), the gradient rarely."
+        ratio = self.devicePixelRatioF()
+        key = (self.width(), self.height(), ratio, tuple(c.rgb() for c in self._now))
+        if key != self._cache_key:
+            self._cache, self._cache_key = self._render(ratio), key
         p = QPainter(self)
+        r = event.rect()
+        p.drawPixmap(r.topLeft(), self._cache, QRect(round(r.x() * ratio), round(r.y() * ratio),
+                                                     round(r.width() * ratio), round(r.height() * ratio)))
+
+    def _render(self, ratio):
+        pix = QPixmap(round(self.width() * ratio), round(self.height() * ratio))
+        pix.setDevicePixelRatio(ratio)
+        pix.fill(Qt.transparent)
+        p = QPainter(pix)
         w, h = self.width(), self.height()
         c1, c2, c3 = self._now
         base = QLinearGradient(0, 0, w, h)                   # corner to corner
@@ -325,3 +346,5 @@ class Backdrop(QWidget):
         shade.setColorAt(0.0, QColor(21, 19, 29, 40))
         shade.setColorAt(1.0, QColor(21, 19, 29, 170))
         p.fillRect(self.rect(), shade)
+        p.end()
+        return pix

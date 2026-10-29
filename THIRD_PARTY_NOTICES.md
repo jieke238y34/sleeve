@@ -11,6 +11,10 @@ list to keep complete and to ship with any build of Sleeve.
 | Python | the runtime | PSF License | |
 | ffmpeg (command line program) | optional: measuring loudness | LGPL or GPL, depending on the build installed on the user's system | Run as a separate process; not shipped by Sleeve. |
 
+## Documentation copied into the repository (not shipped)
+
+[antislop](https://github.com/miqdadbadjuber/anti-slop) (MIT, Miqdad Badjuber): the rulebook for AI coding assistants in `docs/antislop/`, with its licence file. Documentation only; it is not installed with the app.
+
 ## Development tools (not shipped)
 
 pytest (MIT), ruff (MIT), bandit (Apache-2.0), pip-audit (Apache-2.0), build (MIT).

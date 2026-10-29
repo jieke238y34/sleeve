@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QElapsedTimer,
     QEvent,
     QModelIndex,
     QPoint,
@@ -128,6 +129,7 @@ FRIENDLY = {
 KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
+POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = "♥ Liked Songs"
@@ -286,6 +288,8 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
+        self._tick.start()
         self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
         self.player.on_boost = self._boost.set_percent
         self.player.apply(self.settings)
@@ -351,6 +355,7 @@ class MainWindow(QMainWindow):
 
         for view in self.findChildren(QAbstractItemView):         # one scroll feel everywhere
             SmoothScroll.attach(view)
+        self.polish_controls()
 
         p = self.player
         p.positionChanged.connect(self._on_position)
@@ -1189,6 +1194,7 @@ class MainWindow(QMainWindow):
         self.health_folder_btn = QPushButton("Show in file manager")
         self.health_folder_btn.clicked.connect(self._health_show_folder)
         self.health_fix_btn = QPushButton("")
+        self.health_fix_btn.setAccessibleName("Fix this problem")
         self.health_fix_btn.setObjectName("primary")
         self.health_fix_btn.clicked.connect(self._health_fix)
         actions = FlowLayout()
@@ -1434,6 +1440,16 @@ class MainWindow(QMainWindow):
     def _earbuds_done(self, proc, code):
         self.earbuds_note.setText("Done" if code == 0 else "Maid BT reported a problem")
         proc.deleteLater()
+
+    def polish_controls(self):
+        """Every button says what it is (screen readers read the tooltip when there is no text) and shows a pointer
+        cursor, like a link would."""
+        for b in self.findChildren(QAbstractButton):
+            if not b.accessibleName():
+                b.setAccessibleName(b.toolTip() or b.text())
+            b.setCursor(Qt.PointingHandCursor)
+        for box in self.findChildren(QComboBox):
+            box.setCursor(Qt.PointingHandCursor)
 
     def run_command(self, name):
         "What `sleeve --toggle`, `--play-pause`, `--next`, `--previous` ask of the open window."
@@ -2298,6 +2314,7 @@ class MainWindow(QMainWindow):
         if job is not None:
             label, what = FRIENDLY[job]
             self.health_fix_btn.setText(f"Fix: {label}")
+            self.health_fix_btn.setAccessibleName(f"Fix: {label}")
             self.health_fix_btn.setToolTip(what)
             self.health_fix_btn.setEnabled(self.cfg.has_dl)
             if not self.cfg.has_dl:
@@ -2380,10 +2397,14 @@ class MainWindow(QMainWindow):
             self.player.seek(min(target, self._dur) if self._dur > 0 else target)
 
     def _on_position(self, pos):
+        "The player reports about ten times a second; the seek bar only needs to move about five times a second."
+        jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
         self._pos = pos
-        self.pos_label.setText(fmt_time(pos))
-        if not self._dragging:
-            self._set_slider_silently(self.seek, int(pos * 10))
+        if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
+            self._tick.restart()
+            self.pos_label.setText(fmt_time(pos))
+            if not self._dragging:
+                self._set_slider_silently(self.seek, int(pos * 10))
         if self._lyrics:
             i = lrc.current_index(self._lyrics, pos)
             if i >= 0 and i != self._lyric_row:
@@ -2581,6 +2602,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
     ap.add_argument("--version", action="version", version=f"sleeve {full_version()}")
+    ap.add_argument("--preview", action="store_true",
+                    help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     ctl = ap.add_argument_group("control a running Sleeve (for shortcuts, launchers and scripts)")
     ctl.add_argument("--toggle", action="store_true", help="show Sleeve, or minimise it when it is in front")
     ctl.add_argument("--play-pause", dest="playpause", action="store_true", help="play or pause")
@@ -2592,7 +2615,8 @@ def main(argv=None):
     os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
                                         "application.icon_name=io.github.jieke238y34.Sleeve")
     app = QApplication(sys.argv[:1])
-    if singleton.already_running(command=command):   # Sleeve is open already and has been given the command
+    instance_name = singleton.NAME + ("-preview" if args.preview else "")
+    if singleton.already_running(instance_name, command=command):   # Sleeve is open already, given the command
         return 0
     if command in ("playpause", "next", "previous"):
         print("Sleeve is not running.", file=sys.stderr)
@@ -2602,11 +2626,13 @@ def main(argv=None):
     app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")))
     cfg = startup_config(args.dl, ask_music_folder)
     win = MainWindow(cfg)
-    instance = singleton.InstanceServer(parent=win)             # a later launch brings this window forward
+    if args.preview:
+        win.setWindowTitle("Sleeve (preview)")
+    instance = singleton.InstanceServer(instance_name, parent=win)   # a later launch brings this window forward
     if instance.start():
         instance.raiseRequested.connect(win.raise_window)
         instance.commandReceived.connect(win.run_command)
-    attach_media_keys(win, app)
+    attach_media_keys(win, app, suffix="sleeve.preview" if args.preview else "sleeve")
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()
     return app.exec()

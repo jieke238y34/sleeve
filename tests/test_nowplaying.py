@@ -449,3 +449,55 @@ def test_the_same_queue_is_not_rebuilt_for_every_song(qapp, cfg, monkeypatch, tm
         assert win.queue_list.count() == 200                                         # a different queue is rebuilt
     finally:
         win.close()
+
+
+def test_the_backdrop_is_drawn_once_and_then_copied(qapp):  # noqa: F811
+    "Regression for the fans: the window repaints ten times a second while a song plays, the gradient must not."
+    from PySide6.QtGui import QPixmap
+
+    from sleeve import theme
+
+    back = theme.Backdrop()
+    back.resize(800, 500)
+    drawn = []
+    real = back._render
+    back._render = lambda ratio: drawn.append(ratio) or real(ratio)
+    for _ in range(20):
+        back.grab()                                      # a repaint
+    assert len(drawn) == 1
+    back.resize(900, 500)                                # a new size is a new picture
+    back.grab()
+    assert len(drawn) == 2
+    pix = QPixmap(8, 8)
+    pix.fill(theme.QColor("#ff0000"))
+    back.set_cover(pix)                                  # the fade changes the colours: pictures are made again
+    for _ in range(40):
+        qapp.processEvents()
+        time.sleep(0.02)
+    back.grab()
+    assert len(drawn) > 2
+    count = len(drawn)
+    for _ in range(10):
+        back.grab()
+    assert len(drawn) == count                           # and it settles
+
+
+def test_the_seek_bar_is_not_redrawn_on_every_tick(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win._on_duration(200.0)
+        win._on_position(10.0)                           # a jump from the start: shown at once
+        assert win.seek.value() == 100
+        shown = []
+        win.seek.setValue = lambda v: shown.append(v)
+        win._set_slider_silently = lambda slider, v: shown.append(v)
+        for step in range(1, 10):                        # nine ticks 10 ms apart, as fast as the player could report
+            win._on_position(10.0 + step * 0.01)
+        assert len(shown) <= 1
+        win._on_position(60.0)                           # a seek: at once
+        assert shown[-1] == 600
+        time.sleep(0.25)
+        win._on_position(60.1)                           # and a tick after the pause is shown
+        assert shown[-1] == 601
+    finally:
+        win.close()
