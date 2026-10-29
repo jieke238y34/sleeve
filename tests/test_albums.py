@@ -13,13 +13,6 @@ from sleeve.library import Song
 app = QApplication.instance() or QApplication([])
 
 
-@pytest.fixture(autouse=True)
-def tidy():
-    yield
-    for w in app.topLevelWidgets():
-        w.close()
-        w.deleteLater()
-    QTest.qWait(1)
 
 
 def song(path, album="", artist="", length=60.0, title=""):

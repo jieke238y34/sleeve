@@ -36,7 +36,9 @@ This is the whole surface, so you can judge the risk:
 - **Makes no network connections on its own** (the two exceptions below ask first). The network is used by `dl.py` when it downloads music, and by the
   optional **Find tags online** button, which asks you first and then sends only the title and artist (or file name) of
   the chosen songs to `https://musicbrainz.org/ws/2/`, and the **Get dl.py for me** button runs one `git clone` of
-  playlist-sync into `~/.local/share/sleeve/playlist-sync` (nothing from it is run until you trust it) (the address is checked, the answer is size-limited, and only
+  playlist-sync into `~/.local/share/sleeve/playlist-sync` (nothing from it is run until you trust it). The optional
+  Discord cover switch looks an album up on MusicBrainz (album and artist only) to build a public
+  `coverartarchive.org` address, which only Discord then fetches (the address is checked, the answer is size-limited, and only
   empty tags are ever filled, after you review them).
 
 ## Practices
