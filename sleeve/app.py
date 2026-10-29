@@ -905,6 +905,17 @@ class MainWindow(QMainWindow):
         note.setObjectName("muted")
         lay.addWidget(title)
         lay.addWidget(note)
+        self.settings_search = QLineEdit()
+        self.settings_search.setPlaceholderText("Search settings")
+        self.settings_search.setClearButtonEnabled(True)
+        self.settings_search.setAccessibleName("Search settings")
+        self.settings_search.setMaximumWidth(360)
+        self.settings_search.textChanged.connect(self._filter_settings)
+        lay.addWidget(self.settings_search)
+        self.settings_none = QLabel("No setting matches that.")
+        self.settings_none.setObjectName("muted")
+        self.settings_none.hide()
+        lay.addWidget(self.settings_none)
 
         def section(text):
             lab = QLabel(text)
@@ -1055,7 +1066,66 @@ class MainWindow(QMainWindow):
         lay.addLayout(buttons)
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
+        self._group_settings(lay)
         return page
+
+    def _group_settings(self, lay):
+        """Put each titled section of the Settings page in its own container, so the search box can hide whole sections
+        and show the ones that match. The widgets inside keep their own visibility."""
+        items = [lay.takeAt(0) for _ in range(lay.count())]
+        groups, current, kept = [], None, []
+        for item in items:
+            widget = item.widget()
+            if isinstance(widget, QLabel) and widget.objectName() == "heading" and widget.text() != "Settings":
+                spacers = []
+                while current and current[-1].spacerItem() is not None:      # the gap before a heading goes with it
+                    spacers.insert(0, current.pop())
+                if current is None:
+                    while kept and kept[-1].spacerItem() is not None:
+                        spacers.insert(0, kept.pop())
+                current = spacers + [item]
+                groups.append(current)
+            elif current is None:
+                kept.append(item)
+            else:
+                current.append(item)
+        for item in kept:
+            lay.addItem(item)
+        self._setting_groups = []
+        for group in groups:
+            box = QWidget()
+            col = QVBoxLayout(box)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(10)
+            for item in group:
+                col.addItem(item)
+                self._adopt(item, box)
+            lay.addWidget(box)
+            self._setting_groups.append(box)
+
+    def _adopt(self, item, box):
+        "Make the widgets of a layout item (and of the layouts inside it) children of `box`, keeping what was hidden."
+        widget, child = item.widget(), item.layout()
+        if widget is not None:
+            hidden = widget.isHidden() and widget.testAttribute(Qt.WA_WState_ExplicitShowHide)
+            widget.setParent(box)
+            widget.setVisible(not hidden)
+        elif child is not None:
+            for i in range(child.count()):
+                self._adopt(child.itemAt(i), box)
+
+    def _filter_settings(self, text):
+        "Show only the sections that mention every word typed (their titles, labels, hints and buttons)."
+        words = text.casefold().split()
+        shown = 0
+        for box in self._setting_groups:
+            parts = [w.text() for w in box.findChildren(QWidget) if hasattr(w, "text")]
+            parts += [w.toolTip() + " " + w.accessibleName() for w in box.findChildren(QWidget)]
+            hay = " ".join(parts).casefold()
+            match = all(word in hay for word in words)
+            box.setVisible(match)
+            shown += match
+        self.settings_none.setVisible(bool(words) and not shown)
 
     def _change_music_dir(self):
         from PySide6.QtWidgets import QFileDialog

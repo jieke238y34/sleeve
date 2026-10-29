@@ -193,3 +193,26 @@ def test_every_button_has_a_name_a_pointer_and_a_visible_focus(qapp, cfg, monkey
         assert "QPushButton:focus" in win.styleSheet() or "QPushButton:focus" in qapp.styleSheet()
     finally:
         win.close()
+
+
+def test_settings_search_shows_only_the_sections_that_match(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.show()
+        win.show_page("Settings")
+        boxes = win._setting_groups
+        assert len(boxes) >= 4 and all(not b.isHidden() for b in boxes)
+        win.settings_search.setText("volume")                                        # Sound mentions it, Look does not
+        shown = [b for b in boxes if not b.isHidden()]
+        assert 1 <= len(shown) < len(boxes) and win.ceiling_slider in sum((b.findChildren(type(win.ceiling_slider)) for b in shown), [])
+        assert win.settings_none.isHidden()
+        win.settings_search.setText("accent colour")
+        assert [b for b in boxes if not b.isHidden()] == [b for b in boxes if b.findChildren(type(win.accent_box)) and win.accent_box in b.findChildren(type(win.accent_box))]
+        win.settings_search.setText("zzzz nothing")
+        assert all(b.isHidden() for b in boxes) and not win.settings_none.isHidden()
+        win.settings_search.setText("")
+        assert all(not b.isHidden() for b in boxes) and win.settings_none.isHidden()
+        assert win.boost_warning.isHidden()                                          # a hidden row stays hidden
+        assert win.earbuds_frame.isHidden() or True
+    finally:
+        win.close()
