@@ -1,6 +1,6 @@
 """How the window looks: a dark lavender theme, and a backdrop made from the playing song's cover."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QVariantAnimation
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
@@ -289,6 +289,7 @@ class Backdrop(QWidget):
         self._fade.setStartValue(0.0)
         self._fade.setEndValue(1.0)
         self._fade.valueChanged.connect(self._fading)
+        self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
 
     def set_cover(self, pix):
         colours = palette_from(pix) or [QColor(c) for c in NEUTRAL]
@@ -305,8 +306,22 @@ class Backdrop(QWidget):
         return QColor(round(a.red() + (b.red() - a.red()) * t), round(a.green() + (b.green() - a.green()) * t),
                       round(a.blue() + (b.blue() - a.blue()) * t))
 
-    def paintEvent(self, _event):
+    def paintEvent(self, event):
+        "Repaints only copy the finished picture: the window repaints often (the seek bar ticks), the gradient rarely."
+        ratio = self.devicePixelRatioF()
+        key = (self.width(), self.height(), ratio, tuple(c.rgb() for c in self._now))
+        if key != self._cache_key:
+            self._cache, self._cache_key = self._render(ratio), key
         p = QPainter(self)
+        r = event.rect()
+        p.drawPixmap(r.topLeft(), self._cache, QRect(round(r.x() * ratio), round(r.y() * ratio),
+                                                     round(r.width() * ratio), round(r.height() * ratio)))
+
+    def _render(self, ratio):
+        pix = QPixmap(round(self.width() * ratio), round(self.height() * ratio))
+        pix.setDevicePixelRatio(ratio)
+        pix.fill(Qt.transparent)
+        p = QPainter(pix)
         w, h = self.width(), self.height()
         c1, c2, c3 = self._now
         base = QLinearGradient(0, 0, w, h)                   # corner to corner
@@ -325,3 +340,5 @@ class Backdrop(QWidget):
         shade.setColorAt(0.0, QColor(21, 19, 29, 40))
         shade.setColorAt(1.0, QColor(21, 19, 29, 170))
         p.fillRect(self.rect(), shade)
+        p.end()
+        return pix

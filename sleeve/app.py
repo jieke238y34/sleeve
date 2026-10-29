@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QElapsedTimer,
     QEvent,
     QModelIndex,
     QPoint,
@@ -128,6 +129,7 @@ FRIENDLY = {
 KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
+POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = "♥ Liked Songs"
@@ -286,6 +288,8 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
+        self._tick.start()
         self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
         self.player.on_boost = self._boost.set_percent
         self.player.apply(self.settings)
@@ -2380,10 +2384,14 @@ class MainWindow(QMainWindow):
             self.player.seek(min(target, self._dur) if self._dur > 0 else target)
 
     def _on_position(self, pos):
+        "The player reports about ten times a second; the seek bar only needs to move about five times a second."
+        jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
         self._pos = pos
-        self.pos_label.setText(fmt_time(pos))
-        if not self._dragging:
-            self._set_slider_silently(self.seek, int(pos * 10))
+        if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
+            self._tick.restart()
+            self.pos_label.setText(fmt_time(pos))
+            if not self._dragging:
+                self._set_slider_silently(self.seek, int(pos * 10))
         if self._lyrics:
             i = lrc.current_index(self._lyrics, pos)
             if i >= 0 and i != self._lyric_row:
