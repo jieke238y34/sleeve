@@ -87,6 +87,7 @@ from . import (
     theme,
 )
 from .albums import AlbumDetail, AlbumGrid
+from .boost import StreamBoost
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .mpris import Mpris
@@ -285,6 +286,8 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
+        self.player.on_boost = self._boost.set_percent
         self.player.apply(self.settings)
         self._vol_timer = QTimer(self)                    # the volume is saved a moment after the slider stops
         self._vol_timer.setSingleShot(True)
@@ -906,7 +909,7 @@ class MainWindow(QMainWindow):
         section("Sound")
         row = QHBoxLayout()
         self.ceiling_slider = ClickSlider(Qt.Horizontal)
-        self.ceiling_slider.setRange(30, 100)
+        self.ceiling_slider.setRange(30, 150)
         self.ceiling_slider.setValue(self.settings.max_volume)
         self.ceiling_slider.setMaximumWidth(280)
         self.ceiling_label = QLabel(f"{self.settings.max_volume}%")
@@ -918,6 +921,13 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         lay.addWidget(hint("How loud the volume slider gets when it is all the way up. Lower it if everything "
                            "feels too loud."))
+        self.boost_warning = hint("Above 100% Sleeve asks PipeWire to make the sound louder than the output normally "
+                                  "goes. It can distort, damage speakers and hurt your hearing. Start the slider low, "
+                                  "keep the volume down on headphones and earbuds, and go back to 100% or less if "
+                                  "anything sounds harsh.")
+        self.boost_warning.setStyleSheet("color: #ff8f8f;")
+        self.boost_warning.setVisible(self.settings.max_volume > 100)
+        lay.addWidget(self.boost_warning)
         self.gapless_box = Switch("Gapless playback (no pause between songs)")
         self.gapless_box.setChecked(self.settings.gapless)
         self.gapless_box.toggled.connect(self._gapless_toggled)
@@ -1047,6 +1057,7 @@ class MainWindow(QMainWindow):
 
     def _ceiling_changed(self, value):
         self.ceiling_label.setText(f"{value}%")
+        self.boost_warning.setVisible(value > 100)
         self._set_setting("max_volume", value)                 # saved first: nothing below can stop it
         self.player.set_max_volume(value)
 
@@ -2497,6 +2508,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
+        self._boost.reset()                          # leave no stream louder than it found it
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()

@@ -33,7 +33,8 @@ def build_info():
     count, commit = _git(root, "rev-list", "--count", "HEAD"), _git(root, "rev-parse", "--short", "HEAD")
     if not count or not commit:
         return None
-    return int(count), commit, bool(_git(root, "status", "--porcelain", "--untracked-files=no"))
+    changed = _git(root, "status", "--porcelain", "--", "sleeve", "tools", "pyproject.toml")   # new files count too
+    return int(count), commit, bool(changed)
 
 
 def build_label():

@@ -20,7 +20,7 @@ def git(*args):
 def main():
     revision = int(git("rev-list", "--count", "HEAD"))
     commit = git("rev-parse", "--short", "HEAD")
-    dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    dirty = bool(git("status", "--porcelain", "--", "sleeve", "tools", "pyproject.toml"))
     (ROOT / "sleeve" / "_build.py").write_text(
         f'"""Written by tools/stamp_build.py; not part of the source."""\n'
         f"REVISION = {revision}\nCOMMIT = {commit!r}\nDIRTY = {dirty}\n", encoding="utf-8")

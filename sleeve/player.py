@@ -85,6 +85,7 @@ class Player(QObject):
         self.shuffle, self.repeat = False, REPEAT_OFF
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
+        self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
         self.same_volume = True
         self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
         self._norm_checked = set()         # paths whose tags and saved measurement were already looked at
@@ -154,7 +155,7 @@ class Player(QObject):
 
     def set_max_volume(self, percent):
         "How much of the output's loudest level the full slider means."
-        self.max_gain = max(0.3, min(1.0, percent / 100))
+        self.max_gain = max(0.3, min(1.5, percent / 100))
         self.set_volume(self.volume)
 
     def set_same_volume(self, on):
@@ -181,6 +182,9 @@ class Player(QObject):
         "Set each player's output level: the slider, the ceiling and that song's own adjustment."
         for slot in self._slots:
             slot.audio.setVolume(min(1.0, gain(self.volume, self.max_gain) * 10 ** (self._norm_for(slot.path) / 20)))
+        if self.on_boost is not None:           # Qt stops at 100%; whatever is beyond that is asked of PipeWire
+            now = gain(self.volume, self.max_gain) * 10 ** (self._norm_for(self._slots[self._cur].path) / 20)
+            self.on_boost(max(1.0, now) * 100)
 
     def set_gapless(self, on):
         self.gapless = bool(on)

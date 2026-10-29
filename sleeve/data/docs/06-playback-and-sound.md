@@ -68,3 +68,10 @@ which is what the media keys, KDE Connect and the PlasMusic Toolbar panel widget
 - **Maid Runner and other launchers:** right-click Sleeve for Play / Pause, Next song and Previous song. From a
   terminal or a shortcut, `sleeve --play-pause`, `sleeve --next`, `sleeve --previous` and `sleeve --toggle` control the
   open Sleeve.
+
+## Louder than 100% (with care)
+
+In Settings, "Loudest volume" can go up to 150%. The default stays at 75%. Above 100% Sleeve asks PipeWire to turn its
+own sound up beyond the normal maximum, which can distort, damage speakers and hurt your hearing, so Settings shows a
+warning there. Keep it low on headphones and earbuds. Only Sleeve's own sound is changed, and it goes back to normal
+when you lower the setting or quit. It needs PipeWire (or PulseAudio) and the `pactl` tool.

@@ -21,7 +21,7 @@ _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 # name -> default. A value that fails its check falls back to the default, so a hand-edited file cannot break the app.
 DEFAULTS = {
     "volume": 80,              # 0-100, where the slider was left
-    "max_volume": 75,          # 30-100, how much of the output's loudest level the full slider means
+    "max_volume": 75,          # 30-150, how much of the output's loudest level the full slider means (>100: boost)
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
@@ -49,8 +49,8 @@ def legible(colour):
 
 def _valid(key, value):
     if key in ("volume", "max_volume"):
-        low = 30 if key == "max_volume" else 0
-        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= 100
+        low, high = (30, 150) if key == "max_volume" else (0, 100)
+        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover"):
         return isinstance(value, bool)
     if key == "accent":
