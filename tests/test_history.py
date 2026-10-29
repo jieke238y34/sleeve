@@ -87,11 +87,11 @@ def test_the_panel_follows_the_slider(qapp):  # noqa: F811
     assert card.heading.text() == "Listening history is off" and card.rows.count() == 0
 
 
-def test_the_panel_shows_at_most_five_songs_and_long_titles_do_not_widen_it(qapp):  # noqa: F811
+def test_long_titles_do_not_widen_the_panel_and_more_songs_can_be_shown(qapp):  # noqa: F811
     card = identity.ListeningCard()
     card.set_data([("T" * 300, "A" * 100, n) for n in range(9, 0, -1)], 600, True)
     card.resize(500, 400)
-    assert card.rows.count() == 5
+    assert card.rows.count() == 9 and card.more_btn.isHidden()           # nine songs: all shown, nothing more to show
     assert card.minimumSizeHint().width() < 700
 
 
@@ -162,3 +162,16 @@ def test_the_chosen_period_is_saved(qapp, cfg, monkeypatch, tmp_path):  # noqa: 
         assert time.time() > 0
     finally:
         win.close()
+
+
+def test_the_panel_shows_ten_songs_and_up_to_twenty_five_on_request(qapp):  # noqa: F811
+    card = identity.ListeningCard()
+    card.set_data([(f"Song {n}", "Artist", 40 - n) for n in range(30)], 3600, True)
+    assert card.rows.count() == 10 and not card.more_btn.isHidden()
+    assert card.more_btn.text() == "Show 25"
+    card.more_btn.click()
+    assert card.rows.count() == 25 and card.more_btn.text() == "Show fewer"
+    card.more_btn.click()
+    assert card.rows.count() == 10
+    card.set_data([("Only", "One", 1)], 60, True)                      # a short list has nothing to expand
+    assert card.rows.count() == 1 and card.more_btn.isHidden()

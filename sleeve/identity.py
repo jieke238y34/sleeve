@@ -564,7 +564,7 @@ class ListeningCard(Card):
 
     periodChanged = Signal(str)
     NAMES = {"week": "this week", "month": "this month"}
-    ROWS = 5
+    ROWS, MAX_ROWS = 10, 25                     # shown at first, and after pressing Show more
 
     def __init__(self):
         super().__init__("Listening")
@@ -596,9 +596,23 @@ class ListeningCard(Card):
         self.rows = QVBoxLayout()
         self.rows.setSpacing(6)
         self.box.addLayout(self.rows)
+        self.expanded = False
+        self._data = ([], 0, True)
+        self.more_btn = QPushButton("Show more")
+        self.more_btn.setFocusPolicy(Qt.TabFocus)
+        self.more_btn.setCursor(Qt.PointingHandCursor)
+        self.more_btn.clicked.connect(self._toggle_more)
+        more_row = QHBoxLayout()
+        more_row.addWidget(self.more_btn)
+        more_row.addStretch(1)
+        self.box.addLayout(more_row)
         self.total = _label("", 10, MUTED, wrap=True)
         self.box.addWidget(self.total)
         self._style_picker()
+
+    def _toggle_more(self):
+        self.expanded = not self.expanded
+        self.set_data(*self._data)
 
     def _choose(self, period):
         if period != self.period:
@@ -626,7 +640,11 @@ class ListeningCard(Card):
 
     def set_data(self, rows, seconds, enabled=True):
         "rows: [(title, artist, plays)], most played first; seconds: listened in the period; enabled: history is on."
+        self._data = (rows, seconds, enabled)
         name = self.NAMES[self.period]
+        shown = self.MAX_ROWS if self.expanded else self.ROWS
+        self.more_btn.setVisible(enabled and len(rows) > self.ROWS)
+        self.more_btn.setText("Show fewer" if self.expanded else f"Show {min(len(rows), self.MAX_ROWS)}")
         while self.rows.count():
             item = self.rows.takeAt(0)
             if item.widget():
@@ -642,7 +660,7 @@ class ListeningCard(Card):
                                "shows up here.")
             return
         self.heading.setText(f"Your top songs {name}")
-        for rank, (title, artist, plays) in enumerate(rows[:self.ROWS], start=1):
+        for rank, (title, artist, plays) in enumerate(rows[:shown], start=1):
             line = QWidget()
             lay = QHBoxLayout(line)
             lay.setContentsMargins(0, 0, 0, 0)

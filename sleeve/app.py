@@ -1554,7 +1554,7 @@ class MainWindow(QMainWindow):
         period = self.settings.identity_period
         card.set_period(period)
         rows = []
-        for play in self.history.top(PERIODS[period], limit=card.ROWS):
+        for play in self.history.top(PERIODS[period], limit=card.MAX_ROWS):
             song = self.by_path.get(play.path)
             if song is not None:                              # songs that left the library are not shown
                 rows.append((song.name, song.artist, play.plays))
