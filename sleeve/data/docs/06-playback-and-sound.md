@@ -42,3 +42,10 @@ the top of the slider.
 
 Play, pause, next and previous keys on your keyboard work, and so do the media widgets in KDE Plasma and GNOME
 (MPRIS).
+
+## Control Sleeve from your phone (KDE Connect)
+
+Sleeve shows up in KDE Connect with no setup. Pair your phone with KDE Connect, turn on its "Multimedia control" plugin
+for this computer, and Sleeve appears in the phone's media remote: play, pause, next, previous, seek, volume, and the
+current song with its cover. The Plasma media widget and lock screen controls show the same thing. The sound itself
+still plays on the computer.
