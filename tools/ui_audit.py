@@ -4,7 +4,7 @@ go wrong, and save the screenshots for a human (or an agent) to look at.
 
     python tools/ui_audit.py                       # real library (read-only), 4 sizes, 2 accents
     python tools/ui_audit.py --demo                # a small made-up library (works anywhere, e.g. CI)
-    python tools/ui_audit.py --pages Settings,Docs --sizes 1180x760 --accents Violet
+    python tools/ui_audit.py --pages Settings,Health --sizes 1180x760 --accents Violet
     python tools/ui_audit.py --baseline old-run    # also list screenshots that changed since a previous run
 
 Writes <out>/<size>/<accent>/<page>.png and <out>/report.json, prints the problems grouped by page, and exits 1 if
@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QWidget,
 )
 
-SIZES = "1180x760,980x640,1500x900,760x560"
+SIZES = "1180x760,980x640,1500x900,900x560"
 MIN_CONTRAST = 2.2          # text that is less contrasty than this against its own background is practically invisible
 CHANGED = 0.004             # a screenshot with more than this share of pixels changed is reported against a baseline
 

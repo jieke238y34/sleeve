@@ -8,8 +8,23 @@ All notable changes to this project are documented here. The format follows
 
 First release. Alpha, Linux.
 
+### Changed
+
+- The user guide moved out of the app to `docs/guide/` on GitHub, so the app is smaller and the guide can be
+  read before installing. The Docs page is gone from the sidebar.
+
 ### Added
 
+- Downloads page: **Get dl.py for me** fetches playlist-sync from GitHub with `git` after asking, and switches the page on.
+- Optional Discord Rich Presence ("Listening to"), through Discord or arRPC over the local IPC socket. Off by default.
+- Settings search; the Identity page has two tabs, Identity and Listening.
+- Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends
+  one request a second, only fills empty tags, and shows you the results to tick before anything is written.
+- Identity page: a Listening panel with your top songs this week or this month, chosen with a slider. It is built
+  from what you actually play (a song counts after 30 seconds), kept in a file on this computer, and can be switched
+  off or cleared in Settings.
+- Lower idle CPU and GPU use while playing; keyboard focus rings, accessible names and pointer cursors on every button.
+- Restarting while music plays opens the new build as a separate preview instead of replacing the playing copy.
 - One-command install: `./install.sh` builds Sleeve from source into a private environment, with a menu entry and icon,
   and `./install.sh --uninstall`.
 - Quick search (Ctrl+K) across songs, playlists and folders. An Albums view of covers in the Library.

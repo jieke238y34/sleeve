@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QPoint,
     QProcess,
+    QProcessEnvironment,
     QSize,
     Qt,
     QThread,
@@ -69,16 +70,17 @@ from . import (
     config,
     desktop,
     dlsetup,
-    docs,
     earbuds,
     filedrop,
     full_version,
+    getdl,
     health,
     identity,
     library,
     likes,
     loudness,
     lrc,
+    musicbrainz,
     myplaylists,
     playlists,
     settings,
@@ -91,11 +93,15 @@ from .albums import AlbumDetail, AlbumGrid
 from .boost import StreamBoost
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
+from .history import PERIODS, History, counts_as_played
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
+from .presence import Presence
+from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
 from .smoothscroll import SmoothScroll
 from .switch import Switch
+from .tagsuggest import TagSuggestions
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -130,6 +136,8 @@ KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", act
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
+ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
+ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = "♥ Liked Songs"
@@ -279,6 +287,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
+        self.history = History()
+        self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._ffmpeg, self._loud, self._loud_again = None, None, False
         self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
         self._loud_timer.setSingleShot(True)
@@ -288,6 +298,9 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._get_dl_proc = None                             # the running `git clone` of dl.py
+        self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
+        self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
         self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
@@ -303,6 +316,7 @@ class MainWindow(QMainWindow):
         self.songs, self.by_path = [], {}
         self.folder = ALL
         self._dragging = False
+        self._seeking = False                               # a player seek is not listening time
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
@@ -324,12 +338,19 @@ class MainWindow(QMainWindow):
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
         self.identity_page = identity.IdentityPage()
-        self.docs_page = docs.DocsPage(accent=self._accent_shown)
         self.identity_page.set_accent(self._accent_shown)
+        self.identity_page.listening.periodChanged.connect(self._listening_period_changed)
+        self._presence_timer = QTimer(self)                  # keeps the status line under the switch honest
+        self._presence_timer.setInterval(3000)
+        self._presence_timer.timeout.connect(self._show_presence_state)
+        self._presence_timer.start()
+        self.presence.configure(self.settings.discord_presence, self.settings.discord_client_id)
+        self.identity_page.set_tab(self.settings.identity_tab)
+        self.identity_page.tabChanged.connect(lambda key: self._set_setting("identity_tab", key))
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
                            ("Library", self._library_page()), ("Identity", self.identity_page),
                            ("Downloads", self._downloads_page()), ("Health", self._health_page()),
-                           ("Settings", self._settings_page()), ("Docs", self.docs_page)):
+                           ("Settings", self._settings_page())):
             self.nav.addItem(name)
             self.stack.addWidget(scrollable(page) if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
@@ -807,6 +828,11 @@ class MainWindow(QMainWindow):
         what.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DL_HOME)))
         choose = QPushButton("Choose dl.py…")
         choose.clicked.connect(self._choose_dl)
+        self.get_dl_btn = QPushButton("Get dl.py for me")
+        self.get_dl_btn.setObjectName("primary")
+        self.get_dl_btn.setToolTip("Download dl.py (playlist-sync) from GitHub into Sleeve's own folder")
+        self.get_dl_btn.clicked.connect(self._get_dl)
+        no_dl_buttons.addWidget(self.get_dl_btn)
         no_dl_buttons.addWidget(what)
         no_dl_buttons.addWidget(choose)
         no_dl_buttons.addStretch(1)
@@ -853,6 +879,73 @@ class MainWindow(QMainWindow):
             self.status.showMessage(dlg.result_summary or "Nothing changed", 10000)
         self._refresh_setup_banner()
 
+    def _confirm_get_dl(self):
+        "Ask before anything is downloaded. A seam: tests replace it."
+        box = QMessageBox(self)
+        box.setWindowTitle("Get dl.py")
+        box.setText(f"Sleeve will download dl.py (playlist-sync) from\n{getdl.REPO_URL}\ninto\n{getdl.target_dir()}\n\n"
+                    "Downloading does not run it. The first time you press a Downloads button, Sleeve shows you "
+                    "the file and asks whether you trust it.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        return box.exec() == QMessageBox.Ok
+
+    def _get_dl(self):
+        "Fetch dl.py with git into Sleeve's data folder, then switch the Downloads page on."
+        if self._get_dl_proc is not None or not self._confirm_get_dl():
+            return
+        target = getdl.target_dir()
+        existing = getdl.installed(target)
+        if existing is not None:
+            self._dl_ready(existing)
+            return
+        git = getdl.find_git()
+        if git is None:
+            self.status.showMessage("git is needed to fetch dl.py: install it (for example sudo dnf install git) and "
+                                    "try again", 12000)
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        proc = self._get_dl_proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("GIT_TERMINAL_PROMPT", "0")                  # never wait for a password that nobody can type
+        proc.setProcessEnvironment(env)
+        proc.finished.connect(lambda code, _status: self._get_dl_done(code, target))
+        proc.errorOccurred.connect(lambda _err: self._get_dl_done(-1, target))
+        self.get_dl_btn.setEnabled(False)
+        self.status.showMessage("Downloading dl.py…")
+        proc.start(git, getdl.clone_args(target))
+
+    def _get_dl_done(self, code, target):
+        proc, self._get_dl_proc = self._get_dl_proc, None
+        if proc is None:
+            return
+        problem = bytes(proc.readAll()).decode("utf-8", "replace").strip().splitlines()
+        proc.deleteLater()
+        self.get_dl_btn.setEnabled(True)
+        path = getdl.installed(target)
+        if code != 0 or path is None:
+            why = problem[-1] if problem else "git did not finish"
+            self.status.showMessage(f"Could not download dl.py: {why}", 12000)
+            return
+        self._dl_ready(path)
+
+    def _dl_ready(self, path):
+        "dl.py is in place: remember it, load its settings and switch the Downloads page on."
+        self._set_setting("dl_path", str(path))
+        fresh = config.load(str(path))
+        for field in dataclasses.fields(fresh):
+            setattr(self.cfg, field.name, getattr(fresh, field.name))
+        self.my_playlists = myplaylists.PlaylistStore(self.cfg.playlist_dir, self.cfg.music_dir)
+        self.no_dl.setVisible(False)
+        for name, button in self._action_buttons.items():
+            button.setEnabled(True)
+            button.setToolTip(FRIENDLY[name][1])
+        self.dl_state.setText("Ready")
+        self.setup_btn.setVisible(True)
+        self._refresh_setup_banner()
+        self.status.showMessage("dl.py is ready. Press Set up… to choose your music folder and playlists.", 12000)
+
     def _choose_dl(self):
         from PySide6.QtWidgets import QFileDialog
 
@@ -898,6 +991,17 @@ class MainWindow(QMainWindow):
         note.setObjectName("muted")
         lay.addWidget(title)
         lay.addWidget(note)
+        self.settings_search = QLineEdit()
+        self.settings_search.setPlaceholderText("Search settings")
+        self.settings_search.setClearButtonEnabled(True)
+        self.settings_search.setAccessibleName("Search settings")
+        self.settings_search.setMaximumWidth(360)
+        self.settings_search.textChanged.connect(self._filter_settings)
+        lay.addWidget(self.settings_search)
+        self.settings_none = QLabel("No setting matches that.")
+        self.settings_none.setObjectName("muted")
+        self.settings_none.hide()
+        lay.addWidget(self.settings_none)
 
         def section(text):
             lab = QLabel(text)
@@ -1006,6 +1110,43 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
                            "is used when nothing is playing."))
 
+        section("Listening")
+        section("Discord")
+        self.discord_box = Switch("Show what I'm listening to on Discord")
+        self.discord_box.setChecked(self.settings.discord_presence)
+        self.discord_box.toggled.connect(self._discord_toggled)
+        lay.addWidget(self.discord_box)
+        row = QHBoxLayout()
+        self.discord_id = QLineEdit(self.settings.discord_client_id)
+        self.discord_id.setPlaceholderText("Discord application ID (numbers)")
+        self.discord_id.setAccessibleName("Discord application ID")
+        self.discord_id.setMaximumWidth(320)
+        self.discord_id.editingFinished.connect(self._discord_id_changed)
+        row.addWidget(QLabel("Application ID"))
+        row.addWidget(self.discord_id)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.discord_status = hint("")
+        lay.addWidget(self.discord_status)
+        lay.addWidget(hint("Needs Discord, or arRPC for Vesktop and other clients, running on this computer. Create "
+                           "your own application at discord.com/developers and paste its Application ID here: its "
+                           "name is what people see after 'Listening to'. The song title and artist are shared with "
+                           "Discord while this is on, and cleared when you pause, switch it off or quit."))
+
+        section("Listening")
+        self.listening_box = Switch("Remember what I listen to")
+        self.listening_box.setChecked(self.settings.track_listening)
+        self.listening_box.toggled.connect(self._track_listening_toggled)
+        lay.addWidget(self.listening_box)
+        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
+                           "the top songs on the Identity page and is never sent anywhere."))
+        clear = QPushButton("Clear listening history")
+        clear.clicked.connect(self._clear_listening)
+        row = QHBoxLayout()
+        row.addWidget(clear)
+        row.addStretch(1)
+        lay.addLayout(row)
+
         section("Your files")
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
@@ -1034,7 +1175,66 @@ class MainWindow(QMainWindow):
         lay.addLayout(buttons)
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
+        self._group_settings(lay)
         return page
+
+    def _group_settings(self, lay):
+        """Put each titled section of the Settings page in its own container, so the search box can hide whole sections
+        and show the ones that match. The widgets inside keep their own visibility."""
+        items = [lay.takeAt(0) for _ in range(lay.count())]
+        groups, current, kept = [], None, []
+        for item in items:
+            widget = item.widget()
+            if isinstance(widget, QLabel) and widget.objectName() == "heading" and widget.text() != "Settings":
+                spacers = []
+                while current and current[-1].spacerItem() is not None:      # the gap before a heading goes with it
+                    spacers.insert(0, current.pop())
+                if current is None:
+                    while kept and kept[-1].spacerItem() is not None:
+                        spacers.insert(0, kept.pop())
+                current = spacers + [item]
+                groups.append(current)
+            elif current is None:
+                kept.append(item)
+            else:
+                current.append(item)
+        for item in kept:
+            lay.addItem(item)
+        self._setting_groups = []
+        for group in groups:
+            box = QWidget()
+            col = QVBoxLayout(box)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(10)
+            for item in group:
+                col.addItem(item)
+                self._adopt(item, box)
+            lay.addWidget(box)
+            self._setting_groups.append(box)
+
+    def _adopt(self, item, box):
+        "Make the widgets of a layout item (and of the layouts inside it) children of `box`, keeping what was hidden."
+        widget, child = item.widget(), item.layout()
+        if widget is not None:
+            hidden = widget.isHidden() and widget.testAttribute(Qt.WA_WState_ExplicitShowHide)
+            widget.setParent(box)
+            widget.setVisible(not hidden)
+        elif child is not None:
+            for i in range(child.count()):
+                self._adopt(child.itemAt(i), box)
+
+    def _filter_settings(self, text):
+        "Show only the sections that mention every word typed (their titles, labels, hints and buttons)."
+        words = text.casefold().split()
+        shown = 0
+        for box in self._setting_groups:
+            parts = [w.text() for w in box.findChildren(QWidget) if hasattr(w, "text")]
+            parts += [w.toolTip() + " " + w.accessibleName() for w in box.findChildren(QWidget)]
+            hay = " ".join(parts).casefold()
+            match = all(word in hay for word in words)
+            box.setVisible(match)
+            shown += match
+        self.settings_none.setVisible(bool(words) and not shown)
 
     def _change_music_dir(self):
         from PySide6.QtWidgets import QFileDialog
@@ -1144,7 +1344,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme.build_style(colour))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
-        self.docs_page.set_accent(colour)
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()
@@ -1197,8 +1396,12 @@ class MainWindow(QMainWindow):
         self.health_fix_btn.setAccessibleName("Fix this problem")
         self.health_fix_btn.setObjectName("primary")
         self.health_fix_btn.clicked.connect(self._health_fix)
+        self.health_online_btn = QPushButton("Find tags online…")
+        self.health_online_btn.setToolTip("Look the missing tags up on MusicBrainz and review them before anything is "
+                                          "written")
+        self.health_online_btn.clicked.connect(self._find_tags_online)
         actions = FlowLayout()
-        for b in (self.health_play_btn, self.health_folder_btn, self.health_fix_btn):
+        for b in (self.health_play_btn, self.health_folder_btn, self.health_online_btn, self.health_fix_btn):
             actions.addWidget(b)
         right = QVBoxLayout()
         right.addWidget(self.health_table, 1)
@@ -1448,6 +1651,8 @@ class MainWindow(QMainWindow):
             if not b.accessibleName():
                 b.setAccessibleName(b.toolTip() or b.text())
             b.setCursor(Qt.PointingHandCursor)
+            if isinstance(b, QPushButton):
+                b.setFocusPolicy(Qt.TabFocus)             # the focus ring is for the keyboard, not a click
         for box in self.findChildren(QComboBox):
             box.setCursor(Qt.PointingHandCursor)
 
@@ -1526,6 +1731,89 @@ class MainWindow(QMainWindow):
         mine = [n for n, _ in self.my_playlists.names()]
         names = mine + [n for n, _ in playlists.list_playlists(self.cfg.playlist_dir)]
         self.identity_page.set_library(self.songs, self.likes.paths, names)
+        self._refresh_listening()
+
+    def _refresh_listening(self):
+        "The top songs of the chosen period, from what was really played."
+        card = self.identity_page.listening
+        period = self.settings.identity_period
+        card.set_period(period)
+        rows = []
+        for play in self.history.top(PERIODS[period], limit=card.MAX_ROWS):
+            song = self.by_path.get(play.path)
+            if song is not None:                              # songs that left the library are not shown
+                rows.append((song.name, song.artist, play.plays))
+        card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening)
+
+    def _listening_period_changed(self, period):
+        self._set_setting("identity_period", period)
+        self._refresh_listening()
+
+    def _count_listening(self, previous, pos):
+        "Add the time since the last report to the song's listening time, and record a play once it counts."
+        if not (self.settings.track_listening and self._is_playing and self._current_path):
+            return
+        step = pos - previous
+        if not 0 < step < 2.0:                                # a seek or a new song is not listening
+            return
+        self._listened += step
+        if not self._listen_counted and counts_as_played(self._listened, self._dur):
+            self._listen_counted = True
+            self.history.record(self._current_path, self._listened)
+            try:
+                self.history.save()
+            except OSError as e:
+                self.status.showMessage(f"Could not save your listening history: {e}", 8000)
+            self._refresh_listening()
+
+    def _discord_toggled(self, on):
+        self._set_setting("discord_presence", on)
+        self._apply_presence()
+
+    def _discord_id_changed(self):
+        text = self.discord_id.text().strip()
+        if self.settings.set("discord_client_id", text):
+            self._save_settings()
+        self._apply_presence()
+
+    def _apply_presence(self):
+        "Hand the current settings to the presence connection and show what it is doing."
+        self.presence.configure(self.settings.discord_presence, self.settings.discord_client_id)
+        self._update_presence()
+        self._show_presence_state()
+
+    def _show_presence_state(self):
+        s = self.settings
+        if not s.discord_presence:
+            text = "Off."
+        elif not self.presence.enabled:
+            text = "Paste a valid Application ID (15 to 25 digits) to turn it on."
+        else:
+            text = {"ready": "Connected to Discord.", "connecting": "Connecting…",
+                    "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
+        self.discord_status.setText(text)
+
+    def _update_presence(self):
+        "Tell Discord what is playing (or clear it when nothing is, or the song is paused)."
+        if not self.presence.enabled:
+            return
+        song = self.by_path.get(self._current_path) if self._current_path else None
+        title = song.name if song else (Path(self._current_path).stem if self._current_path else "")
+        artist = song.artist if song else ""
+        self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing))
+
+    def _track_listening_toggled(self, on):
+        self._set_setting("track_listening", on)
+        self._refresh_listening()
+
+    def _clear_listening(self):
+        self.history.clear()
+        try:
+            self.history.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not clear your listening history: {e}", 8000)
+        self._refresh_listening()
+        self.status.showMessage("Listening history cleared", 6000)
 
     def _likes_changed(self):
         self._refresh_identity()
@@ -2310,6 +2598,10 @@ class MainWindow(QMainWindow):
         self.health_play_btn.setEnabled(has)
         self.health_folder_btn.setEnabled(has)
         job = self._health_job()
+        rows = self.health_list.currentRow()
+        names = list(self._health)
+        self.health_online_btn.setVisible(0 <= rows < len(names) and names[rows] in ONLINE_FIXABLE)
+        self.health_online_btn.setEnabled(bool(self._health_rows) and self._lookup is None)
         self.health_fix_btn.setVisible(job is not None)
         if job is not None:
             label, what = FRIENDLY[job]
@@ -2319,6 +2611,69 @@ class MainWindow(QMainWindow):
             self.health_fix_btn.setEnabled(self.cfg.has_dl)
             if not self.cfg.has_dl:
                 self.health_fix_btn.setToolTip("Needs dl.py (see the Downloads page)")
+
+    def _confirm_online(self):
+        "Ask once before anything is sent over the internet. A seam: tests replace it."
+        if self.settings.online_lookup_ok:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Look up tags online")
+        box.setText("Sleeve will send the title and artist of each song (or its file name when they are missing) to "
+                    "musicbrainz.org, the open music database, one song a second. Nothing else is sent, and nothing "
+                    "is written to your files until you review the results.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return False
+        self._set_setting("online_lookup_ok", True)
+        return True
+
+    def _find_tags_online(self):
+        "Look up the songs of the current Health problem (the selected ones, else the first 50)."
+        if self._lookup is not None or not self._confirm_online():
+            return
+        picked = {i.row() for i in self.health_table.selectedItems()}
+        songs = [it for r, it in enumerate(self._health_rows)
+                 if isinstance(it, library.Song) and (not picked or r in picked)][:ONLINE_LIMIT]
+        if not songs:
+            return
+        self._found = []
+        worker = self._lookup = musicbrainz.LookupWorker(songs, parent=self)
+        by_path = {s.path: s for s in songs}
+        worker.found.connect(lambda path, changes: self._found.append((by_path[path], changes)))
+        worker.progress.connect(
+            lambda done, total: self.status.showMessage(f"Looking up tags online: {done} of {total}"))
+        worker.failed.connect(lambda why: self.status.showMessage(why, 10000))
+        worker.finished.connect(self._lookup_finished)
+        self.health_online_btn.setEnabled(False)
+        self.status.showMessage(f"Looking up tags online: 0 of {len(songs)}")
+        worker.start()
+
+    def _lookup_finished(self):
+        self._lookup = None
+        self._health_buttons()
+        if not self._found:
+            self.status.showMessage("MusicBrainz had nothing new for these songs", 8000)
+            return
+        dlg = self._suggest_dialog = TagSuggestions(self._found, self)
+        dlg.finished.connect(self._apply_suggestions)
+        dlg.open()
+
+    def _apply_suggestions(self, code):
+        dlg = self._suggest_dialog
+        if code != QDialog.Accepted:
+            return
+        done = failed = 0
+        for song, changes in dlg.chosen():
+            try:
+                tags.write_tags(song.path, **changes)
+                done += 1
+            except Exception:
+                failed += 1
+        self.status.showMessage(f"Tags added to {done} songs" + (f", {failed} could not be written" if failed else ""),
+                                10000)
+        if done:
+            self.rescan()
 
     def _health_show_folder(self):
         path = self._health_path()
@@ -2384,22 +2739,32 @@ class MainWindow(QMainWindow):
 
     def _seek_released(self):
         self._dragging = False
-        self.player.seek(self.seek.value() / 10)
+        self._seek_now(self.seek.value() / 10)
+
+    def _seek_now(self, seconds):
+        "Move the playhead and flag the next position report, so a short seek is not counted as listening."
+        self._seeking = True
+        self.player.seek(seconds)
 
     def _seek_moved(self, value):
         "A change not made by the position feed (that one blocks signals) or a drag (applied on release)."
         if not self._dragging:
-            self.player.seek(value / 10)
+            self._seek_now(value / 10)
 
     def _seek_by(self, delta):
         if self.player.current():
             target = max(0.0, self._pos + delta)
-            self.player.seek(min(target, self._dur) if self._dur > 0 else target)
+            self._seek_now(min(target, self._dur) if self._dur > 0 else target)
 
     def _on_position(self, pos):
         "The player reports about ten times a second; the seek bar only needs to move about five times a second."
         jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
+        seeked, self._seeking = self._seeking, False
+        if not seeked:
+            self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
+        if jumped:
+            self._update_presence()                          # a seek moves Discord's progress bar too
         if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
             self._tick.restart()
             self.pos_label.setText(fmt_time(pos))
@@ -2419,11 +2784,15 @@ class MainWindow(QMainWindow):
         self.seek.blockSignals(False)
 
     def _on_playing(self, playing):
+        self._is_playing = bool(playing)
         self.play_btn.setText("⏸" if playing else "▶")
+        self._update_presence()
 
     def _on_track(self, index, path):
         self._refresh_queue()
         self._current_path = path
+        self._listened, self._listen_counted = 0.0, False
+        self._update_presence()
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
@@ -2509,7 +2878,7 @@ class MainWindow(QMainWindow):
         "Clicking a line of synced lyrics jumps the song to that line."
         row = self.lyrics.row(item)
         if self._lyric_synced and 0 <= row < len(self._lyrics):
-            self.player.seek(self._lyrics[row][0])
+            self._seek_now(self._lyrics[row][0])
 
     def _show_lyrics(self):
         self.show_page("Now Playing")
@@ -2531,6 +2900,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
         self._boost.reset()                          # leave no stream louder than it found it
+        self.presence.configure(False, "")           # clear the song from Discord
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()

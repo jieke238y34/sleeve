@@ -23,5 +23,15 @@ The Health page lists songs that may need a look. Click a heading on the left to
 | Parked as duplicates | Files `dl.py` moved aside as duplicates |
 | Parked as broken | Files `dl.py` moved aside as damaged |
 
-Health only reports. It never deletes anything. To fix tags, use Edit tags in the [Library](02-library). To find
-real duplicates, use Find duplicates on the [Downloads](04-downloads) page.
+Health never deletes anything. Under the list of songs there are buttons:
+
+- **Play** and **Show in file manager** for the song you have selected.
+- **Fix:** a button that runs the matching `dl.py` job (Fix missing genres for No genre tag, Find duplicates for the two
+  duplicate headings). It needs `dl.py` to be set up on the [Downloads](04-downloads) page.
+- **Find tags online…** for Missing title or artist and No genre tag. It looks the songs up on
+  [MusicBrainz](https://musicbrainz.org), the open music database, with no account. The first time, Sleeve asks, because
+  this is the one place it uses the internet on its own: it sends the title and artist (or the file name) of up to 50
+  songs, one a second. You then see a list of what was found, tick what you want and press Apply. Only empty tags are
+  filled in; a tag that already has a value is never changed, and nothing is written before you press Apply.
+
+To fix tags by hand, use Edit tags in the [Library](02-library).

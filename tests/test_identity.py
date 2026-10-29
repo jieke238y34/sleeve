@@ -128,7 +128,7 @@ def test_an_empty_library_shows_the_welcome_and_no_empty_boxes():
     page.resize(900, 700)
     page.show()
     page.set_library([])
-    others = [c for c in page.findChildren(Card) if c is not page.hero]
+    others = [c for c in page.findChildren(Card) if c not in (page.hero, page.listening)]   # Listening has its own tab
     assert others and all(c.isHidden() for c in others) and not page.hero.isHidden()
     from sleeve.library import Song
 

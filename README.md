@@ -7,8 +7,8 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)
 
-Sleeve plays, organises and edits the music files you already have. It needs no accounts, sends no telemetry and makes
-no network calls of its own.
+Sleeve plays, organises and edits the music files you already have. It needs no accounts and sends no telemetry. It
+uses the internet only when you ask it to: for the optional tag lookup on MusicBrainz, and when `dl.py` downloads.
 
 [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) is a separate open source tool that downloads
 music from your Spotify playlists. Sleeve's Downloads page can run it for you, and walks you through setting it up. You
@@ -37,8 +37,6 @@ The screenshots show a small made-up demo library with generated covers.
 | Library: genre folders, search and a sortable table | Downloads: the optional front end for dl.py |
 | ![Identity](docs/screenshots/identity.png) | ![Settings](docs/screenshots/settings.png) |
 | Identity: your library in words and numbers | Settings: sound, accent colour and file locations |
-| ![Docs](docs/screenshots/docs.png) | |
-| The user guide, built into the app | |
 
 ## Features
 
@@ -83,7 +81,7 @@ The screenshots show a small made-up demo library with generated covers.
 **Appearance**
 
 - Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. Switches for
-  settings, a resizable sidebar, smooth scrolling and a built-in Docs page.
+  settings, a resizable sidebar, smooth scrolling.
 
 ## Install
 
@@ -131,8 +129,8 @@ The full guide, including other ways to install, is [docs/INSTALL.md](docs/INSTA
 The first time you start Sleeve it asks which folder holds your music (you can change this later in Settings). That is
 all it needs to play. Double-click a song to play it. Space pauses and resumes. Press **Ctrl+K** to search everything.
 
-**Downloads (optional).** If you also use [playlist-sync](https://github.com/jieke238y34/playlist-sync), open the
-Downloads page: **Set up…** helps you choose the music folder and paste your Spotify playlist links. Sleeve finds
+**Downloads (optional).** On the Downloads page, **Get dl.py for me** downloads [playlist-sync](https://github.com/jieke238y34/playlist-sync)
+(`dl.py`) from GitHub into Sleeve's own folder (it asks first; you need `git`). Then **Set up…** helps you choose the music folder and paste your Spotify playlist links. Sleeve finds
 `dl.py` on its own, or you can point to it with `sleeve --dl /path/to/dl.py`.
 
 **Trust.** The first time you press a Downloads button, Sleeve shows the path and a SHA-256 fingerprint of `dl.py` and
@@ -157,8 +155,11 @@ progress.
 
 ## Privacy and safety
 
-- No accounts and no telemetry. Sleeve itself makes no network calls. The internet is only used when `dl.py`
-  downloads music for you.
+- No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used when `dl.py`
+  downloads music for you, and when you press **Find tags online** on the Health page: that sends the title and artist
+  (or file name) of the chosen songs to [MusicBrainz](https://musicbrainz.org), one song a second, after you agree.
+  Nothing is written to your files until you review the results. **Get dl.py for me** downloads playlist-sync from
+  GitHub, also only after you agree.
 - It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, likes, the `dl.py`
   trust record) and `~/.cache/sleeve` (tag cache and loudness results). Playlists you make are `.m3u8` files in
   `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME` is set, those folders are used instead.
@@ -190,6 +191,8 @@ When a text box, list or button has focus, Space and the arrows keep their norma
   seek bar and controls in your panel.
 - **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** if installed, Settings gets earbuds buttons, and Sleeve
   follows the sound when the earbuds switch.
+- **Discord and [arRPC](https://arrpc.openasar.dev/):** optional "Listening to" status for Discord, Vesktop and other
+  clients. Off until you switch it on in Settings and add your own Discord Application ID.
 - **PipeWire:** Sleeve follows your desktop's output, and Settings can pick a specific one.
 
 All of this goes through MPRIS (track information and controls) and PipeWire (the sound itself).
@@ -203,7 +206,7 @@ All of this goes through MPRIS (track information and controls) and PipeWire (th
 - **No sound:** check your output device (Settings > Play through), and run `sleeve` from a terminal to see Qt's messages.
 - **`sleeve: command not found` after installing:** add `~/.local/bin` to your PATH, or use the menu entry.
 
-More in the in-app Docs page and [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+More in the [user guide](docs/USER_GUIDE.md).
 
 ## Development
 

@@ -11,7 +11,7 @@ when they ship.
       spikes while interacting still need measuring after this build. Original notes: things to measure
       first: the gradient background and its fade animation, the smooth-scroll timers, the lyrics position updates,
       and the repaint rate of the seek bar and cover. Profile with the window shown, hidden and minimised.
-- [ ] **Health page should fill in missing tags from MusicBrainz**, without an account. The MusicBrainz web service
+- [x] **Health page should fill in missing tags from MusicBrainz**, without an account. The MusicBrainz web service
       is open for lookups; it needs a descriptive User-Agent and at most one request per second. Picard can also be
       used for fingerprint matching. Always show what would change and let the user accept it before writing tags.
 - [ ] **Sleeve must not change the PipeWire setup.** Another player (fooyin) is known for altering the sound stack.
@@ -22,15 +22,16 @@ when they ship.
 
 ## Improvements
 
-- [ ] **Better Settings menu:** group settings, search them, and explain each one in a line.
-- [ ] **Move the user guide out of the app.** Drop the Docs page from the player and keep one well-organised guide on
+- [x] (search added) **Better Settings menu:** group settings, search them, and explain each one in a line.
+- [x] **Move the user guide out of the app.** Drop the Docs page from the player and keep one well-organised guide on
       GitHub (`docs/`), cleaned up and linked from the README.
-- [ ] **Easier downloads.** dl.py is confusing to set up. Offer a plain "Download music" button for Linux users, and
+- [~] (first part: a **Get dl.py for me** button; still to do: installing its Python requirements) **Easier downloads.** dl.py is confusing to set up. Offer a plain "Download music" button for Linux users, and
       the same on Windows, which handles the setup behind the scenes.
-- [ ] **Identity that learns from listening.** Today it is worked out from tags and playlist names. Add a small,
+- [x] (first part shipped: a Listening panel of top songs this week or month, from a local history; still to do: let
+      it shape the persona and traits) **Identity that learns from listening.** Today it is worked out from tags and playlist names. Add a small,
       local, opt-in system that slowly learns from what is actually played and skipped. Keep the data on the
       computer and let the user reset it.
-- [ ] **Discord Rich Presence** through [arRPC](https://arrpc.openasar.dev/), for Vesktop and other Discord clients.
+- [x] **Discord Rich Presence** through [arRPC](https://arrpc.openasar.dev/), for Vesktop and other Discord clients.
       Opt in, off by default, and nothing is sent unless it is turned on.
 - [ ] **Optional download sources** as an opt-in service: playlist-sync, ncspot, and Spotify downloaders. Opt in,
       each one clearly named, none enabled by default.

@@ -28,7 +28,6 @@ sleeve/
   switch.py       the On/Off toggle used on the Settings page
   smoothscroll.py eased mouse-wheel scrolling and gliding to a row
   filedrop.py     accepts files dragged onto a widget (playlist import)
-  docs.py         the Docs page: renders sleeve/data/docs/*.md
   dlsetup.py      groundwork for a first-run download setup; not wired into v0.1.0
 ```
 
@@ -67,7 +66,9 @@ notices a `dl.py` started elsewhere, so it does not start a second one.
   anything.
 - **Small write surface.** The only writes are tags you save, `.m3u8` files in My Playlists, and Sleeve's own files
   under `~/.config/sleeve` and `~/.cache/sleeve`.
-- **No network.** Sleeve makes no connections of its own.
+- **Network only on request.** `sleeve/musicbrainz.py` is the one place Sleeve opens a connection: https to
+  `musicbrainz.org/ws/2/`, after the user agrees, at most one request a second, with a size cap. It only suggests
+  tags; `sleeve/tagsuggest.py` shows them and nothing is written until the user accepts.
 
 ## Design decisions
 

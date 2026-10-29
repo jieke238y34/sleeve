@@ -1,5 +1,11 @@
 # Downloads
 
+If `dl.py` is missing, the Downloads page offers **Get dl.py for me**. It asks first, then downloads
+[playlist-sync](https://github.com/jieke238y34/playlist-sync) with `git` into `~/.local/share/sleeve/playlist-sync` and
+switches the page on. Downloading does not run anything: the first time you press a download button Sleeve shows the file
+and asks whether you trust it. Then press **Set up…** to choose your music folder and paste your Spotify playlist links.
+Note that playlist-sync has its own requirements (see its README), which Sleeve does not install.
+
 The Downloads page runs `dl.py` for you, so you never need a terminal. It works with fixed buttons only. Sleeve
 never passes anything you type to the script.
 

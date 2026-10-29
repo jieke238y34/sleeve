@@ -15,7 +15,6 @@ The list on the left takes you around the app.
 | Downloads | Get new music and tidy the library |
 | Health | Songs that need attention |
 | Settings | Volume ceiling, gapless, same volume, accent colour |
-| Docs | This guide |
 
 ## Your first minute
 

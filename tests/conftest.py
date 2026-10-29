@@ -10,6 +10,14 @@ def private_likes_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def private_history_file(tmp_path, monkeypatch):
+    "No test may read or write the real ~/.config/sleeve/history.json."
+    from sleeve import history
+
+    monkeypatch.setattr(history, "HISTORY_FILE", tmp_path / "history-for-tests.json")
+
+
+@pytest.fixture(autouse=True)
 def private_settings_file(tmp_path, monkeypatch):
     "No test may read or write the real ~/.config/sleeve/settings.json."
     from sleeve import settings

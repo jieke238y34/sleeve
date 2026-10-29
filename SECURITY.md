@@ -33,7 +33,11 @@ This is the whole surface, so you can judge the risk:
 - **Starts `ffmpeg`** (if installed) to measure loudness, with fixed arguments.
 - **Writes** only: tags you save in the tag editor; `.m3u8` files in `Playlists/My Playlists`; settings, liked songs
   and the trust record under `~/.config/sleeve`; and the tag and loudness caches under `~/.cache/sleeve`.
-- **Makes no network connections** itself. The network is used only by `dl.py` when it downloads music.
+- **Makes no network connections on its own** (the two exceptions below ask first). The network is used by `dl.py` when it downloads music, and by the
+  optional **Find tags online** button, which asks you first and then sends only the title and artist (or file name) of
+  the chosen songs to `https://musicbrainz.org/ws/2/`, and the **Get dl.py for me** button runs one `git clone` of
+  playlist-sync into `~/.local/share/sleeve/playlist-sync` (nothing from it is run until you trust it) (the address is checked, the answer is size-limited, and only
+  empty tags are ever filled, after you review them).
 
 ## Practices
 
