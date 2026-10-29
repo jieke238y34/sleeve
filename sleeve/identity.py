@@ -9,6 +9,8 @@ from typing import NamedTuple
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QAbstractButton,
+    QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -16,7 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSlider,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -558,39 +560,126 @@ class Chips(QWidget):
                            Qt.AlignVCenter | Qt.AlignLeft, extra)
 
 
+class TabCard(QAbstractButton):
+    """A big elongated tab drawn like a stat card: small-caps label, large value, small note. Selected is an accent
+    tint plus a heavier accent border and an accent label, so it never relies on colour alone."""
+
+    navigate = Signal(int)                      # -1 / +1: the arrow keys ask the page to move to the other tab
+    H = 92
+
+    def __init__(self, key, label, tip):
+        super().__init__()
+        self.key, self.label, self.value, self.note, self.accent = key, label, "", "", LAVENDER
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFixedHeight(self.H)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setToolTip(tip)
+        self.toggled.connect(lambda _: self._describe())
+        self._describe()
+
+    def set_text(self, value, note):
+        self.value, self.note = value, note
+        self._describe()
+
+    def set_accent(self, accent):
+        self.accent = accent
+        self.update()
+
+    def _describe(self):
+        name = self.label.capitalize()
+        self.setAccessibleName(f"{name}, selected" if self.isChecked() else name)
+        self.setAccessibleDescription(f"{self.value}, {self.note}" if self.note else self.value)
+        self.update()
+
+    def sizeHint(self):
+        return QSize(220, self.H)
+
+    def minimumSizeHint(self):
+        return QSize(120, self.H)
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key_Left, Qt.Key_Right):
+            self.navigate.emit(-1 if e.key() == Qt.Key_Left else 1)
+        elif e.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.click()
+        else:
+            super().keyPressEvent(e)
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        on, hover = self.isChecked(), self.underMouse()
+        r = QRectF(self.rect())
+        edge = 2.0 if on else 1.0
+        p.setBrush(_rgba(self.accent, 46) if on else QColor(255, 255, 255, 30 if hover else 16))
+        p.setPen(QPen(QColor(self.accent) if on else QColor(255, 255, 255, 60 if hover else 22), edge))
+        p.drawRoundedRect(r.adjusted(edge / 2, edge / 2, -edge / 2, -edge / 2), 16, 16)
+        if self.hasFocus():                                    # the keyboard ring sits just inside the border
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor(TEXT), 1.5, Qt.DashLine))
+            p.drawRoundedRect(r.adjusted(5, 5, -5, -5), 12, 12)
+        x, w = 24, self.width() - 48
+        f = QFont(self.font())
+        f.setPointSizeF(8.5)
+        f.setBold(True)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.4)
+        p.setFont(f)
+        p.setPen(QColor(self.accent) if on else QColor(MUTED))
+        p.drawText(QRectF(x, 12, w, 18), Qt.AlignLeft | Qt.AlignVCenter, self.label.upper())
+        f = QFont(self.font())
+        f.setPointSizeF(20)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor(TEXT))
+        p.drawText(QRectF(x, 30, w, 34), Qt.AlignLeft | Qt.AlignVCenter,
+                   p.fontMetrics().elidedText(self.value, Qt.ElideRight, int(w)))
+        f = QFont(self.font())
+        f.setPointSizeF(9)
+        p.setFont(f)
+        p.setPen(QColor(MUTED))
+        p.drawText(QRectF(x, 64, w, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                   p.fontMetrics().elidedText(self.note, Qt.ElideRight, int(w)))
+
+    def enterEvent(self, e):
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self.update()
+        super().leaveEvent(e)
+
+
 class ListeningCard(Card):
-    """Your top songs of the last week or month, from what was really played. A two-stop slider (or its two labels)
-    picks the period, and the heading, the list and the total all follow it."""
+    """Your top songs of the last week or month, from what was really played. A two-pill control picks the period,
+    and the heading, the list, the total and the Listening tab's headline all follow it."""
 
     periodChanged = Signal(str)
+    summaryChanged = Signal(str, str)           # headline and note for the Listening tab
     NAMES = {"week": "this week", "month": "this month"}
     ROWS, MAX_ROWS = 10, 25                     # shown at first, and after pressing Show more
 
     def __init__(self):
-        super().__init__("Listening")
+        super().__init__()
         self.accent = LAVENDER
         self.period = "week"
         self.heading = _label("", 15, bold=True)
         self.box.addWidget(self.heading)
         pick = QHBoxLayout()
+        pick.setSpacing(6)
         self.week_btn, self.month_btn = QPushButton("This week"), QPushButton("This month")
-        for b in (self.week_btn, self.month_btn):
-            b.setFlat(True)
-            b.setFocusPolicy(Qt.TabFocus)
+        for b, key, tip in ((self.week_btn, "week", "Your top songs from the last 7 days"),
+                            (self.month_btn, "month", "Your top songs from the last 30 days")):
+            b.setObjectName("seg")                  # the same pill look as Songs | Albums in the Library
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
             b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet("QPushButton { background: transparent; padding: 2px 6px; } "
-                            "QPushButton:hover { background: transparent; }")
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(0, 1)
-        self.slider.setPageStep(1)
-        self.slider.setFixedWidth(64)
-        self.slider.setAccessibleName("Top songs period: this week or this month")
-        self.slider.valueChanged.connect(lambda v: self._choose("month" if v else "week"))
-        self.week_btn.clicked.connect(lambda: self.slider.setValue(0))
-        self.month_btn.clicked.connect(lambda: self.slider.setValue(1))
-        pick.addWidget(self.week_btn)
-        pick.addWidget(self.slider)
-        pick.addWidget(self.month_btn)
+            b.setToolTip(tip)
+            b.setAccessibleName(f"Show top songs {self.NAMES[key]}")
+            b.clicked.connect(lambda _=False, k=key: self._choose(k))
+            pick.addWidget(b)
+        self.week_btn.setChecked(True)
         pick.addStretch(1)
         self.box.addLayout(pick)
         self.rows = QVBoxLayout()
@@ -608,7 +697,6 @@ class ListeningCard(Card):
         self.box.addLayout(more_row)
         self.total = _label("", 10, MUTED, wrap=True)
         self.box.addWidget(self.total)
-        self._style_picker()
 
     def _toggle_more(self):
         self.expanded = not self.expanded
@@ -617,30 +705,27 @@ class ListeningCard(Card):
     def _choose(self, period):
         if period != self.period:
             self.period = period
-            self._style_picker()
+            self.set_data(*self._data)              # the tab and heading follow at once; the app then reloads the rows
             self.periodChanged.emit(period)
 
     def set_period(self, period):
         "Show this period without announcing it (used when the saved choice is loaded)."
         self.period = period if period in self.NAMES else "week"
-        self.slider.blockSignals(True)
-        self.slider.setValue(1 if self.period == "month" else 0)
-        self.slider.blockSignals(False)
-        self._style_picker()
+        (self.month_btn if self.period == "month" else self.week_btn).setChecked(True)
+        self._summarise()
 
-    def _style_picker(self):
-        for btn, key in ((self.week_btn, "week"), (self.month_btn, "month")):
-            on = key == self.period
-            btn.setStyleSheet(f"QPushButton {{ background: transparent; padding: 2px 6px; "
-                              f"color: {self.accent if on else MUTED}; font-weight: {700 if on else 400}; }}")
+    def _summarise(self):
+        _, seconds, enabled = self._data
+        self.summaryChanged.emit(_span(seconds) if enabled and seconds > 0 else "Nothing yet",
+                                 "history is off" if not enabled else self.NAMES[self.period])
 
     def set_accent(self, accent):
         self.accent = accent
-        self._style_picker()
 
     def set_data(self, rows, seconds, enabled=True):
         "rows: [(title, artist, plays)], most played first; seconds: listened in the period; enabled: history is on."
         self._data = (rows, seconds, enabled)
+        self._summarise()
         name = self.NAMES[self.period]
         shown = self.MAX_ROWS if self.expanded else self.ROWS
         self.more_btn.setVisible(enabled and len(rows) > self.ROWS)
@@ -648,7 +733,10 @@ class ListeningCard(Card):
         while self.rows.count():
             item = self.rows.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                old = item.widget()
+                old.hide()                          # gone from the screen now, not when the event loop gets to it
+                old.setParent(None)
+                old.deleteLater()
         if not enabled:
             self.heading.setText("Listening history is off")
             self.total.setText("Turn on 'Remember what I listen to' in Settings and your top songs will appear here. "
@@ -676,7 +764,11 @@ class ListeningCard(Card):
 
 
 class IdentityPage(QWidget):
-    "The Identity page: a persona, trait meters, big numbers, charts, languages, moods and honest caveats."
+    """The Identity page: two big tabs on top, Identity (a persona, trait meters, big numbers, charts, languages,
+    moods and honest caveats) and Listening (your top songs of the week or month). One shows at a time."""
+
+    tabChanged = Signal(str)                    # "identity" or "listening", when the person picks one
+    TABS = ("identity", "listening")
 
     def __init__(self):
         super().__init__()
@@ -699,6 +791,38 @@ class IdentityPage(QWidget):
         col.setContentsMargins(30, 26, 30, 30)
         col.setSpacing(18)
 
+        tabs = QHBoxLayout()
+        tabs.setSpacing(16)
+        self.tab_identity = TabCard("identity", "Identity", "Your library in words and numbers")
+        self.tab_listening = TabCard("listening", "Listening", "Your top songs and listening time")
+        self.tab_group = QButtonGroup(self)             # exactly one tab is always on
+        self.tab_group.setExclusive(True)
+        for i, t in enumerate((self.tab_identity, self.tab_listening)):
+            self.tab_group.addButton(t, i)
+            t.navigate.connect(self._step_tab)
+            tabs.addWidget(t, 1)
+        self.tab_identity.setChecked(True)
+        self.tab_listening.set_text("Nothing yet", ListeningCard.NAMES["week"])
+        self.tab_group.idClicked.connect(lambda i: self.set_tab(self.TABS[i], announce=True))
+        col.addLayout(tabs)
+
+        self.views = QStackedWidget()
+        col.addWidget(self.views)
+        ident = QWidget()
+        self.views.addWidget(ident)
+        listen = QWidget()
+        self.views.addWidget(listen)
+        self.views.currentChanged.connect(self._fit_views)
+        lcol = QVBoxLayout(listen)
+        lcol.setContentsMargins(0, 0, 0, 0)
+        self.listening = ListeningCard()
+        self.listening.summaryChanged.connect(self.set_listening_summary)
+        lcol.addWidget(self.listening)
+        lcol.addStretch(1)
+        outer_col, col = col, QVBoxLayout(ident)        # the Identity cards below go into the first view
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(18)
+
         hero = self.hero = Card()
         hero.box.setContentsMargins(30, 26, 30, 28)
         hero.box.setSpacing(6)
@@ -711,9 +835,6 @@ class IdentityPage(QWidget):
         hero.box.addSpacing(10)
         hero.box.addWidget(self.lead)
         col.addWidget(hero)
-
-        self.listening = ListeningCard()
-        col.addWidget(self.listening)
 
         card = Card("Traits")
         grid = QGridLayout()
@@ -798,11 +919,45 @@ class IdentityPage(QWidget):
         self.notes.setContentsMargins(6, 4, 6, 0)
         col.addWidget(self.notes)
         col.addStretch(1)
+        outer_col.addStretch(1)
+        self._fit_views()
         self._paint()
+
+    def _fit_views(self):
+        "Only the shown view counts towards the page height, so the short one does not inherit the tall one's scroll."
+        for i in range(self.views.count()):
+            self.views.widget(i).setSizePolicy(QSizePolicy.Preferred,
+                                               QSizePolicy.Preferred if i == self.views.currentIndex()
+                                               else QSizePolicy.Ignored)
+        self.views.updateGeometry()
+
+    def tab(self):
+        return self.TABS[self.views.currentIndex()]
+
+    def set_tab(self, key, announce=False):
+        "Show the Identity or the Listening view; announce tells the app to remember the choice."
+        key = key if key in self.TABS else "identity"
+        i = self.TABS.index(key)
+        self.tab_group.button(i).setChecked(True)
+        changed = self.views.currentIndex() != i
+        self.views.setCurrentIndex(i)
+        if announce and changed:
+            self.tabChanged.emit(key)
+
+    def _step_tab(self, step):
+        "Left and Right move to the other tab and keep the keyboard focus on it."
+        i = max(0, min(len(self.TABS) - 1, self.views.currentIndex() + step))
+        self.set_tab(self.TABS[i], announce=True)
+        self.tab_group.button(i).setFocus(Qt.TabFocusReason)
+
+    def set_listening_summary(self, headline, note):
+        self.tab_listening.set_text(headline, note)
 
     def set_accent(self, accent):
         self.accent = accent
         self.listening.set_accent(accent)
+        for t in (self.tab_identity, self.tab_listening):
+            t.set_accent(accent)
         self._paint()
 
     def set_library(self, songs, liked_paths=(), playlist_names=()):
@@ -812,6 +967,7 @@ class IdentityPage(QWidget):
     def _paint(self):
         p, a = self.identity, self.accent
         self.persona_title.setText(p.persona.title)
+        self.tab_identity.set_text(p.persona.title, _plural(p.songs, "song") if p.songs else "your library in words")
         self.persona_title.setStyleSheet(f"color: {a}; background: transparent; font-size: 30pt; font-weight: 700;")
         self.persona_tag.setText(p.persona.tagline)
         self.lead.setText(" ".join(p.words))
@@ -843,7 +999,7 @@ class IdentityPage(QWidget):
         self.script_card.setVisible(bool(p.scripts))
         self.mood_card.setVisible(bool(p.moods))
         for card in self.findChildren(Card):                  # an empty library shows only the welcome, no empty boxes
-            if card not in (self.hero, self.script_card, self.mood_card):
+            if card not in (self.hero, self.script_card, self.mood_card, self.listening):
                 card.setVisible(p.songs > 0)
         notes = []
         if p.no_genre_share >= CAVEAT_SHARE:

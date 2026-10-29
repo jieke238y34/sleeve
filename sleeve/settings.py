@@ -35,6 +35,7 @@ DEFAULTS = {
     "cover_size": 520,                 # the biggest the cover gets on the Now Playing page, in pixels
     "track_listening": True,           # remember what was played (stays on this computer); feeds the Identity panel
     "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
+    "identity_tab": "identity",        # "identity" or "listening": which tab of the Identity page was open
     "online_lookup_ok": False,         # the user agreed that tags may be looked up on musicbrainz.org
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
@@ -56,6 +57,8 @@ def _valid(key, value):
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
     if key == "identity_period":
         return value in ("week", "month")
+    if key == "identity_tab":
+        return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok"):
         return isinstance(value, bool)

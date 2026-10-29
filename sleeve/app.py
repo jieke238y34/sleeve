@@ -333,6 +333,8 @@ class MainWindow(QMainWindow):
         self.identity_page = identity.IdentityPage()
         self.identity_page.set_accent(self._accent_shown)
         self.identity_page.listening.periodChanged.connect(self._listening_period_changed)
+        self.identity_page.set_tab(self.settings.identity_tab)
+        self.identity_page.tabChanged.connect(lambda key: self._set_setting("identity_tab", key))
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
                            ("Library", self._library_page()), ("Identity", self.identity_page),
                            ("Downloads", self._downloads_page()), ("Health", self._health_page()),

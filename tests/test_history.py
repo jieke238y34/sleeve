@@ -82,7 +82,7 @@ def test_old_plays_are_dropped_and_the_size_is_capped(tmp_path):
     assert len(h.events) == history.MAX_EVENTS
 
 
-def test_the_panel_follows_the_slider(qapp):  # noqa: F811
+def test_the_panel_follows_the_period_pills(qapp):  # noqa: F811
     card = identity.ListeningCard()
     seen = []
     card.periodChanged.connect(lambda p: seen.append(p))
@@ -90,15 +90,16 @@ def test_the_panel_follows_the_slider(qapp):  # noqa: F811
     assert card.heading.text() == "Your top songs this week"
     assert "1.5 hours" in card.total.text() and "this week" in card.total.text()
     assert card.rows.count() == 2
-    card.slider.setValue(1)                                       # the slider
-    assert seen == ["month"] and card.period == "month"
+    card.month_btn.click()                                        # the pill
+    assert seen == ["month"] and card.period == "month" and card.month_btn.isChecked()
+    assert card.heading.text() == "Your top songs this month"
     card.set_data([], 0, True)
     assert card.heading.text() == "Nothing played this month yet" and card.rows.count() == 0
-    card.month_btn.click()                                        # clicking the label that is already chosen does nothing
-    card.week_btn.click()                                         # the label
+    card.month_btn.click()                                        # clicking the pill that is already chosen does nothing
+    card.week_btn.click()
     assert seen == ["month", "week"]
     card.set_period("month")                                      # loading the saved choice is silent
-    assert card.slider.value() == 1 and seen == ["month", "week"]
+    assert card.month_btn.isChecked() and seen == ["month", "week"]
     card.set_data([("x", "y", 1)], 60, False)
     assert card.heading.text() == "Listening history is off" and card.rows.count() == 0
 
@@ -171,7 +172,7 @@ def test_listening_can_be_switched_off_and_cleared(qapp, cfg, monkeypatch, tmp_p
 def test_the_chosen_period_is_saved(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        win.identity_page.listening.slider.setValue(1)
+        win.identity_page.listening.month_btn.click()
         assert win.settings.identity_period == "month"
         assert settings.Settings(win.settings.file).identity_period == "month"
         assert not win.settings.set("identity_period", "year") and win.settings.identity_period == "month"
@@ -191,3 +192,106 @@ def test_the_panel_shows_ten_songs_and_up_to_twenty_five_on_request(qapp):  # no
     assert card.rows.count() == 10
     card.set_data([("Only", "One", 1)], 60, True)                      # a short list has nothing to expand
     assert card.rows.count() == 1 and card.more_btn.isHidden()
+
+
+# --- the Identity / Listening tabs ----------------------------------------------------------------------------------
+
+def _page():
+    from PySide6.QtWidgets import QApplication  # noqa: F401
+    page = identity.IdentityPage()
+    page.resize(1000, 700)
+    page.show()
+    return page
+
+
+def test_there_are_two_exclusive_tabs_and_each_shows_its_own_view(qapp):  # noqa: F811
+    page = _page()
+    tabs = page.findChildren(identity.TabCard)
+    assert len(tabs) == 2 and page.tab_identity.isChecked() and not page.tab_listening.isChecked()
+    assert page.views.currentIndex() == 0 and page.tab() == "identity"
+    seen = []
+    page.tabChanged.connect(seen.append)
+    page.tab_listening.click()
+    assert page.tab_listening.isChecked() and not page.tab_identity.isChecked()
+    assert page.views.currentIndex() == 1 and page.tab() == "listening" and seen == ["listening"]
+    page.tab_listening.click()                                    # the chosen tab stays chosen
+    assert page.tab_listening.isChecked() and seen == ["listening"]
+    page.set_tab("identity")                                      # set from code is silent
+    assert page.views.currentIndex() == 0 and page.tab_identity.isChecked() and seen == ["listening"]
+    page.set_tab("nonsense")
+    assert page.tab() == "identity"
+
+
+def test_the_tabs_work_from_the_keyboard_and_have_names(qapp):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    page = _page()
+    a, b = page.tab_identity, page.tab_listening
+    assert a.accessibleName() == "Identity, selected" and b.accessibleName() == "Listening"
+    assert a.toolTip() and b.toolTip() and a.cursor().shape() == Qt.PointingHandCursor
+    assert a.focusPolicy() != Qt.NoFocus and b.focusPolicy() != Qt.NoFocus
+    a.setFocus()
+    QTest.keyClick(a, Qt.Key_Right)
+    assert b.isChecked() and page.views.currentIndex() == 1 and page.focusWidget() is b
+    assert b.accessibleName() == "Listening, selected" and a.accessibleName() == "Identity"
+    QTest.keyClick(b, Qt.Key_Right)                               # no wrap past the end
+    assert b.isChecked()
+    QTest.keyClick(b, Qt.Key_Left)
+    assert a.isChecked() and page.focusWidget() is a and page.views.currentIndex() == 0
+    a.setFocus()
+    QTest.keyClick(a, Qt.Key_Right)
+    QTest.keyClick(b, Qt.Key_Left)
+    assert a.isChecked()
+    b.setFocus()
+    QTest.keyClick(b, Qt.Key_Space)                               # Space and Enter select the focused tab
+    assert b.isChecked() and page.views.currentIndex() == 1
+    a.setFocus()
+    QTest.keyClick(a, Qt.Key_Return)
+    assert a.isChecked() and page.views.currentIndex() == 0
+
+
+def test_the_listening_tab_headline_follows_the_period(qapp):  # noqa: F811
+    page = _page()
+    tab = page.tab_listening
+    assert tab.value == "Nothing yet" and tab.note == "this week"
+    page.listening.set_data([("Song A", "Artist", 4)], 5400, True)
+    assert tab.value == "1.5 hours" and tab.note == "this week"
+    page.listening.month_btn.click()
+    assert tab.note == "this month"
+    page.listening.set_data([], 0, True)
+    assert tab.value == "Nothing yet" and tab.note == "this month"
+    page.listening.set_data([], 600, False)
+    assert tab.value == "Nothing yet" and tab.note == "history is off"
+    page.listening.set_period("week")
+    page.listening.set_data([("x", "y", 1)], 600, True)
+    assert tab.value == "10 min" and tab.note == "this week"
+
+
+def test_an_empty_library_still_opens_the_listening_tab(qapp):  # noqa: F811
+    page = _page()
+    page.set_library([])
+    assert not page.listening.isHidden() or page.views.currentIndex() == 0
+    assert page.tab_identity.value == "The Blank Page"
+    page.tab_listening.click()
+    assert page.views.currentIndex() == 1 and page.listening.isVisible()
+    page.listening.set_data([], 0, True)
+    assert page.listening.heading.text() == "Nothing played this week yet"
+    page.tab_identity.click()
+    assert page.hero.isVisible()
+
+
+def test_the_chosen_tab_is_saved_and_restored(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.settings.identity_tab == "identity" and win.identity_page.tab() == "identity"
+        win.identity_page.tab_listening.click()
+        assert win.settings.identity_tab == "listening"
+        assert settings.Settings(win.settings.file).identity_tab == "listening"
+        assert not win.settings.set("identity_tab", "other") and win.settings.identity_tab == "listening"
+    finally:
+        win.close()
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.identity_page.tab() == "listening" and win.identity_page.tab_listening.isChecked()
+    finally:
+        win.close()
