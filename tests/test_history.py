@@ -295,3 +295,24 @@ def test_the_chosen_tab_is_saved_and_restored(qapp, cfg, monkeypatch, tmp_path):
         assert win.identity_page.tab() == "listening" and win.identity_page.tab_listening.isChecked()
     finally:
         win.close()
+
+
+def test_a_short_seek_is_not_counted_as_listening(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    "Found in opencode's review: a seek of under two seconds was counted as listening time."
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        song = win.songs[0]
+        win._on_track(0, song.path)
+        win._current_path, win._dur, win._is_playing, win._pos = song.path, 200.0, True, 5.0
+        win._on_position(5.5)                                   # ordinary listening: half a second counts
+        assert win._listened == 0.5
+        win._seek_now(7.0)                                      # the user skips ahead 1.5 s
+        win._on_position(7.0)
+        assert win._listened == 0.5 and win._pos == 7.0         # not listening time
+        win._on_position(7.5)
+        assert win._listened == 1.0                             # listening goes on counting afterwards
+        win._seeking = False
+        win._seek_moved(150)                                    # a click on the seek bar goes the same way
+        assert win._seeking is True
+    finally:
+        win.close()

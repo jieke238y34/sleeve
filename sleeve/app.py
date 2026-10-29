@@ -313,6 +313,7 @@ class MainWindow(QMainWindow):
         self.songs, self.by_path = [], {}
         self.folder = ALL
         self._dragging = False
+        self._seeking = False                               # a player seek is not listening time
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
@@ -2663,22 +2664,29 @@ class MainWindow(QMainWindow):
 
     def _seek_released(self):
         self._dragging = False
-        self.player.seek(self.seek.value() / 10)
+        self._seek_now(self.seek.value() / 10)
+
+    def _seek_now(self, seconds):
+        "Move the playhead and flag the next position report, so a short seek is not counted as listening."
+        self._seeking = True
+        self.player.seek(seconds)
 
     def _seek_moved(self, value):
         "A change not made by the position feed (that one blocks signals) or a drag (applied on release)."
         if not self._dragging:
-            self.player.seek(value / 10)
+            self._seek_now(value / 10)
 
     def _seek_by(self, delta):
         if self.player.current():
             target = max(0.0, self._pos + delta)
-            self.player.seek(min(target, self._dur) if self._dur > 0 else target)
+            self._seek_now(min(target, self._dur) if self._dur > 0 else target)
 
     def _on_position(self, pos):
         "The player reports about ten times a second; the seek bar only needs to move about five times a second."
         jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
-        self._count_listening(self._pos, pos)
+        seeked, self._seeking = self._seeking, False
+        if not seeked:
+            self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
         if jumped:
             self._update_presence()                          # a seek moves Discord's progress bar too
