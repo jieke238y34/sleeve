@@ -20,6 +20,7 @@ def test_a_stamped_build_shows_its_revision(monkeypatch):
 
 
 def test_a_release_build_without_a_stamp_is_just_the_version(monkeypatch, tmp_path):
+    monkeypatch.delattr(sleeve, "_build", raising=False)              # a stamp this machine may have
     monkeypatch.setitem(sys.modules, "sleeve._build", None)           # makes "from . import _build" fail
     monkeypatch.setattr(sleeve, "__file__", str(tmp_path / "sleeve" / "__init__.py"))   # and no git checkout around it
     assert sleeve.build_info() is None
@@ -27,6 +28,7 @@ def test_a_release_build_without_a_stamp_is_just_the_version(monkeypatch, tmp_pa
 
 
 def test_a_development_checkout_asks_git(monkeypatch):
+    monkeypatch.delattr(sleeve, "_build", raising=False)
     monkeypatch.setitem(sys.modules, "sleeve._build", None)
     info = sleeve.build_info()                                         # these tests run in a git checkout
     assert info is not None and info[0] >= 1 and len(info[1]) >= 7 and isinstance(info[2], bool)

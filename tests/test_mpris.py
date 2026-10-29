@@ -12,7 +12,8 @@ from sleeve import mpris
 
 BUSCTL = shutil.which("busctl")
 pytestmark = pytest.mark.skipif(
-    not QDBusConnection.sessionBus().isConnected() or not BUSCTL, reason="needs a session bus and busctl")
+    not os.environ.get("DBUS_SESSION_BUS_ADDRESS") or not QDBusConnection.sessionBus().isConnected() or not BUSCTL,
+    reason="needs a session bus and busctl")                       # a CI machine has neither
 
 
 class FakePlayer(QObject):

@@ -11,7 +11,8 @@ Tests run headless: `tests/conftest.py` sets `QT_QPA_PLATFORM=offscreen`. The pl
 `tests/test_player.py` play generated WAV files through the real Qt backend and are skipped if no audio backend works
 on the machine.
 
-CI (`.github/workflows/ci.yml`) runs `ruff check .`, the tests on Ubuntu and Windows with Python 3.10, 3.12 and 3.13,
+CI (`.github/workflows/ci.yml`) runs `ruff check .`, the tests on Ubuntu with Python 3.10, 3.12 and 3.13 (the D-Bus tests are skipped without a session bus, so a second
+step runs them under `dbus-run-session`),
 and a package build. `.github/workflows/security.yml` runs bandit, pip-audit and CodeQL, and weekly on Mondays.
 
 ## What the tests cover

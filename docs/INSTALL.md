@@ -77,8 +77,8 @@ change. Otherwise Sleeve refuses to run it. Sleeve runs it only when you press a
 ## Not available yet
 
 - **Fedora package.** The spec and metadata are in [packaging/](../packaging/README.md), but nothing is published.
-- **Windows.** A Windows build and installer are planned. CI runs the tests on Windows, but the app is only used and
-  tested by hand on Linux.
+- **Windows.** Sleeve is Linux-only for now: its media-key and desktop integration use D-Bus, which Qt's
+  Windows build does not include. A Windows version is planned, and CI will test it once it exists.
 - **PyPI.** Sleeve is not published there.
 
 ## Troubleshooting installs

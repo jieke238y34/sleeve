@@ -145,7 +145,8 @@ def test_default_files_and_needs_setup(dl, tmp_path):
     assert dlsetup.needs_setup(SimpleNamespace(dl_path=None)) == ["dl.py was not found"]
     music = tmp_path / "Music"
     cfg = config.load(dl / "dl.py")
-    assert len(dlsetup.needs_setup(cfg)) == 2  # no config.ini, no playlists (~/Music may exist)
+    todo = dlsetup.needs_setup(cfg)                                  # ~/Music may or may not exist on this machine
+    assert "config.ini does not exist yet" in todo and "no playlists to download are added" in todo
     written = dlsetup.write_default_files(dl / "dl.py", music)
     assert [w.name for w in written] == ["config.ini", "playlists.txt"]
     assert stat.S_IMODE((dl / "config.ini").stat().st_mode) == 0o600
