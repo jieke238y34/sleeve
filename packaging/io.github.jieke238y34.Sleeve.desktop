@@ -9,3 +9,16 @@ Terminal=false
 Categories=AudioVideo;Audio;Player;Qt;
 Keywords=music;player;library;playlist;
 StartupWMClass=sleeve
+Actions=PlayPause;Next;Previous;
+
+[Desktop Action PlayPause]
+Name=Play / Pause
+Exec=sleeve --play-pause
+
+[Desktop Action Next]
+Name=Next song
+Exec=sleeve --next
+
+[Desktop Action Previous]
+Name=Previous song
+Exec=sleeve --previous

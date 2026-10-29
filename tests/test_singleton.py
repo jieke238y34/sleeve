@@ -40,6 +40,33 @@ def test_a_second_launch_asks_the_first_to_come_forward():
     assert singleton.already_running(name) is False                       # closed again: free for the next one
 
 
+def test_a_second_launch_can_hand_over_a_command():
+    app()
+    name = f"sleeve-test-cmd-{os.getpid()}"
+    server = singleton.InstanceServer(name)
+    got, raised = [], []
+    server.commandReceived.connect(lambda word: got.append(word))
+    server.raiseRequested.connect(lambda: raised.append(1))
+    assert server.start()
+    try:
+        for word in ("next", "playpause", "previous", "toggle"):
+            assert singleton.already_running(name, command=word) is True
+            pump()
+        assert got == ["next", "playpause", "previous", "toggle"] and raised == []
+        from PySide6.QtNetwork import QLocalSocket
+
+        sock = QLocalSocket()
+        sock.connectToServer(name)
+        assert sock.waitForConnected(500)
+        sock.write(b"quit\n")                                              # not one of the commands
+        sock.flush()
+        sock.waitForBytesWritten(500)
+        pump()
+        assert got == ["next", "playpause", "previous", "toggle"]
+    finally:
+        server.server.close()
+
+
 def test_the_server_ignores_anything_but_raise():
     from PySide6.QtNetwork import QLocalSocket
 

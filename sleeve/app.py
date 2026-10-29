@@ -7,8 +7,21 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QPoint, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEvent,
+    QModelIndex,
+    QPoint,
+    QProcess,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -56,6 +69,7 @@ from . import (
     desktop,
     dlsetup,
     docs,
+    earbuds,
     filedrop,
     full_version,
     health,
@@ -915,6 +929,33 @@ class MainWindow(QMainWindow):
                                      "measures the rest in the background if ffmpeg is installed.")
         lay.addWidget(self.same_volume_hint)
 
+        row = QHBoxLayout()
+        self.output_box = QComboBox()
+        self.output_box.setMinimumContentsLength(24)
+        self._devices = QMediaDevices(self)                 # outputs come and go (earbuds, HDMI): keep the list current
+        self._devices.audioOutputsChanged.connect(self._fill_outputs)
+        self._fill_outputs()
+        self.output_box.activated.connect(self._output_chosen)
+        row.addWidget(QLabel("Play through"))
+        row.addWidget(self.output_box, 1)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("Sleeve plays through PipeWire. Leave this on the system default to follow your desktop's "
+                           "sound settings, including Bluetooth earbuds switching on and off."))
+        self.earbuds_frame = QWidget()
+        eb = QHBoxLayout(self.earbuds_frame)
+        eb.setContentsMargins(0, 0, 0, 0)
+        eb.addWidget(QLabel("Earbuds (Maid BT)"))
+        for action, label in earbuds.ACTIONS.items():
+            button = QPushButton(label)
+            button.clicked.connect(lambda _=False, a=action: self._earbuds(a))
+            eb.addWidget(button)
+        self.earbuds_note = QLabel("")
+        self.earbuds_note.setObjectName("muted")
+        eb.addWidget(self.earbuds_note, 1)
+        self.earbuds_frame.setVisible(earbuds.find_script() is not None)
+        lay.addWidget(self.earbuds_frame)
+
         section("Look")
         row = QHBoxLayout()
         self.accent_box = QComboBox()
@@ -1310,6 +1351,53 @@ class MainWindow(QMainWindow):
         dlg.enqueue.connect(lambda paths: self.player.enqueue(paths))
         dlg.play_next.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         dlg.show()
+
+    def _fill_outputs(self):
+        "List the sound outputs PipeWire offers; keep the chosen one selected."
+        wanted = self.settings.output_device
+        self.output_box.blockSignals(True)
+        self.output_box.clear()
+        self.output_box.addItem("System default", "")
+        for dev in QMediaDevices.audioOutputs():
+            self.output_box.addItem(dev.description(), bytes(dev.id()).decode("utf-8", "replace"))
+        index = self.output_box.findData(wanted)
+        self.output_box.setCurrentIndex(max(index, 0))      # a chosen output that is gone shows as the default
+        self.output_box.blockSignals(False)
+
+    def _output_chosen(self, index):
+        device = self.output_box.itemData(index) or ""
+        self._set_setting("output_device", device)
+        self.player.set_output(device)
+
+    def _earbuds(self, action):
+        cmd = earbuds.command(action)
+        if cmd is None:
+            self.earbuds_note.setText("Maid BT was not found")
+            return
+        proc = QProcess(self)
+        proc.finished.connect(lambda code, _status, p=proc: self._earbuds_done(p, code))
+        proc.errorOccurred.connect(lambda _err, p=proc: self._earbuds_done(p, -1))
+        self.earbuds_note.setText("Working…")
+        self._earbuds_proc = proc
+        proc.start(cmd[0], cmd[1:])
+
+    def _earbuds_done(self, proc, code):
+        self.earbuds_note.setText("Done" if code == 0 else "Maid BT reported a problem")
+        proc.deleteLater()
+
+    def run_command(self, name):
+        "What `sleeve --toggle`, `--play-pause`, `--next`, `--previous` ask of the open window."
+        if name == "playpause":
+            self.player.toggle()
+        elif name == "next":
+            self.player.next()
+        elif name == "previous":
+            self.player.prev()
+        elif name == "toggle":
+            if self.isActiveWindow() and self.isVisible():
+                self.showMinimized()
+            else:
+                self.raise_window()
 
     def _fill_albums(self):
         self.album_grid.set_songs(list(self.model.songs))
@@ -2402,10 +2490,22 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
     ap.add_argument("--version", action="version", version=f"sleeve {full_version()}")
+    ctl = ap.add_argument_group("control a running Sleeve (for shortcuts, launchers and scripts)")
+    ctl.add_argument("--toggle", action="store_true", help="show Sleeve, or minimise it when it is in front")
+    ctl.add_argument("--play-pause", dest="playpause", action="store_true", help="play or pause")
+    ctl.add_argument("--next", action="store_true", help="next song")
+    ctl.add_argument("--previous", action="store_true", help="previous song")
     args = ap.parse_args(argv)
+    command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
+    # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
+    os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
+                                        "application.icon_name=io.github.jieke238y34.Sleeve")
     app = QApplication(sys.argv[:1])
-    if singleton.already_running():                  # Sleeve is open already and has been told to come forward
+    if singleton.already_running(command=command):   # Sleeve is open already and has been given the command
         return 0
+    if command in ("playpause", "next", "previous"):
+        print("Sleeve is not running.", file=sys.stderr)
+        return 1
     app.setApplicationName("Sleeve")
     app.setDesktopFileName("io.github.jieke238y34.Sleeve")
     app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")))
@@ -2414,6 +2514,7 @@ def main(argv=None):
     instance = singleton.InstanceServer(parent=win)             # a later launch brings this window forward
     if instance.start():
         instance.raiseRequested.connect(win.raise_window)
+        instance.commandReceived.connect(win.run_command)
     attach_media_keys(win, app)
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()

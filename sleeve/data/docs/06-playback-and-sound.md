@@ -49,3 +49,22 @@ Sleeve shows up in KDE Connect with no setup. Pair your phone with KDE Connect, 
 for this computer, and Sleeve appears in the phone's media remote: play, pause, next, previous, seek, volume, and the
 current song with its cover. The Plasma media widget and lock screen controls show the same thing. The sound itself
 still plays on the computer.
+
+## Sound output (PipeWire)
+
+Sleeve plays through PipeWire and labels its stream as music, so rules in WirePlumber can recognise it. In Settings,
+"Play through" lets you pick an output; leave it on the system default to follow your desktop. When an output
+appears or disappears (Bluetooth earbuds, HDMI), Sleeve moves over to the right one and keeps playing.
+
+PipeWire carries the sound only. The song name, cover and play/pause buttons are shared with the desktop through MPRIS,
+which is what the media keys, KDE Connect and the PlasMusic Toolbar panel widget read. Both are needed.
+
+## Work with other tools
+
+- **PlasMusic Toolbar:** pick Sleeve as its source. Title, artist, album, cover, seek bar, shuffle, repeat and volume
+  all work.
+- **Maid BT:** if its `bluetooth-toggle.sh` is installed, Settings shows Use earbuds, Hand to phone and Turn off
+  buttons. When Maid BT pauses sound on screen lock, Sleeve pauses too.
+- **Maid Runner and other launchers:** right-click Sleeve for Play / Pause, Next song and Previous song. From a
+  terminal or a shortcut, `sleeve --play-pause`, `sleeve --next`, `sleeve --previous` and `sleeve --toggle` control the
+  open Sleeve.

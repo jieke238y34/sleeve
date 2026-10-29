@@ -9,7 +9,7 @@ import random
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QObject, QTimer, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QtAudio
+from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer, QtAudio
 
 from . import loudness
 from .library import AUDIO_EXT
@@ -94,6 +94,9 @@ class Player(QObject):
         self._cur = 0                      # the slot that is playing; the other one is loaded with the next song
         self._plan = None                  # (index now, index of the song after it or None)
         self._clock = QElapsedTimer()      # time since the last position report, to aim the hand-over precisely
+        self.output_id = ""                # "": follow the system default output; otherwise a device id
+        self._devices = QMediaDevices(self)   # PipeWire/WirePlumber add, remove and re-default outputs (earbuds on/off)
+        self._devices.audioOutputsChanged.connect(self._reroute)
         self._switch_timer = QTimer(self)
         self._switch_timer.setSingleShot(True)
         self._switch_timer.timeout.connect(self._switch)
@@ -123,8 +126,31 @@ class Player(QObject):
         self.max_gain = settings.max_volume / 100
         self.gapless = settings.gapless
         self.same_volume = settings.same_volume
+        self.output_id = settings.output_device
+        self._reroute()
         self.set_volume(settings.volume)
         self._replan()
+
+    def set_output(self, device_id):
+        "Play through this output (an id from QMediaDevices), or '' for the system default."
+        self.output_id = device_id
+        self._reroute()
+
+    def _output_device(self):
+        if self.output_id:
+            for dev in QMediaDevices.audioOutputs():
+                if bytes(dev.id()).decode("utf-8", "replace") == self.output_id:
+                    return dev
+        return QMediaDevices.defaultAudioOutput()      # also when the chosen one is gone (earbuds switched off)
+
+    def _reroute(self):
+        "Keep both slots on the right output when the sound server changes its devices; playback carries on."
+        dev = self._output_device()
+        if dev.isNull():
+            return
+        for slot in self._slots:
+            if slot.audio.device().id() != dev.id():
+                slot.audio.setDevice(dev)
 
     def set_max_volume(self, percent):
         "How much of the output's loudest level the full slider means."
