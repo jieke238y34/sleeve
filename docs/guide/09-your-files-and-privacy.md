@@ -23,7 +23,8 @@ Deleting the cache is safe. It only makes the next start slower.
 
 The internet is only used when `dl.py` itself downloads music for you, and when you press **Find tags online** on the
 Health page. That sends the title and artist (or file name) of the chosen songs to musicbrainz.org, asks you first, and
-changes nothing in your files until you accept the results.
+changes nothing in your files until you accept the results. The **Get dl.py for me** button downloads playlist-sync
+from GitHub with `git`, also only after you agree.
 
 ## Backups
 

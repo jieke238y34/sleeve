@@ -129,8 +129,8 @@ The full guide, including other ways to install, is [docs/INSTALL.md](docs/INSTA
 The first time you start Sleeve it asks which folder holds your music (you can change this later in Settings). That is
 all it needs to play. Double-click a song to play it. Space pauses and resumes. Press **Ctrl+K** to search everything.
 
-**Downloads (optional).** If you also use [playlist-sync](https://github.com/jieke238y34/playlist-sync), open the
-Downloads page: **Set up…** helps you choose the music folder and paste your Spotify playlist links. Sleeve finds
+**Downloads (optional).** On the Downloads page, **Get dl.py for me** downloads [playlist-sync](https://github.com/jieke238y34/playlist-sync)
+(`dl.py`) from GitHub into Sleeve's own folder (it asks first; you need `git`). Then **Set up…** helps you choose the music folder and paste your Spotify playlist links. Sleeve finds
 `dl.py` on its own, or you can point to it with `sleeve --dl /path/to/dl.py`.
 
 **Trust.** The first time you press a Downloads button, Sleeve shows the path and a SHA-256 fingerprint of `dl.py` and
@@ -158,7 +158,8 @@ progress.
 - No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used when `dl.py`
   downloads music for you, and when you press **Find tags online** on the Health page: that sends the title and artist
   (or file name) of the chosen songs to [MusicBrainz](https://musicbrainz.org), one song a second, after you agree.
-  Nothing is written to your files until you review the results.
+  Nothing is written to your files until you review the results. **Get dl.py for me** downloads playlist-sync from
+  GitHub, also only after you agree.
 - It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, likes, the `dl.py`
   trust record) and `~/.cache/sleeve` (tag cache and loudness results). Playlists you make are `.m3u8` files in
   `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME` is set, those folders are used instead.

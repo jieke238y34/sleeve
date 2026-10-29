@@ -15,6 +15,7 @@ First release. Alpha, Linux.
 
 ### Added
 
+- Downloads page: **Get dl.py for me** fetches playlist-sync from GitHub with `git` after asking, and switches the page on.
 - Optional Discord Rich Presence ("Listening to"), through Discord or arRPC over the local IPC socket. Off by default.
 - Settings search; the Identity page has two tabs, Identity and Listening.
 - Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends

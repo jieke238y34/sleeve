@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QPoint,
     QProcess,
+    QProcessEnvironment,
     QSize,
     Qt,
     QThread,
@@ -72,6 +73,7 @@ from . import (
     earbuds,
     filedrop,
     full_version,
+    getdl,
     health,
     identity,
     library,
@@ -296,6 +298,7 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._get_dl_proc = None                             # the running `git clone` of dl.py
         self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
@@ -825,6 +828,11 @@ class MainWindow(QMainWindow):
         what.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DL_HOME)))
         choose = QPushButton("Choose dl.py…")
         choose.clicked.connect(self._choose_dl)
+        self.get_dl_btn = QPushButton("Get dl.py for me")
+        self.get_dl_btn.setObjectName("primary")
+        self.get_dl_btn.setToolTip("Download dl.py (playlist-sync) from GitHub into Sleeve's own folder")
+        self.get_dl_btn.clicked.connect(self._get_dl)
+        no_dl_buttons.addWidget(self.get_dl_btn)
         no_dl_buttons.addWidget(what)
         no_dl_buttons.addWidget(choose)
         no_dl_buttons.addStretch(1)
@@ -870,6 +878,73 @@ class MainWindow(QMainWindow):
             self.rescan()
             self.status.showMessage(dlg.result_summary or "Nothing changed", 10000)
         self._refresh_setup_banner()
+
+    def _confirm_get_dl(self):
+        "Ask before anything is downloaded. A seam: tests replace it."
+        box = QMessageBox(self)
+        box.setWindowTitle("Get dl.py")
+        box.setText(f"Sleeve will download dl.py (playlist-sync) from\n{getdl.REPO_URL}\ninto\n{getdl.target_dir()}\n\n"
+                    "Downloading does not run it. The first time you press a Downloads button, Sleeve shows you "
+                    "the file and asks whether you trust it.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        return box.exec() == QMessageBox.Ok
+
+    def _get_dl(self):
+        "Fetch dl.py with git into Sleeve's data folder, then switch the Downloads page on."
+        if self._get_dl_proc is not None or not self._confirm_get_dl():
+            return
+        target = getdl.target_dir()
+        existing = getdl.installed(target)
+        if existing is not None:
+            self._dl_ready(existing)
+            return
+        git = getdl.find_git()
+        if git is None:
+            self.status.showMessage("git is needed to fetch dl.py: install it (for example sudo dnf install git) and "
+                                    "try again", 12000)
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        proc = self._get_dl_proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("GIT_TERMINAL_PROMPT", "0")                  # never wait for a password that nobody can type
+        proc.setProcessEnvironment(env)
+        proc.finished.connect(lambda code, _status: self._get_dl_done(code, target))
+        proc.errorOccurred.connect(lambda _err: self._get_dl_done(-1, target))
+        self.get_dl_btn.setEnabled(False)
+        self.status.showMessage("Downloading dl.py…")
+        proc.start(git, getdl.clone_args(target))
+
+    def _get_dl_done(self, code, target):
+        proc, self._get_dl_proc = self._get_dl_proc, None
+        if proc is None:
+            return
+        problem = bytes(proc.readAll()).decode("utf-8", "replace").strip().splitlines()
+        proc.deleteLater()
+        self.get_dl_btn.setEnabled(True)
+        path = getdl.installed(target)
+        if code != 0 or path is None:
+            why = problem[-1] if problem else "git did not finish"
+            self.status.showMessage(f"Could not download dl.py: {why}", 12000)
+            return
+        self._dl_ready(path)
+
+    def _dl_ready(self, path):
+        "dl.py is in place: remember it, load its settings and switch the Downloads page on."
+        self._set_setting("dl_path", str(path))
+        fresh = config.load(str(path))
+        for field in dataclasses.fields(fresh):
+            setattr(self.cfg, field.name, getattr(fresh, field.name))
+        self.my_playlists = myplaylists.PlaylistStore(self.cfg.playlist_dir, self.cfg.music_dir)
+        self.no_dl.setVisible(False)
+        for name, button in self._action_buttons.items():
+            button.setEnabled(True)
+            button.setToolTip(FRIENDLY[name][1])
+        self.dl_state.setText("Ready")
+        self.setup_btn.setVisible(True)
+        self._refresh_setup_banner()
+        self.status.showMessage("dl.py is ready. Press Set up… to choose your music folder and playlists.", 12000)
 
     def _choose_dl(self):
         from PySide6.QtWidgets import QFileDialog

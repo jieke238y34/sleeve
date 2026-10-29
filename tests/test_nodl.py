@@ -104,3 +104,76 @@ def test_changing_the_music_folder_reads_the_new_one(qapp, monkeypatch, tmp_path
         assert settings.Settings(win.settings.file).music_dir == str(other)    # and it is remembered
     finally:
         win.close()
+
+
+def _local_repo(tmp_path):
+    "A real repository holding a dl.py: stands in for GitHub so the clone can run without a network."
+    import shutil
+    import subprocess
+
+    exe = shutil.which("git")
+    if exe is None:
+        pytest.skip("git is not installed")
+    src = tmp_path / "remote"
+    src.mkdir()
+    (src / "dl.py").write_text("print('hello')\n")
+    for args in (["init", "-q"], ["add", "dl.py"],
+                 ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "x"]):
+        subprocess.run([exe, "-C", str(src), *args], check=True, capture_output=True)  # noqa: S603
+    return src.as_uri()
+
+
+def test_get_dl_py_clones_it_switches_downloads_on_and_asks_first(qapp, monkeypatch, tmp_path):  # noqa: F811
+    from sleeve import getdl
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(getdl, "REPO_URL", _local_repo(tmp_path))
+    win = make(qapp, monkeypatch, tmp_path, tmp_path / "Music")
+    try:
+        assert not win.no_dl.isHidden()
+        monkeypatch.setattr(win, "_confirm_get_dl", lambda: False)
+        win._get_dl()
+        assert win._get_dl_proc is None and not (tmp_path / "data").exists()           # declined: nothing is fetched
+        monkeypatch.setattr(win, "_confirm_get_dl", lambda: True)
+        win._get_dl()
+        assert win._get_dl_proc is not None and not win.get_dl_btn.isEnabled()
+        assert wait(qapp, lambda: win._get_dl_proc is None, 30)
+        target = tmp_path / "data" / "sleeve" / "playlist-sync"
+        assert (target / "dl.py").is_file()
+        assert win.cfg.has_dl and win.cfg.dl_path == (target / "dl.py").resolve()
+        assert win.no_dl.isHidden() and all(b.isEnabled() for b in win.sync_buttons)
+        assert settings.Settings(win.settings.file).dl_path == str(target / "dl.py")
+        assert win.get_dl_btn.isEnabled()
+        win._get_dl()                                                                 # already there: no second clone
+        assert win._get_dl_proc is None and "ready" in win.status.currentMessage()
+    finally:
+        win.close()
+
+
+def test_get_dl_py_reports_a_failed_download_and_a_missing_tool(qapp, monkeypatch, tmp_path):  # noqa: F811
+    from sleeve import getdl
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(getdl, "REPO_URL", (tmp_path / "nowhere").as_uri())
+    win = make(qapp, monkeypatch, tmp_path, tmp_path / "Music")
+    try:
+        monkeypatch.setattr(win, "_confirm_get_dl", lambda: True)
+        win._get_dl()
+        assert wait(qapp, lambda: win._get_dl_proc is None, 30)
+        assert "Could not download dl.py" in win.status.currentMessage()
+        assert not win.cfg.has_dl and not win.no_dl.isHidden() and win.get_dl_btn.isEnabled()
+        monkeypatch.setattr(getdl, "find_git", lambda: None)
+        win._get_dl()
+        assert "is needed" in win.status.currentMessage() and win._get_dl_proc is None
+    finally:
+        win.close()
+
+
+def test_the_clone_command_is_fixed_and_the_folder_follows_xdg():
+    from sleeve import getdl
+
+    args = getdl.clone_args("/x/y")
+    assert args[:3] == ["clone", "--depth", "1"] and args[-1] == "/x/y" and getdl.REPO_URL in args
+    assert str(getdl.target_dir({"XDG_DATA_HOME": "/d"})) == "/d/sleeve/playlist-sync"
+    assert getdl.target_dir({}).parts[-3:] == ("share", "sleeve", "playlist-sync")
+    assert getdl.installed("/nonexistent") is None
