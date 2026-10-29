@@ -91,6 +91,7 @@ from .albums import AlbumDetail, AlbumGrid
 from .boost import StreamBoost
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
+from .history import PERIODS, History, counts_as_played
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .quicksearch import QuickSearch
@@ -279,6 +280,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
+        self.history = History()
+        self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._ffmpeg, self._loud, self._loud_again = None, None, False
         self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
         self._loud_timer.setSingleShot(True)
@@ -326,6 +329,7 @@ class MainWindow(QMainWindow):
         self.identity_page = identity.IdentityPage()
         self.docs_page = docs.DocsPage(accent=self._accent_shown)
         self.identity_page.set_accent(self._accent_shown)
+        self.identity_page.listening.periodChanged.connect(self._listening_period_changed)
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
                            ("Library", self._library_page()), ("Identity", self.identity_page),
                            ("Downloads", self._downloads_page()), ("Health", self._health_page()),
@@ -1006,6 +1010,20 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
                            "is used when nothing is playing."))
 
+        section("Listening")
+        self.listening_box = Switch("Remember what I listen to")
+        self.listening_box.setChecked(self.settings.track_listening)
+        self.listening_box.toggled.connect(self._track_listening_toggled)
+        lay.addWidget(self.listening_box)
+        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
+                           "the top songs on the Identity page and is never sent anywhere."))
+        clear = QPushButton("Clear listening history")
+        clear.clicked.connect(self._clear_listening)
+        row = QHBoxLayout()
+        row.addWidget(clear)
+        row.addStretch(1)
+        lay.addLayout(row)
+
         section("Your files")
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
@@ -1448,6 +1466,8 @@ class MainWindow(QMainWindow):
             if not b.accessibleName():
                 b.setAccessibleName(b.toolTip() or b.text())
             b.setCursor(Qt.PointingHandCursor)
+            if isinstance(b, QPushButton):
+                b.setFocusPolicy(Qt.TabFocus)             # the focus ring is for the keyboard, not a click
         for box in self.findChildren(QComboBox):
             box.setCursor(Qt.PointingHandCursor)
 
@@ -1526,6 +1546,53 @@ class MainWindow(QMainWindow):
         mine = [n for n, _ in self.my_playlists.names()]
         names = mine + [n for n, _ in playlists.list_playlists(self.cfg.playlist_dir)]
         self.identity_page.set_library(self.songs, self.likes.paths, names)
+        self._refresh_listening()
+
+    def _refresh_listening(self):
+        "The top songs of the chosen period, from what was really played."
+        card = self.identity_page.listening
+        period = self.settings.identity_period
+        card.set_period(period)
+        rows = []
+        for play in self.history.top(PERIODS[period], limit=card.ROWS):
+            song = self.by_path.get(play.path)
+            if song is not None:                              # songs that left the library are not shown
+                rows.append((song.name, song.artist, play.plays))
+        card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening)
+
+    def _listening_period_changed(self, period):
+        self._set_setting("identity_period", period)
+        self._refresh_listening()
+
+    def _count_listening(self, previous, pos):
+        "Add the time since the last report to the song's listening time, and record a play once it counts."
+        if not (self.settings.track_listening and self._is_playing and self._current_path):
+            return
+        step = pos - previous
+        if not 0 < step < 2.0:                                # a seek or a new song is not listening
+            return
+        self._listened += step
+        if not self._listen_counted and counts_as_played(self._listened, self._dur):
+            self._listen_counted = True
+            self.history.record(self._current_path, self._listened)
+            try:
+                self.history.save()
+            except OSError as e:
+                self.status.showMessage(f"Could not save your listening history: {e}", 8000)
+            self._refresh_listening()
+
+    def _track_listening_toggled(self, on):
+        self._set_setting("track_listening", on)
+        self._refresh_listening()
+
+    def _clear_listening(self):
+        self.history.clear()
+        try:
+            self.history.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not clear your listening history: {e}", 8000)
+        self._refresh_listening()
+        self.status.showMessage("Listening history cleared", 6000)
 
     def _likes_changed(self):
         self._refresh_identity()
@@ -2399,6 +2466,7 @@ class MainWindow(QMainWindow):
     def _on_position(self, pos):
         "The player reports about ten times a second; the seek bar only needs to move about five times a second."
         jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
+        self._count_listening(self._pos, pos)
         self._pos = pos
         if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
             self._tick.restart()
@@ -2419,11 +2487,13 @@ class MainWindow(QMainWindow):
         self.seek.blockSignals(False)
 
     def _on_playing(self, playing):
+        self._is_playing = bool(playing)
         self.play_btn.setText("⏸" if playing else "▶")
 
     def _on_track(self, index, path):
         self._refresh_queue()
         self._current_path = path
+        self._listened, self._listen_counted = 0.0, False
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")

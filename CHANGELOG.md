@@ -10,6 +10,11 @@ First release. Alpha, Linux.
 
 ### Added
 
+- Identity page: a Listening panel with your top songs this week or this month, chosen with a slider. It is built
+  from what you actually play (a song counts after 30 seconds), kept in a file on this computer, and can be switched
+  off or cleared in Settings.
+- Lower idle CPU and GPU use while playing; keyboard focus rings, accessible names and pointer cursors on every button.
+- Restarting while music plays opens the new build as a separate preview instead of replacing the playing copy.
 - One-command install: `./install.sh` builds Sleeve from source into a private environment, with a menu entry and icon,
   and `./install.sh --uninstall`.
 - Quick search (Ctrl+K) across songs, playlists and folders. An Albums view of covers in the Library.

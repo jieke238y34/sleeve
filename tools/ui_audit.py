@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QWidget,
 )
 
-SIZES = "1180x760,980x640,1500x900,760x560"
+SIZES = "1180x760,980x640,1500x900,900x560"
 MIN_CONTRAST = 2.2          # text that is less contrasty than this against its own background is practically invisible
 CHANGED = 0.004             # a screenshot with more than this share of pixels changed is reported against a baseline
 

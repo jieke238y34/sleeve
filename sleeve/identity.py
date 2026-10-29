@@ -6,9 +6,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .theme import LAVENDER, MUTED, TEXT
 
@@ -547,6 +558,105 @@ class Chips(QWidget):
                            Qt.AlignVCenter | Qt.AlignLeft, extra)
 
 
+class ListeningCard(Card):
+    """Your top songs of the last week or month, from what was really played. A two-stop slider (or its two labels)
+    picks the period, and the heading, the list and the total all follow it."""
+
+    periodChanged = Signal(str)
+    NAMES = {"week": "this week", "month": "this month"}
+    ROWS = 5
+
+    def __init__(self):
+        super().__init__("Listening")
+        self.accent = LAVENDER
+        self.period = "week"
+        self.heading = _label("", 15, bold=True)
+        self.box.addWidget(self.heading)
+        pick = QHBoxLayout()
+        self.week_btn, self.month_btn = QPushButton("This week"), QPushButton("This month")
+        for b in (self.week_btn, self.month_btn):
+            b.setFlat(True)
+            b.setFocusPolicy(Qt.TabFocus)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet("QPushButton { background: transparent; padding: 2px 6px; } "
+                            "QPushButton:hover { background: transparent; }")
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 1)
+        self.slider.setPageStep(1)
+        self.slider.setFixedWidth(64)
+        self.slider.setAccessibleName("Top songs period: this week or this month")
+        self.slider.valueChanged.connect(lambda v: self._choose("month" if v else "week"))
+        self.week_btn.clicked.connect(lambda: self.slider.setValue(0))
+        self.month_btn.clicked.connect(lambda: self.slider.setValue(1))
+        pick.addWidget(self.week_btn)
+        pick.addWidget(self.slider)
+        pick.addWidget(self.month_btn)
+        pick.addStretch(1)
+        self.box.addLayout(pick)
+        self.rows = QVBoxLayout()
+        self.rows.setSpacing(6)
+        self.box.addLayout(self.rows)
+        self.total = _label("", 10, MUTED, wrap=True)
+        self.box.addWidget(self.total)
+        self._style_picker()
+
+    def _choose(self, period):
+        if period != self.period:
+            self.period = period
+            self._style_picker()
+            self.periodChanged.emit(period)
+
+    def set_period(self, period):
+        "Show this period without announcing it (used when the saved choice is loaded)."
+        self.period = period if period in self.NAMES else "week"
+        self.slider.blockSignals(True)
+        self.slider.setValue(1 if self.period == "month" else 0)
+        self.slider.blockSignals(False)
+        self._style_picker()
+
+    def _style_picker(self):
+        for btn, key in ((self.week_btn, "week"), (self.month_btn, "month")):
+            on = key == self.period
+            btn.setStyleSheet(f"QPushButton {{ background: transparent; padding: 2px 6px; "
+                              f"color: {self.accent if on else MUTED}; font-weight: {700 if on else 400}; }}")
+
+    def set_accent(self, accent):
+        self.accent = accent
+        self._style_picker()
+
+    def set_data(self, rows, seconds, enabled=True):
+        "rows: [(title, artist, plays)], most played first; seconds: listened in the period; enabled: history is on."
+        name = self.NAMES[self.period]
+        while self.rows.count():
+            item = self.rows.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if not enabled:
+            self.heading.setText("Listening history is off")
+            self.total.setText("Turn on 'Remember what I listen to' in Settings and your top songs will appear here. "
+                               "It stays on this computer.")
+            return
+        if not rows:
+            self.heading.setText(f"Nothing played {name} yet")
+            self.total.setText("A song counts once you have listened to it for 30 seconds. Play something and it "
+                               "shows up here.")
+            return
+        self.heading.setText(f"Your top songs {name}")
+        for rank, (title, artist, plays) in enumerate(rows[:self.ROWS], start=1):
+            line = QWidget()
+            lay = QHBoxLayout(line)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.addWidget(_label(str(rank), 11, self.accent, bold=True))
+            lay.itemAt(0).widget().setFixedWidth(22)
+            text = _label(f"{title}  ·  {artist}" if artist else title, 11)
+            text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # long titles are cut, not the page
+            text.setToolTip(f"{title} by {artist}" if artist else title)
+            lay.addWidget(text, 1)
+            lay.addWidget(_label(_plural(plays, "play"), 10, MUTED))
+            self.rows.addWidget(line)
+        self.total.setText(f"You listened for {_span(seconds)} {name}.")
+
+
 class IdentityPage(QWidget):
     "The Identity page: a persona, trait meters, big numbers, charts, languages, moods and honest caveats."
 
@@ -583,6 +693,9 @@ class IdentityPage(QWidget):
         hero.box.addSpacing(10)
         hero.box.addWidget(self.lead)
         col.addWidget(hero)
+
+        self.listening = ListeningCard()
+        col.addWidget(self.listening)
 
         card = Card("Traits")
         grid = QGridLayout()
@@ -671,6 +784,7 @@ class IdentityPage(QWidget):
 
     def set_accent(self, accent):
         self.accent = accent
+        self.listening.set_accent(accent)
         self._paint()
 
     def set_library(self, songs, liked_paths=(), playlist_names=()):

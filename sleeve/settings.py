@@ -33,6 +33,8 @@ DEFAULTS = {
     "nav_width": 190,                  # width of the sidebar, which can be dragged
     "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
     "cover_size": 520,                 # the biggest the cover gets on the Now Playing page, in pixels
+    "track_listening": True,           # remember what was played (stays on this computer); feeds the Identity panel
+    "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
     "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
@@ -51,7 +53,9 @@ def _valid(key, value):
     if key in ("volume", "max_volume"):
         low, high = (30, 150) if key == "max_volume" else (0, 100)
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
-    if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover"):
+    if key == "identity_period":
+        return value in ("week", "month")
+    if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
