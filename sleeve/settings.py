@@ -31,6 +31,7 @@ DEFAULTS = {
     "window_size": [1180, 760],        # width and height the window had when it was closed
     "last_page": "Library",            # the page that was open
     "nav_width": 190,                  # width of the sidebar, which can be dragged
+    "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
     "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
 }
@@ -57,6 +58,8 @@ def _valid(key, value):
     if key == "window_size":
         return (isinstance(value, list) and len(value) == 2
                 and all(isinstance(n, int) and not isinstance(n, bool) and 500 <= n <= 10000 for n in value))
+    if key == "library_view":
+        return value in ("songs", "albums")
     if key in ("music_dir", "dl_path"):
         return isinstance(value, str) and len(value) <= 4096
     if key == "nav_width":

@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+sleeve/_build.py
 *.egg-info/
 .coverage
 config.ini

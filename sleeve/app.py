@@ -1,5 +1,6 @@
 """The Sleeve main window: library, playlists, queue, sync dashboard and health, with a player bar."""
 import argparse
+import dataclasses
 import os
 import re
 import sys
@@ -48,13 +49,15 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
-    __version__,
     activity,
     art,
+    build_label,
     config,
     desktop,
+    dlsetup,
     docs,
     filedrop,
+    full_version,
     health,
     identity,
     library,
@@ -69,15 +72,19 @@ from . import (
     tags,
     theme,
 )
+from .albums import AlbumDetail, AlbumGrid
 from .coverview import CoverScreen, CoverView
+from .flow import FlowLayout
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
+from .quicksearch import QuickSearch
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
 CUSTOM_LABEL = "Custom…"
+QUEUE_ROW = QSize(10, 54)                    # every row of the queue is this tall, with or without its cover
 DL_HOME = "https://github.com/jieke238y34/playlist-sync"
 LYRICS_MAX_BATCHES = 200                     # 200 x 300 songs: more than any library, but a loop must end
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
@@ -318,6 +325,8 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
         self.status = self.statusBar()
+        if self.settings.library_view == "albums":
+            self.view_albums_btn.setChecked(True)
         names = [self.nav.item(i).text() for i in range(self.nav.count())]
         last = self.settings.last_page
         self.nav.setCurrentRow(names.index(last) if last in names else names.index("Library"))
@@ -341,6 +350,7 @@ class MainWindow(QMainWindow):
                           (Qt.Key_Right, lambda: self._seek_by(5))):
             QShortcut(QKeySequence(key), self, slot)
         QShortcut(QKeySequence(Qt.Key_F11), self, self._toggle_fullscreen)
+        QShortcut(QKeySequence("Ctrl+K"), self, self._quick_search)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self._lyrics_run = None                               # the lyrics job in progress (see _lyrics_begin)
@@ -359,6 +369,7 @@ class MainWindow(QMainWindow):
     def _library_page(self):
         page = QWidget()
         lay = QHBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
         self.folders = QListWidget()
         self.folders.setMaximumWidth(190)
         self.folders.currentTextChanged.connect(self._folder_changed)
@@ -366,12 +377,20 @@ class MainWindow(QMainWindow):
         right = QVBoxLayout()
         top = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search title, artist, album, genre…")
+        self.search.setPlaceholderText("Filter this list…   (Ctrl+K searches everything)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
         rescan = QPushButton("Rescan")
         rescan.clicked.connect(self.rescan)
+        self.view_songs_btn, self.view_albums_btn = QPushButton("Songs"), QPushButton("Albums")
+        for b in (self.view_songs_btn, self.view_albums_btn):
+            b.setObjectName("seg")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+        self.view_songs_btn.setChecked(True)
         top.addWidget(self.search, 1)
+        top.addWidget(self.view_songs_btn)
+        top.addWidget(self.view_albums_btn)
         top.addWidget(rescan)
         self.model = SongModel()
         self.model.liked = self.likes.paths
@@ -390,8 +409,36 @@ class MainWindow(QMainWindow):
         self.table.doubleClicked.connect(lambda ix: self.player.set_queue([s.path for s in self.model.songs], ix.row()))
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._song_menu)
+        self.album_grid, self.album_detail = AlbumGrid(), AlbumDetail()
+        back = QPushButton("←  All albums")
+        detail_page = QWidget()
+        dl = QVBoxLayout(detail_page)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.addWidget(back, 0, Qt.AlignLeft)
+        dl.addWidget(self.album_detail, 1)
+        self.albums_stack = QStackedWidget()
+        self.albums_stack.addWidget(self.album_grid)
+        self.albums_stack.addWidget(detail_page)
+        self.library_stack = QStackedWidget()
+        self.library_stack.addWidget(self.table)
+        self.library_stack.addWidget(self.albums_stack)
+        back.clicked.connect(lambda: self.albums_stack.setCurrentIndex(0))
+        self.view_albums_btn.toggled.connect(self._library_view_changed)
+        for signal in (self.album_grid.playAlbum, self.album_detail.playAlbum):
+            signal.connect(lambda paths: self.player.set_queue(paths))
+        for signal in (self.album_grid.enqueueAlbum, self.album_detail.enqueueAlbum):
+            signal.connect(lambda paths: self.player.enqueue(paths))
+        self.album_grid.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
+        self.album_grid.openAlbum.connect(self._open_album)
+        self.album_grid.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.album_grid.customContextMenuRequested.connect(self._album_menu)
+        self._albums_timer = QTimer(self)                       # regroup the albums a moment after typing stops
+        self._albums_timer.setSingleShot(True)
+        self._albums_timer.setInterval(180)
+        self._albums_timer.timeout.connect(self._fill_albums)
+        self.table.viewport().installEventFilter(self)           # to fit the columns to the width
         right.addLayout(top)
-        right.addWidget(self.table, 1)
+        right.addWidget(self.library_stack, 1)
         split = QSplitter()
         split.addWidget(self.folders)
         holder = QWidget()
@@ -412,6 +459,7 @@ class MainWindow(QMainWindow):
     def _playlists_page(self):
         page = QWidget()
         lay = QHBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
         self.pl_list = QListWidget()
         self.pl_list.setMaximumWidth(260)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
@@ -538,6 +586,8 @@ class MainWindow(QMainWindow):
         self.queue_list.setIconSize(QSize(44, 44))
         self.queue_list.setTextElideMode(Qt.ElideRight)
         self.queue_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.queue_list.setAutoScroll(False)            # Sleeve places the playing song itself, once, in the middle
+        self.queue_list.setUniformItemSizes(True)       # a row keeps its height whether its cover has loaded or not
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
         self.queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.queue_list.customContextMenuRequested.connect(self._queue_menu)
@@ -550,6 +600,7 @@ class MainWindow(QMainWindow):
         self.lyrics.setObjectName("lyrics")
         self.lyrics.setWordWrap(True)
         self.lyrics.setFocusPolicy(Qt.NoFocus)
+        self.lyrics.setAutoScroll(False)
         self.lyrics.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.lyrics.itemClicked.connect(self._lyric_clicked)
         self.lyrics_empty = QLabel("No imported lyrics found")
@@ -568,8 +619,8 @@ class MainWindow(QMainWindow):
         self.np_tabs = QStackedWidget()
         self.np_tabs.addWidget(queue_page)
         self.np_tabs.addWidget(lyrics_page)
-        self.tab_queue.toggled.connect(lambda on: on and self.np_tabs.setCurrentIndex(0))
-        self.tab_lyrics.toggled.connect(lambda on: on and self.np_tabs.setCurrentIndex(1))
+        self.tab_queue.toggled.connect(lambda on: on and self._open_tab(0))
+        self.tab_lyrics.toggled.connect(lambda on: on and self._open_tab(1))
         for view in (self.queue_list, self.lyrics):
             SmoothScroll.attach(view)
         self._lyric_synced, self._lyric_row = False, -1
@@ -613,6 +664,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
+        self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
+        self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
         self._thumb_timer.setInterval(20)
@@ -657,12 +710,16 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self._stop_clicked)
         main.addWidget(self.stop_btn)
         main.addStretch(1)
-        tidy = QHBoxLayout()
+        tidy = FlowLayout()                                    # wraps onto a second line in a narrow window
+        self.setup_btn = QPushButton("Set up…")
+        self.setup_btn.setToolTip("Choose the music folder and paste your Spotify playlist links")
+        self.setup_btn.clicked.connect(self._open_setup)
+        self.setup_btn.setVisible(self.cfg.has_dl)
+        tidy.addWidget(self.setup_btn)
         tidy.addWidget(QLabel("Tidy up:"))
         for name in sync.ACTIONS:
             if name != "Sync playlists":
                 tidy.addWidget(action_button(name))
-        tidy.addStretch(1)
 
         self.sync_bar = QProgressBar()
         self.sync_bar.setTextVisible(False)
@@ -697,6 +754,7 @@ class MainWindow(QMainWindow):
         self.sync_note = QLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
         self.sync_note.setObjectName("muted")
         self.sync_note.setTextFormat(Qt.PlainText)
+        self.sync_note.setWordWrap(True)                    # a long path wraps instead of widening the page
         foot.addWidget(self.sync_note)
 
         self.sync_log = QPlainTextEdit()          # what dl.py really printed, for when something needs a closer look
@@ -705,6 +763,16 @@ class MainWindow(QMainWindow):
         self.sync_log.setFont(QFont("monospace"))
         self.sync_log.setVisible(False)
 
+        self.setup_banner = QFrame()                           # first run: what is missing before downloads can work
+        sb = QHBoxLayout(self.setup_banner)
+        self.setup_text = QLabel("")
+        self.setup_text.setObjectName("muted")
+        self.setup_text.setWordWrap(True)
+        sb_button = QPushButton("Set up…")
+        sb_button.setObjectName("primary")
+        sb_button.clicked.connect(self._open_setup)
+        sb.addWidget(self.setup_text, 1)
+        sb.addWidget(sb_button)
         self.no_dl = QFrame()                                  # shown instead of the controls when there is no dl.py
         no_dl = QVBoxLayout(self.no_dl)
         no_dl_text = QLabel("Downloads use dl.py (playlist-sync), a separate, optional program. It was not found, so "
@@ -727,7 +795,9 @@ class MainWindow(QMainWindow):
                 b.setEnabled(False)
                 b.setToolTip("Needs dl.py")
             self.dl_state.setText("dl.py was not found")
+        self._refresh_setup_banner()
         lay.addLayout(head)
+        lay.addWidget(self.setup_banner)
         lay.addWidget(self.no_dl)
         lay.addLayout(main)
         lay.addLayout(tidy)
@@ -737,6 +807,27 @@ class MainWindow(QMainWindow):
         lay.addLayout(foot)
         lay.addWidget(self.sync_log, 2)
         return page
+
+    def _refresh_setup_banner(self):
+        reasons = dlsetup.needs_setup(self.cfg) if self.cfg.has_dl else []
+        self.setup_banner.setVisible(bool(reasons))
+        self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
+
+    def _open_setup(self):
+        dlg = self._setup_dialog = dlsetup.SetupDialog(self.cfg, self)
+        dlg.finished.connect(self._setup_finished)
+        dlg.open()
+
+    def _setup_finished(self, code):
+        dlg = self._setup_dialog
+        if code == QDialog.Accepted and self.cfg.has_dl:
+            fresh = config.load(self.cfg.dl_path)               # the music folder or the playlists may have changed
+            for field in dataclasses.fields(fresh):
+                setattr(self.cfg, field.name, getattr(fresh, field.name))
+            self.my_playlists = myplaylists.PlaylistStore(self.cfg.playlist_dir, self.cfg.music_dir)
+            self.rescan()
+            self.status.showMessage(dlg.result_summary or "Nothing changed", 10000)
+        self._refresh_setup_banner()
 
     def _choose_dl(self):
         from PySide6.QtWidgets import QFileDialog
@@ -870,7 +961,7 @@ class MainWindow(QMainWindow):
         buttons.addStretch(1)
         lay.addLayout(buttons)
         lay.addStretch(1)
-        lay.addWidget(hint(f"Sleeve {__version__}"))
+        lay.addWidget(hint(f"Sleeve {build_label()}"))
         return page
 
     def _change_music_dir(self):
@@ -1013,6 +1104,7 @@ class MainWindow(QMainWindow):
     def _health_page(self):
         page = QWidget()
         lay = QHBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
         self.health_list = QListWidget()
         self.health_list.setMaximumWidth(300)
         self.health_list.currentRowChanged.connect(self._health_selected)
@@ -1177,10 +1269,15 @@ class MainWindow(QMainWindow):
         "Window shortcuts (space, left, right) must not steal those keys from a widget that uses them."
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
+        if ev.type() == QEvent.Resize and obj is self.table.viewport():
+            self._fit_columns()
         if ev.type() == QEvent.ShortcutOverride and isinstance(obj, QWidget) and self.isAncestorOf(obj):
             key = ev.key()
             text_like = isinstance(obj, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
             if key in (Qt.Key_Left, Qt.Key_Right) and (text_like or isinstance(obj, (QAbstractItemView, QSlider))):
+                ev.accept()
+                return True
+            if key == Qt.Key_Escape and text_like:                 # Esc in a text box clears or leaves it, as usual
                 ev.accept()
                 return True
             if key == Qt.Key_Space and (text_like or isinstance(obj, (QAbstractButton, QAbstractItemView))):
@@ -1196,7 +1293,48 @@ class MainWindow(QMainWindow):
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
         self.model.set_songs(library.search(songs, self.search.text()))
+        if self.view_albums_btn.isChecked():
+            self._albums_timer.start()
 
+    def _quick_search(self):
+        "Ctrl+K: find any song, playlist or folder and play it from the keyboard."
+        playlists_ = []
+        for name, _ in self.my_playlists.names():
+            try:
+                playlists_.append((name, [e.path for e in self.my_playlists.read(name) if e.exists]))
+            except (OSError, ValueError):
+                continue
+        folders = sorted({s.folder for s in self.songs if s.folder != library.LOOSE}, key=str.lower)
+        dlg = self._quick = QuickSearch(self.songs, playlists_, folders, self)
+        dlg.play.connect(lambda paths, start: self.player.set_queue(paths, start))
+        dlg.enqueue.connect(lambda paths: self.player.enqueue(paths))
+        dlg.play_next.connect(lambda paths: self.player.enqueue(paths, next_up=True))
+        dlg.show()
+
+    def _fill_albums(self):
+        self.album_grid.set_songs(list(self.model.songs))
+
+    def _library_view_changed(self, albums):
+        self.library_stack.setCurrentIndex(1 if albums else 0)
+        if albums:
+            self.albums_stack.setCurrentIndex(0)
+            self._fill_albums()
+        self._set_setting("library_view", "albums" if albums else "songs")
+
+    def _open_album(self, album):
+        self.album_detail.set_album(album, self.album_grid.cover_pixmap(album))
+        self.albums_stack.setCurrentIndex(1)
+
+    def _album_menu(self, pos):
+        album = self.album_grid.album_at(pos)
+        if album is not None:
+            self.album_grid.album_menu(album).exec(self.album_grid.viewport().mapToGlobal(pos))
+
+    def _fit_columns(self):
+        "Narrow windows drop the Genre and then the Album column, so the title always has room."
+        width = self.table.viewport().width()
+        self.table.setColumnHidden(3, width < 720)
+        self.table.setColumnHidden(2, width < 560)
     def _selected(self):
         rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
         return [self.model.songs[r] for r in rows]
@@ -1313,6 +1451,7 @@ class MainWindow(QMainWindow):
         self.pl_spotify_btn.setText("Hide Spotify playlists" if show else f"Show Spotify playlists ({len(spotify)})")
         self.pl_spotify_btn.setVisible(bool(spotify))
         self.pl_spotify_btn.blockSignals(False)
+        self.pl_list.setVisible(bool(self._playlist_files))
         self.pl_list.blockSignals(True)
         self.pl_list.clear()
         for name, _, mine in self._playlist_files:
@@ -1629,38 +1768,83 @@ class MainWindow(QMainWindow):
 
     # --- queue --------------------------------------------------------------
     def _refresh_queue(self):
-        self.queue_list.clear()
-        left = 0.0
-        for i, path in enumerate(self.player.queue):
-            s = self.by_path.get(path)
-            title = s.name if s else Path(path).stem
-            it = QListWidgetItem(f"{title}\n{s.artist}" if s and s.artist else title)
-            it.setToolTip(path)
-            if s and i >= max(self.player.index, 0):
-                left += s.length
-            if i == self.player.index:
-                f = it.font()
-                f.setBold(True)
-                it.setFont(f)
-            if path in self._thumbs:
-                it.setIcon(self._thumbs[path])
-            self.queue_list.addItem(it)
-        n = len(self.player.queue)
+        queue = list(self.player.queue)
+        if queue != self._queue_shown:                       # a different queue: build the rows again
+            self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
+            self._queue_settled = False                      # and put the playing song in place without gliding
+            self.queue_list.setUpdatesEnabled(False)
+            self.queue_list.clear()
+            for i, path in enumerate(queue):
+                s = self.by_path.get(path)
+                title = s.name if s else Path(path).stem
+                it = QListWidgetItem(f"{title}\n{s.artist}" if s and s.artist else title)
+                it.setToolTip(path)
+                it.setSizeHint(QUEUE_ROW)
+                if path in self._thumbs:
+                    it.setIcon(self._thumbs[path])
+                self.queue_list.addItem(it)
+                self._queue_rows.setdefault(path, []).append(i)
+            self.queue_list.setUpdatesEnabled(True)
+            self._plan_thumbs()
+        self._mark_playing(self.player.index)
+        left = sum(s.length for s in (self.by_path.get(p) for p in queue[max(self.player.index, 0):]) if s)
+        n = len(queue)
         if not n:
             self.queue_label.setText("Nothing queued")
         else:
             m = round(left / 60)
             span = f"{m // 60} h {m % 60} min" if m >= 60 else (f"{m} minutes" if m > 1 else "about a minute")
             self.queue_label.setText(f"{n} songs, {span} remaining")
-        if 0 <= self.player.index < n:
-            self.queue_list.setCurrentRow(self.player.index)
-            QTimer.singleShot(0, lambda row=self.player.index: self.queue_list._smooth.center_on(row))
+        self._queue_pending = True
+        QTimer.singleShot(0, self._queue_catch_up)
         self._thumb_timer.start()
+
+    def _mark_playing(self, row):
+        "The song that is playing in bold, and the one before it back to normal."
+        old = self.queue_list.item(self._queue_playing) if self._queue_playing >= 0 else None
+        if old is not None:
+            old.setData(Qt.FontRole, None)
+        item = self.queue_list.item(row) if row >= 0 else None
+        if item is not None:
+            font = self.queue_list.font()
+            font.setBold(True)
+            item.setFont(font)
+            self.queue_list.setCurrentRow(row)
+        self._queue_playing = row
+
+    def _queue_catch_up(self):
+        """Put the playing song in the middle of the queue: once, instantly, when the page is first seen (so there
+        is nothing to watch), then glided for each later song change. A hidden list waits until it is shown."""
+        row = self.player.index
+        if not self._queue_pending or not self.queue_list.isVisible() or not 0 <= row < self.queue_list.count():
+            return
+        self._queue_pending = False
+        self.queue_list._smooth.center_on(row, animate=self._queue_settled)
+        self._queue_settled = True
+
+    def _lyrics_catch_up(self):
+        if self._lyric_row >= 0 and self.lyrics.isVisible():
+            self.lyrics._smooth.center_on(self._lyric_row, animate=False)
+
+    def _open_tab(self, index):
+        self.np_tabs.setCurrentIndex(index)
+        QTimer.singleShot(0, self._queue_catch_up if index == 0 else self._lyrics_catch_up)
+
+    def _plan_thumbs(self):
+        "Which covers to load next: the ones nearest the playing song first."
+        around = max(self.player.index, 0)
+        wanted = {p: min(rows, key=lambda r: abs(r - around)) for p, rows in self._queue_rows.items()
+                  if p not in self._thumbs}
+        self._thumb_todo = sorted(wanted, key=lambda p: abs(wanted[p] - around), reverse=True)   # popped from the end
 
     def _load_thumbs(self):
         "Cover thumbnails for the queue, two songs per tick so the window never stalls."
-        todo = [p for p in self.player.queue if p not in self._thumbs][:2]
-        for path in todo:
+        for _ in range(2):
+            while self._thumb_todo and self._thumb_todo[-1] in self._thumbs:
+                self._thumb_todo.pop()
+            if not self._thumb_todo:
+                break
+            path = self._thumb_todo.pop()
             try:
                 data = art.cover_bytes(path)
             except Exception:
@@ -1670,12 +1854,11 @@ class MainWindow(QMainWindow):
                 self._thumbs[path] = QIcon(theme.rounded_pixmap(pix, 44, 8))
             else:
                 self._thumbs[path] = QIcon(self._placeholder_thumb())
-        for i, path in enumerate(self.player.queue):
-            icon = self._thumbs.get(path)
-            item = self.queue_list.item(i)
-            if icon is not None and item is not None and item.icon().isNull():
-                item.setIcon(icon)
-        if any(p not in self._thumbs for p in self.player.queue) and not self._closing:
+            for row in self._queue_rows.get(path, ()):
+                item = self.queue_list.item(row)
+                if item is not None:
+                    item.setIcon(self._thumbs[path])
+        if self._thumb_todo and not self._closing:
             self._thumb_timer.start()
 
     def _placeholder_thumb(self):
@@ -1962,6 +2145,9 @@ class MainWindow(QMainWindow):
     # --- player bar ---------------------------------------------------------
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
+        if self.nav.item(row) is not None and self.nav.item(row).text() == "Now Playing":
+            QTimer.singleShot(0, self._queue_catch_up)
+            QTimer.singleShot(0, self._lyrics_catch_up)
 
     def show_page(self, name):
         "Open a page by its name in the sidebar. Returns False if there is no such page."
@@ -2215,7 +2401,7 @@ def attach_media_keys(win, app, suffix="sleeve"):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
-    ap.add_argument("--version", action="version", version=f"sleeve {__version__}")
+    ap.add_argument("--version", action="version", version=f"sleeve {full_version()}")
     args = ap.parse_args(argv)
     app = QApplication(sys.argv[:1])
     if singleton.already_running():                  # Sleeve is open already and has been told to come forward

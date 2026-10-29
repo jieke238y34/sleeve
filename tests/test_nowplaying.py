@@ -394,3 +394,59 @@ def test_every_list_scrolls_the_same_number_of_rows_whatever_the_system_says(qap
     settle(qapp, 0.4)
     assert abs((view.verticalScrollBar().value() - before) - smooth.notch_pixels()) <= 3
     QApplication.setWheelScrollLines(3)
+
+
+def test_the_queue_opens_at_the_playing_song_and_stays_there(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    "Regression: with a big queue it started at the bottom and then visibly scrolled up while covers loaded."
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1100, 700)
+        win.show()
+        win.show_page("Library")
+        settle(qapp, 0.1)
+        paths = [f"/music/Rock/song{i}.mp3" for i in range(800)]
+        win.player.queue, win.player.index = paths, 500
+        win._refresh_queue()                                       # what playing a long list does, page not on screen
+        settle(qapp, 0.1)
+        win.show_page("Now Playing")
+        settle(qapp, 0.15)
+        bar = win.queue_list.verticalScrollBar()
+        first, widest = bar.value(), bar.maximum()
+        row = win.queue_list.visualRect(win.queue_list.model().index(500, 0))
+        assert 0 <= row.center().y() <= win.queue_list.viewport().height()          # the playing song is on screen...
+        assert abs(row.center().y() - win.queue_list.viewport().height() / 2) < 3 * row.height()   # ...in the middle
+        assert first < widest * 0.9                                                  # and not parked at the bottom
+        values = set()
+        end = time.time() + 1.0                                                      # covers load, nothing may move
+        while time.time() < end:
+            qapp.processEvents()
+            values.add((bar.value(), bar.maximum()))
+            time.sleep(0.01)
+        assert values == {(first, widest)}
+        # a later song change glides; the rows keep their height
+        win.player.index = 510
+        win._refresh_queue()
+        settle(qapp, 0.4)
+        row = win.queue_list.visualRect(win.queue_list.model().index(510, 0))
+        assert abs(row.center().y() - win.queue_list.viewport().height() / 2) < 3 * row.height()
+        assert win.queue_list.item(510).font().bold() and not win.queue_list.item(500).font().bold()
+        assert bar.maximum() == widest                                               # the rows never changed height
+    finally:
+        win.close()
+
+
+def test_the_same_queue_is_not_rebuilt_for_every_song(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        paths = [f"/music/Rock/song{i}.mp3" for i in range(300)]
+        win.player.queue, win.player.index = paths, 3
+        win._refresh_queue()
+        item = win.queue_list.item(7)
+        win.player.index = 4
+        win._refresh_queue()
+        assert win.queue_list.item(7) is item                                        # same rows, only the bold moved
+        win.player.queue = paths[:200]
+        win._refresh_queue()
+        assert win.queue_list.count() == 200                                         # a different queue is rebuilt
+    finally:
+        win.close()
