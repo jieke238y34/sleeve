@@ -19,7 +19,7 @@ Linux. Back up your music before using the tag editor.
   with a plain-English activity feed. Sleeve asks you to trust `dl.py` before running it.
 - **Settings and Docs:** sixteen accent colours and a custom one, switches, and a user guide inside the app.
 
-No accounts, no telemetry, and Sleeve makes no network calls of its own.
+No accounts and no telemetry. Sleeve uses the internet only when you ask: the optional tag lookup on MusicBrainz and `dl.py` downloads.
 
 ## Install
 

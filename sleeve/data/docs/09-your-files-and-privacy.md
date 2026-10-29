@@ -17,11 +17,13 @@ Deleting the cache is safe. It only makes the next start slower.
 
 - It never edits your music, except the tags you save yourself with Edit tags.
 - It does not change the playlist files `dl.py` writes.
-- It has no accounts and no telemetry, and it makes no network connections of its own.
+- It has no accounts and no telemetry, and it makes no network connections on its own.
 - It runs `dl.py` only after you have trusted it, and only with fixed buttons.
 - Only valid audio files are handed to the player.
 
-The internet is only used when `dl.py` itself downloads music for you.
+The internet is only used when `dl.py` itself downloads music for you, and when you press **Find tags online** on the
+Health page. That sends the title and artist (or file name) of the chosen songs to musicbrainz.org, asks you first, and
+changes nothing in your files until you accept the results.
 
 ## Backups
 

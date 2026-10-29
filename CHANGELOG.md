@@ -10,6 +10,8 @@ First release. Alpha, Linux.
 
 ### Added
 
+- Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends
+  one request a second, only fills empty tags, and shows you the results to tick before anything is written.
 - Identity page: a Listening panel with your top songs this week or this month, chosen with a slider. It is built
   from what you actually play (a song counts after 30 seconds), kept in a file on this computer, and can be switched
   off or cleared in Settings.

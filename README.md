@@ -7,8 +7,8 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)
 
-Sleeve plays, organises and edits the music files you already have. It needs no accounts, sends no telemetry and makes
-no network calls of its own.
+Sleeve plays, organises and edits the music files you already have. It needs no accounts and sends no telemetry. It
+uses the internet only when you ask it to: for the optional tag lookup on MusicBrainz, and when `dl.py` downloads.
 
 [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) is a separate open source tool that downloads
 music from your Spotify playlists. Sleeve's Downloads page can run it for you, and walks you through setting it up. You
@@ -157,8 +157,10 @@ progress.
 
 ## Privacy and safety
 
-- No accounts and no telemetry. Sleeve itself makes no network calls. The internet is only used when `dl.py`
-  downloads music for you.
+- No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used when `dl.py`
+  downloads music for you, and when you press **Find tags online** on the Health page: that sends the title and artist
+  (or file name) of the chosen songs to [MusicBrainz](https://musicbrainz.org), one song a second, after you agree.
+  Nothing is written to your files until you review the results.
 - It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, likes, the `dl.py`
   trust record) and `~/.cache/sleeve` (tag cache and loudness results). Playlists you make are `.m3u8` files in
   `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME` is set, those folders are used instead.

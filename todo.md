@@ -11,7 +11,7 @@ when they ship.
       spikes while interacting still need measuring after this build. Original notes: things to measure
       first: the gradient background and its fade animation, the smooth-scroll timers, the lyrics position updates,
       and the repaint rate of the seek bar and cover. Profile with the window shown, hidden and minimised.
-- [ ] **Health page should fill in missing tags from MusicBrainz**, without an account. The MusicBrainz web service
+- [x] **Health page should fill in missing tags from MusicBrainz**, without an account. The MusicBrainz web service
       is open for lookups; it needs a descriptive User-Agent and at most one request per second. Picard can also be
       used for fingerprint matching. Always show what would change and let the user accept it before writing tags.
 - [ ] **Sleeve must not change the PipeWire setup.** Another player (fooyin) is known for altering the sound stack.

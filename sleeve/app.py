@@ -79,6 +79,7 @@ from . import (
     likes,
     loudness,
     lrc,
+    musicbrainz,
     myplaylists,
     playlists,
     settings,
@@ -97,6 +98,7 @@ from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .quicksearch import QuickSearch
 from .smoothscroll import SmoothScroll
 from .switch import Switch
+from .tagsuggest import TagSuggestions
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -131,6 +133,8 @@ KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", act
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
+ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
+ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = "♥ Liked Songs"
@@ -291,6 +295,7 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
         self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
@@ -1215,8 +1220,12 @@ class MainWindow(QMainWindow):
         self.health_fix_btn.setAccessibleName("Fix this problem")
         self.health_fix_btn.setObjectName("primary")
         self.health_fix_btn.clicked.connect(self._health_fix)
+        self.health_online_btn = QPushButton("Find tags online…")
+        self.health_online_btn.setToolTip("Look the missing tags up on MusicBrainz and review them before anything is "
+                                          "written")
+        self.health_online_btn.clicked.connect(self._find_tags_online)
         actions = FlowLayout()
-        for b in (self.health_play_btn, self.health_folder_btn, self.health_fix_btn):
+        for b in (self.health_play_btn, self.health_folder_btn, self.health_online_btn, self.health_fix_btn):
             actions.addWidget(b)
         right = QVBoxLayout()
         right.addWidget(self.health_table, 1)
@@ -2377,6 +2386,10 @@ class MainWindow(QMainWindow):
         self.health_play_btn.setEnabled(has)
         self.health_folder_btn.setEnabled(has)
         job = self._health_job()
+        rows = self.health_list.currentRow()
+        names = list(self._health)
+        self.health_online_btn.setVisible(0 <= rows < len(names) and names[rows] in ONLINE_FIXABLE)
+        self.health_online_btn.setEnabled(bool(self._health_rows) and self._lookup is None)
         self.health_fix_btn.setVisible(job is not None)
         if job is not None:
             label, what = FRIENDLY[job]
@@ -2386,6 +2399,69 @@ class MainWindow(QMainWindow):
             self.health_fix_btn.setEnabled(self.cfg.has_dl)
             if not self.cfg.has_dl:
                 self.health_fix_btn.setToolTip("Needs dl.py (see the Downloads page)")
+
+    def _confirm_online(self):
+        "Ask once before anything is sent over the internet. A seam: tests replace it."
+        if self.settings.online_lookup_ok:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Look up tags online")
+        box.setText("Sleeve will send the title and artist of each song (or its file name when they are missing) to "
+                    "musicbrainz.org, the open music database, one song a second. Nothing else is sent, and nothing "
+                    "is written to your files until you review the results.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return False
+        self._set_setting("online_lookup_ok", True)
+        return True
+
+    def _find_tags_online(self):
+        "Look up the songs of the current Health problem (the selected ones, else the first 50)."
+        if self._lookup is not None or not self._confirm_online():
+            return
+        picked = {i.row() for i in self.health_table.selectedItems()}
+        songs = [it for r, it in enumerate(self._health_rows)
+                 if isinstance(it, library.Song) and (not picked or r in picked)][:ONLINE_LIMIT]
+        if not songs:
+            return
+        self._found = []
+        worker = self._lookup = musicbrainz.LookupWorker(songs, parent=self)
+        by_path = {s.path: s for s in songs}
+        worker.found.connect(lambda path, changes: self._found.append((by_path[path], changes)))
+        worker.progress.connect(
+            lambda done, total: self.status.showMessage(f"Looking up tags online: {done} of {total}"))
+        worker.failed.connect(lambda why: self.status.showMessage(why, 10000))
+        worker.finished.connect(self._lookup_finished)
+        self.health_online_btn.setEnabled(False)
+        self.status.showMessage(f"Looking up tags online: 0 of {len(songs)}")
+        worker.start()
+
+    def _lookup_finished(self):
+        self._lookup = None
+        self._health_buttons()
+        if not self._found:
+            self.status.showMessage("MusicBrainz had nothing new for these songs", 8000)
+            return
+        dlg = self._suggest_dialog = TagSuggestions(self._found, self)
+        dlg.finished.connect(self._apply_suggestions)
+        dlg.open()
+
+    def _apply_suggestions(self, code):
+        dlg = self._suggest_dialog
+        if code != QDialog.Accepted:
+            return
+        done = failed = 0
+        for song, changes in dlg.chosen():
+            try:
+                tags.write_tags(song.path, **changes)
+                done += 1
+            except Exception:
+                failed += 1
+        self.status.showMessage(f"Tags added to {done} songs" + (f", {failed} could not be written" if failed else ""),
+                                10000)
+        if done:
+            self.rescan()
 
     def _health_show_folder(self):
         path = self._health_path()

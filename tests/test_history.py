@@ -3,12 +3,28 @@ import os
 import stat
 import time
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
 from sleeve import history, identity, settings  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def tidy_widgets():
+    "Widgets made by a test must be gone before Python shuts Qt down, or the process can crash on exit."
+    yield
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    for w in QApplication.topLevelWidgets():
+        w.close()
+        w.deleteLater()
+    QTest.qWait(1)
+
 
 DAY = history.DAY
 NOW = 1_800_000_000
