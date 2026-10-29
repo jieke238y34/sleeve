@@ -37,8 +37,6 @@ The screenshots show a small made-up demo library with generated covers.
 | Library: genre folders, search and a sortable table | Downloads: the optional front end for dl.py |
 | ![Identity](docs/screenshots/identity.png) | ![Settings](docs/screenshots/settings.png) |
 | Identity: your library in words and numbers | Settings: sound, accent colour and file locations |
-| ![Docs](docs/screenshots/docs.png) | |
-| The user guide, built into the app | |
 
 ## Features
 
@@ -83,7 +81,7 @@ The screenshots show a small made-up demo library with generated covers.
 **Appearance**
 
 - Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. Switches for
-  settings, a resizable sidebar, smooth scrolling and a built-in Docs page.
+  settings, a resizable sidebar, smooth scrolling.
 
 ## Install
 
@@ -205,7 +203,7 @@ All of this goes through MPRIS (track information and controls) and PipeWire (th
 - **No sound:** check your output device (Settings > Play through), and run `sleeve` from a terminal to see Qt's messages.
 - **`sleeve: command not found` after installing:** add `~/.local/bin` to your PATH, or use the menu entry.
 
-More in the in-app Docs page and [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+More in the [user guide](docs/USER_GUIDE.md).
 
 ## Development
 

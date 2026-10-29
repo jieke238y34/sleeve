@@ -44,7 +44,7 @@ plays no sound, touches no network and changes nothing in your music folder.
 
 ```sh
 python tools/ui_audit.py --demo                                   # made-up library, all pages and sizes
-python tools/ui_audit.py --demo --pages Settings,Docs --sizes 1180x760 --accents Lavender --out /tmp/shots
+python tools/ui_audit.py --demo --pages Settings,Health --sizes 1180x760 --accents Lavender --out /tmp/shots
 python tools/ui_audit.py --demo --baseline /tmp/old-run           # also list screenshots that changed
 ```
 

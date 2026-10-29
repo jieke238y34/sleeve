@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 First release. Alpha, Linux.
 
+### Changed
+
+- The user guide moved out of the app to `docs/guide/` on GitHub, so the app is smaller and the guide can be
+  read before installing. The Docs page is gone from the sidebar.
+
 ### Added
 
 - Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends

@@ -69,7 +69,6 @@ from . import (
     config,
     desktop,
     dlsetup,
-    docs,
     earbuds,
     filedrop,
     full_version,
@@ -332,13 +331,12 @@ class MainWindow(QMainWindow):
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
         self.identity_page = identity.IdentityPage()
-        self.docs_page = docs.DocsPage(accent=self._accent_shown)
         self.identity_page.set_accent(self._accent_shown)
         self.identity_page.listening.periodChanged.connect(self._listening_period_changed)
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
                            ("Library", self._library_page()), ("Identity", self.identity_page),
                            ("Downloads", self._downloads_page()), ("Health", self._health_page()),
-                           ("Settings", self._settings_page()), ("Docs", self.docs_page)):
+                           ("Settings", self._settings_page())):
             self.nav.addItem(name)
             self.stack.addWidget(scrollable(page) if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
@@ -1167,7 +1165,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme.build_style(colour))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
-        self.docs_page.set_accent(colour)
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()

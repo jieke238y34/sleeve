@@ -1,21 +1,21 @@
 # User guide
 
-The full guide is built into Sleeve (the Docs page in the sidebar). This page is an index with a short summary of each
+The full guide lives in [docs/guide/](guide/). This page is an index with a short summary of each
 topic. The topic files are the source of truth and live in
-[sleeve/data/docs/](../sleeve/data/docs/).
+[docs/guide/](guide/).
 
 | Topic | What it covers |
 |---|---|
-| [Getting started](../sleeve/data/docs/01-getting-started.md) | The pages of the app, your first minute, where the music comes from |
-| [Library](../sleeve/data/docs/02-library.md) | Genre folders, search, the song menu, editing tags, rescanning, the Identity page |
-| [Playlists](../sleeve/data/docs/03-playlists.md) | Playlists of your own, Spotify playlists, importing `.m3u8` files |
-| [Downloads](../sleeve/data/docs/04-downloads.md) | The buttons, the activity feed, trusting `dl.py` |
-| [Liked songs and Health](../sleeve/data/docs/05-liked-and-health.md) | Likes, and the list of songs that need attention |
-| [Playback and sound](../sleeve/data/docs/06-playback-and-sound.md) | Queue, cover and lyrics, gapless, same volume, volume ceiling, media keys |
-| [Keyboard shortcuts](../sleeve/data/docs/07-shortcuts.md) | Keys and mouse tips |
-| [Settings](../sleeve/data/docs/08-settings.md) | Every setting and the paths it shows |
-| [Your files and privacy](../sleeve/data/docs/09-your-files-and-privacy.md) | What Sleeve stores and what it never does |
-| [Troubleshooting](../sleeve/data/docs/10-troubleshooting.md) | Common problems and fixes |
+| [Getting started](guide/01-getting-started.md) | The pages of the app, your first minute, where the music comes from |
+| [Library](guide/02-library.md) | Genre folders, search, the song menu, editing tags, rescanning, the Identity page |
+| [Playlists](guide/03-playlists.md) | Playlists of your own, Spotify playlists, importing `.m3u8` files |
+| [Downloads](guide/04-downloads.md) | The buttons, the activity feed, trusting `dl.py` |
+| [Liked songs and Health](guide/05-liked-and-health.md) | Likes, and the list of songs that need attention |
+| [Playback and sound](guide/06-playback-and-sound.md) | Queue, cover and lyrics, gapless, same volume, volume ceiling, media keys |
+| [Keyboard shortcuts](guide/07-shortcuts.md) | Keys and mouse tips |
+| [Settings](guide/08-settings.md) | Every setting and the paths it shows |
+| [Your files and privacy](guide/09-your-files-and-privacy.md) | What Sleeve stores and what it never does |
+| [Troubleshooting](guide/10-troubleshooting.md) | Common problems and fixes |
 
 ## In short
 
@@ -40,8 +40,7 @@ languages and moods.
 
 **Sound.** Gapless playback, same volume (ReplayGain tags, or measured with `ffmpeg`), and a loudest-volume setting.
 
-## Not in v0.1.0
+## Not yet
 
-First-run download setup, quick search (Ctrl+K), album view and volume above 100% are not in this release, even where
-an in-app topic file mentions them as planned. See the roadmap in the [README](../README.md#roadmap-and-not-yet).
-
+A Windows version, a Fedora package and some planned ideas are not done. See the roadmap in the
+[README](../README.md#roadmap-and-not-yet) and [todo.md](../todo.md).
