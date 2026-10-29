@@ -94,6 +94,8 @@ from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
+from .presence import Presence
+from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
 from .smoothscroll import SmoothScroll
 from .switch import Switch
@@ -295,6 +297,7 @@ class MainWindow(QMainWindow):
         self._current_path = ""
         self.player = player or Player(parent=self)
         self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
+        self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
         self._boost = StreamBoost(self)                  # the part of a volume above 100% (see boost.py)
@@ -333,6 +336,11 @@ class MainWindow(QMainWindow):
         self.identity_page = identity.IdentityPage()
         self.identity_page.set_accent(self._accent_shown)
         self.identity_page.listening.periodChanged.connect(self._listening_period_changed)
+        self._presence_timer = QTimer(self)                  # keeps the status line under the switch honest
+        self._presence_timer.setInterval(3000)
+        self._presence_timer.timeout.connect(self._show_presence_state)
+        self._presence_timer.start()
+        self.presence.configure(self.settings.discord_presence, self.settings.discord_client_id)
         self.identity_page.set_tab(self.settings.identity_tab)
         self.identity_page.tabChanged.connect(lambda key: self._set_setting("identity_tab", key))
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
@@ -1027,6 +1035,29 @@ class MainWindow(QMainWindow):
                            "is used when nothing is playing."))
 
         section("Listening")
+        section("Discord")
+        self.discord_box = Switch("Show what I'm listening to on Discord")
+        self.discord_box.setChecked(self.settings.discord_presence)
+        self.discord_box.toggled.connect(self._discord_toggled)
+        lay.addWidget(self.discord_box)
+        row = QHBoxLayout()
+        self.discord_id = QLineEdit(self.settings.discord_client_id)
+        self.discord_id.setPlaceholderText("Discord application ID (numbers)")
+        self.discord_id.setAccessibleName("Discord application ID")
+        self.discord_id.setMaximumWidth(320)
+        self.discord_id.editingFinished.connect(self._discord_id_changed)
+        row.addWidget(QLabel("Application ID"))
+        row.addWidget(self.discord_id)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.discord_status = hint("")
+        lay.addWidget(self.discord_status)
+        lay.addWidget(hint("Needs Discord, or arRPC for Vesktop and other clients, running on this computer. Create "
+                           "your own application at discord.com/developers and paste its Application ID here: its "
+                           "name is what people see after 'Listening to'. The song title and artist are shared with "
+                           "Discord while this is on, and cleared when you pause, switch it off or quit."))
+
+        section("Listening")
         self.listening_box = Switch("Remember what I listen to")
         self.listening_box.setChecked(self.settings.track_listening)
         self.listening_box.toggled.connect(self._track_listening_toggled)
@@ -1658,6 +1689,42 @@ class MainWindow(QMainWindow):
             except OSError as e:
                 self.status.showMessage(f"Could not save your listening history: {e}", 8000)
             self._refresh_listening()
+
+    def _discord_toggled(self, on):
+        self._set_setting("discord_presence", on)
+        self._apply_presence()
+
+    def _discord_id_changed(self):
+        text = self.discord_id.text().strip()
+        if self.settings.set("discord_client_id", text):
+            self._save_settings()
+        self._apply_presence()
+
+    def _apply_presence(self):
+        "Hand the current settings to the presence connection and show what it is doing."
+        self.presence.configure(self.settings.discord_presence, self.settings.discord_client_id)
+        self._update_presence()
+        self._show_presence_state()
+
+    def _show_presence_state(self):
+        s = self.settings
+        if not s.discord_presence:
+            text = "Off."
+        elif not self.presence.enabled:
+            text = "Paste a valid Application ID (15 to 25 digits) to turn it on."
+        else:
+            text = {"ready": "Connected to Discord.", "connecting": "Connecting…",
+                    "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
+        self.discord_status.setText(text)
+
+    def _update_presence(self):
+        "Tell Discord what is playing (or clear it when nothing is, or the song is paused)."
+        if not self.presence.enabled:
+            return
+        song = self.by_path.get(self._current_path) if self._current_path else None
+        title = song.name if song else (Path(self._current_path).stem if self._current_path else "")
+        artist = song.artist if song else ""
+        self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing))
 
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
@@ -2613,6 +2680,8 @@ class MainWindow(QMainWindow):
         jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
         self._count_listening(self._pos, pos)
         self._pos = pos
+        if jumped:
+            self._update_presence()                          # a seek moves Discord's progress bar too
         if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
             self._tick.restart()
             self.pos_label.setText(fmt_time(pos))
@@ -2634,11 +2703,13 @@ class MainWindow(QMainWindow):
     def _on_playing(self, playing):
         self._is_playing = bool(playing)
         self.play_btn.setText("⏸" if playing else "▶")
+        self._update_presence()
 
     def _on_track(self, index, path):
         self._refresh_queue()
         self._current_path = path
         self._listened, self._listen_counted = 0.0, False
+        self._update_presence()
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
@@ -2746,6 +2817,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
         self._boost.reset()                          # leave no stream louder than it found it
+        self.presence.configure(False, "")           # clear the song from Discord
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()

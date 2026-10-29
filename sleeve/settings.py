@@ -37,6 +37,8 @@ DEFAULTS = {
     "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
     "identity_tab": "identity",        # "identity" or "listening": which tab of the Identity page was open
     "online_lookup_ok": False,         # the user agreed that tags may be looked up on musicbrainz.org
+    "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
+    "discord_client_id": "",           # the user's own Discord application id (digits), needed for the above
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
     "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
@@ -60,7 +62,7 @@ def _valid(key, value):
     if key == "identity_tab":
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
-                "online_lookup_ok"):
+                "online_lookup_ok", "discord_presence"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
@@ -73,6 +75,8 @@ def _valid(key, value):
         return value in ("songs", "albums")
     if key == "cover_size":
         return isinstance(value, int) and not isinstance(value, bool) and 240 <= value <= 900
+    if key == "discord_client_id":
+        return isinstance(value, str) and (value == "" or (value.isdigit() and len(value) <= 25))
     if key == "output_device":
         return isinstance(value, str) and len(value) <= 512
     if key in ("music_dir", "dl_path"):

@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 
 from .theme import LAVENDER, MUTED, TEXT
 
+SOFT = "#d4cfe8"                    # secondary text on the tabs: at least 4.5:1 on the page gradient
+
 UNKNOWN = "Unknown"
 REST = "Everything else"                         # the last bar: all the genres that did not fit
 LOSSLESS_EXT = {".flac", ".wav"}
@@ -589,7 +591,7 @@ class TabCard(QAbstractButton):
 
     def _describe(self):
         name = self.label.capitalize()
-        self.setAccessibleName(f"{name}, selected" if self.isChecked() else name)
+        self.setAccessibleName(name)                       # a checked button already reports that it is selected
         self.setAccessibleDescription(f"{self.value}, {self.note}" if self.note else self.value)
         self.update()
 
@@ -626,7 +628,7 @@ class TabCard(QAbstractButton):
         f.setBold(True)
         f.setLetterSpacing(QFont.AbsoluteSpacing, 1.4)
         p.setFont(f)
-        p.setPen(QColor(self.accent) if on else QColor(MUTED))
+        p.setPen(QColor(TEXT) if on else QColor(SOFT))     # readable on the gradient; the border shows the selection
         p.drawText(QRectF(x, 12, w, 18), Qt.AlignLeft | Qt.AlignVCenter, self.label.upper())
         f = QFont(self.font())
         f.setPointSizeF(20)
@@ -638,7 +640,7 @@ class TabCard(QAbstractButton):
         f = QFont(self.font())
         f.setPointSizeF(9)
         p.setFont(f)
-        p.setPen(QColor(MUTED))
+        p.setPen(QColor(SOFT))
         p.drawText(QRectF(x, 64, w, 18), Qt.AlignLeft | Qt.AlignVCenter,
                    p.fontMetrics().elidedText(self.note, Qt.ElideRight, int(w)))
 

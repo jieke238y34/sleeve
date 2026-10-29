@@ -227,13 +227,13 @@ def test_the_tabs_work_from_the_keyboard_and_have_names(qapp):  # noqa: F811
     from PySide6.QtTest import QTest
     page = _page()
     a, b = page.tab_identity, page.tab_listening
-    assert a.accessibleName() == "Identity, selected" and b.accessibleName() == "Listening"
+    assert a.accessibleName() == "Identity" and a.isChecked() and b.accessibleName() == "Listening"
     assert a.toolTip() and b.toolTip() and a.cursor().shape() == Qt.PointingHandCursor
     assert a.focusPolicy() != Qt.NoFocus and b.focusPolicy() != Qt.NoFocus
     a.setFocus()
     QTest.keyClick(a, Qt.Key_Right)
     assert b.isChecked() and page.views.currentIndex() == 1 and page.focusWidget() is b
-    assert b.accessibleName() == "Listening, selected" and a.accessibleName() == "Identity"
+    assert b.accessibleName() == "Listening" and b.isChecked() and a.accessibleName() == "Identity"
     QTest.keyClick(b, Qt.Key_Right)                               # no wrap past the end
     assert b.isChecked()
     QTest.keyClick(b, Qt.Key_Left)

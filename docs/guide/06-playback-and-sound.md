@@ -75,3 +75,16 @@ In Settings, "Loudest volume" can go up to 150%. The default stays at 75%. Above
 own sound up beyond the normal maximum, which can distort, damage speakers and hurt your hearing, so Settings shows a
 warning there. Keep it low on headphones and earbuds. Only Sleeve's own sound is changed, and it goes back to normal
 when you lower the setting or quit. It needs PipeWire (or PulseAudio) and the `pactl` tool.
+
+## Discord Rich Presence
+
+Sleeve can show "Listening to ..." on your Discord profile with the song, the artist and a progress bar. It is **off**
+until you switch it on in Settings under Discord, and it needs two things:
+
+1. Discord, or [arRPC](https://arrpc.openasar.dev/) for Vesktop and other clients, running on the same computer.
+2. Your own Application ID: create an application at <https://discord.com/developers/applications>, name it (that name
+   is what people see after "Listening to") and paste its Application ID into Settings.
+
+Sleeve talks only to a local socket on your computer (`discord-ipc-0` in your runtime folder); your Discord client
+decides what to publish. The song title and artist are shared while it is on and cleared when you pause, switch it off
+or quit.

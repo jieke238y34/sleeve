@@ -190,6 +190,8 @@ When a text box, list or button has focus, Space and the arrows keep their norma
   seek bar and controls in your panel.
 - **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** if installed, Settings gets earbuds buttons, and Sleeve
   follows the sound when the earbuds switch.
+- **Discord and [arRPC](https://arrpc.openasar.dev/):** optional "Listening to" status for Discord, Vesktop and other
+  clients. Off until you switch it on in Settings and add your own Discord Application ID.
 - **PipeWire:** Sleeve follows your desktop's output, and Settings can pick a specific one.
 
 All of this goes through MPRIS (track information and controls) and PipeWire (the sound itself).

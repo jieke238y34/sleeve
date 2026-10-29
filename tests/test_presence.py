@@ -11,6 +11,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtNetwork import QLocalServer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
+from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
+from test_likes import make_window  # noqa: E402
 
 from sleeve import presence  # noqa: E402
 
@@ -197,3 +199,35 @@ def test_the_payload_is_valid_json_of_the_documented_shape():
     msg = presence.set_activity({"details": "x"}, pid=7, nonce="n")
     assert json.loads(json.dumps(msg)) == {"cmd": "SET_ACTIVITY", "nonce": "n",
                                            "args": {"pid": 7, "activity": {"details": "x"}}}
+
+
+def test_in_the_window_nothing_is_sent_until_it_is_switched_on_with_a_good_id(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    fake = FakeDiscord(str(tmp_path))
+    win.presence.paths = [fake.path]
+    try:
+        song = win.songs[0]
+        win._current_path = song.path
+        win._on_playing(True)
+        pump(0.3)
+        assert fake.messages == [] and win.discord_box.isChecked() is False             # off by default: silent
+        win.discord_box.setChecked(True)                                               # switched on without an id
+        pump(0.2)
+        assert fake.messages == [] and "valid Application ID" in win.discord_status.text()
+        win.discord_id.setText("not digits")
+        win.discord_id.editingFinished.emit()
+        assert win.settings.discord_client_id == "" and fake.messages == []             # refused by the settings check
+        win.discord_id.setText(CLIENT_ID)
+        win.discord_id.editingFinished.emit()
+        assert pump(2, lambda: any(m[1].get("cmd") == "SET_ACTIVITY" for m in fake.messages))
+        shown = [m[1] for m in fake.messages if m[1].get("cmd") == "SET_ACTIVITY"][-1]["args"]["activity"]
+        assert shown["details"] == song.name
+        win._show_presence_state()
+        assert "Connected" in win.discord_status.text()
+        win._on_playing(False)                                                         # paused: cleared
+        assert pump(1, lambda: fake.messages[-1][1].get("args", {}).get("activity", 1) is None)
+        win.discord_box.setChecked(False)
+        assert win.presence.state == "off" and win.settings.discord_presence is False
+    finally:
+        win.close()
+        fake.close()

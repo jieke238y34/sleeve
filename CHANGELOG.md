@@ -15,6 +15,8 @@ First release. Alpha, Linux.
 
 ### Added
 
+- Optional Discord Rich Presence ("Listening to"), through Discord or arRPC over the local IPC socket. Off by default.
+- Settings search; the Identity page has two tabs, Identity and Listening.
 - Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends
   one request a second, only fills empty tags, and shows you the results to tick before anything is written.
 - Identity page: a Listening panel with your top songs this week or this month, chosen with a slider. It is built

@@ -14,6 +14,7 @@ The search box at the top shows only the sections that mention what you type (tr
 | Album art size | How big the cover gets on the Now Playing page, 240 to 900 pixels |
 | Accent colour | One of 16 bold colours, or Custom… to pick any colour you like |
 | Match the colours of the song | The accent follows the cover of the song that is playing |
+| Show what I'm listening to on Discord | Off by default. Needs your own Discord Application ID, see [Playback and sound](06-playback-and-sound) |
 | Remember what I listen to | Keeps which songs you play, on this computer only, for the Listening tab on the Identity page |
 | Clear listening history | Deletes that list |
 

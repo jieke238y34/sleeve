@@ -22,8 +22,8 @@ when they ship.
 
 ## Improvements
 
-- [ ] **Better Settings menu:** group settings, search them, and explain each one in a line.
-- [ ] **Move the user guide out of the app.** Drop the Docs page from the player and keep one well-organised guide on
+- [x] (search added) **Better Settings menu:** group settings, search them, and explain each one in a line.
+- [x] **Move the user guide out of the app.** Drop the Docs page from the player and keep one well-organised guide on
       GitHub (`docs/`), cleaned up and linked from the README.
 - [ ] **Easier downloads.** dl.py is confusing to set up. Offer a plain "Download music" button for Linux users, and
       the same on Windows, which handles the setup behind the scenes.
@@ -31,7 +31,7 @@ when they ship.
       it shape the persona and traits) **Identity that learns from listening.** Today it is worked out from tags and playlist names. Add a small,
       local, opt-in system that slowly learns from what is actually played and skipped. Keep the data on the
       computer and let the user reset it.
-- [ ] **Discord Rich Presence** through [arRPC](https://arrpc.openasar.dev/), for Vesktop and other Discord clients.
+- [x] **Discord Rich Presence** through [arRPC](https://arrpc.openasar.dev/), for Vesktop and other Discord clients.
       Opt in, off by default, and nothing is sent unless it is turned on.
 - [ ] **Optional download sources** as an opt-in service: playlist-sync, ncspot, and Spotify downloaders. Opt in,
       each one clearly named, none enabled by default.
