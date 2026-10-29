@@ -20,6 +20,13 @@ only need it for that page: without it Sleeve is a complete player and library m
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
+## Showcase
+
+[![Watch the showcase video (under two minutes, no sound)](docs/screenshots/showcase-poster.jpg)](docs/media/sleeve-showcase.mp4)
+
+A short tour of the Now Playing page, the Library, Identity, Downloads and Settings, recorded on a real library. The video
+has no sound.
+
 ## Screenshots
 
 The screenshots show a small made-up demo library with generated covers.
