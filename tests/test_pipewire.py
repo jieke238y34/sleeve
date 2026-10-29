@@ -96,3 +96,16 @@ def test_control_flags_without_a_running_sleeve_say_so(capsys, monkeypatch):
     assert sleeve_app.main(["--next"]) == 1
     assert "not running" in capsys.readouterr().err
     sys.stdout.flush()
+
+
+def test_a_preview_copy_has_its_own_names(monkeypatch):
+    "`sleeve --preview` must not collide with the copy that is playing: its own instance socket and media-key name."
+    seen = {}
+    monkeypatch.setattr(sleeve_app.singleton, "already_running",
+                        lambda name=None, *a, **k: seen.setdefault("name", name) and True)
+    monkeypatch.setattr(sleeve_app, "QApplication", lambda *a: object())
+    assert sleeve_app.main(["--preview"]) == 0
+    assert seen["name"].endswith("-preview") and seen["name"] != sleeve_app.singleton.NAME
+    seen.clear()
+    assert sleeve_app.main([]) == 0
+    assert seen["name"] == sleeve_app.singleton.NAME

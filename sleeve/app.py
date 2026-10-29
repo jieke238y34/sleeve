@@ -2581,6 +2581,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
     ap.add_argument("--version", action="version", version=f"sleeve {full_version()}")
+    ap.add_argument("--preview", action="store_true",
+                    help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     ctl = ap.add_argument_group("control a running Sleeve (for shortcuts, launchers and scripts)")
     ctl.add_argument("--toggle", action="store_true", help="show Sleeve, or minimise it when it is in front")
     ctl.add_argument("--play-pause", dest="playpause", action="store_true", help="play or pause")
@@ -2592,7 +2594,8 @@ def main(argv=None):
     os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
                                         "application.icon_name=io.github.jieke238y34.Sleeve")
     app = QApplication(sys.argv[:1])
-    if singleton.already_running(command=command):   # Sleeve is open already and has been given the command
+    instance_name = singleton.NAME + ("-preview" if args.preview else "")
+    if singleton.already_running(instance_name, command=command):   # Sleeve is open already, given the command
         return 0
     if command in ("playpause", "next", "previous"):
         print("Sleeve is not running.", file=sys.stderr)
@@ -2602,11 +2605,13 @@ def main(argv=None):
     app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")))
     cfg = startup_config(args.dl, ask_music_folder)
     win = MainWindow(cfg)
-    instance = singleton.InstanceServer(parent=win)             # a later launch brings this window forward
+    if args.preview:
+        win.setWindowTitle("Sleeve (preview)")
+    instance = singleton.InstanceServer(instance_name, parent=win)   # a later launch brings this window forward
     if instance.start():
         instance.raiseRequested.connect(win.raise_window)
         instance.commandReceived.connect(win.run_command)
-    attach_media_keys(win, app)
+    attach_media_keys(win, app, suffix="sleeve.preview" if args.preview else "sleeve")
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()
     return app.exec()
