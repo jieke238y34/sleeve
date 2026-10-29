@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Name=Sleeve
+GenericName=Music Player
+Comment=Music library, player and sync dashboard
+Exec=sleeve
+Icon=io.github.jieke238y34.Sleeve
+Terminal=false
+Categories=AudioVideo;Audio;Player;Qt;
+Keywords=music;player;library;playlist;
+StartupWMClass=sleeve
+Actions=PlayPause;Next;Previous;
+
+[Desktop Action PlayPause]
+Name=Play / Pause
+Exec=sleeve --play-pause
+
+[Desktop Action Next]
+Name=Next song
+Exec=sleeve --next
+
+[Desktop Action Previous]
+Name=Previous song
+Exec=sleeve --previous

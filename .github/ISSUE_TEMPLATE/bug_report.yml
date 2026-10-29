@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Sleeve version
+      description: Output of `sleeve --version`.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system, Python and PySide6 versions
+      placeholder: Fedora 44, Python 3.14, PySide6 6.9
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or screenshots
+      description: Run `sleeve` from a terminal and paste anything it prints. Remove personal paths first.

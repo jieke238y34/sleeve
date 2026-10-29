@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Circular avatar: ink and cream S on a lavender gradient</title>
+<g transform="translate(256 256) scale(1.16) translate(-256 -256)"><defs><linearGradient id="g7" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#cfc9ef"/><stop offset="1" stop-color="#8d82cf"/></linearGradient></defs><circle cx="256" cy="256" r="220" fill="url(#g7)"/><g fill="none" stroke-width="64"><path d="M322 190A66 66 0 1 0 251.0 255.8" stroke="#15131d"/><path d="M261.0 256.2A66 66 0 1 1 190 322" stroke="#f3e9d2"/></g><circle cx="256" cy="256" r="14" fill="#ff8fb1"/></g>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Two-tone S, sleeve fold</title>
+<defs><linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#211e30"/><stop offset="1" stop-color="#15131d"/></linearGradient></defs>
+<rect width="512" height="512" rx="112" fill="url(#tile)"/>
+<rect x="3" y="3" width="506" height="506" rx="109" fill="none" stroke="#b7afe0" stroke-opacity=".18" stroke-width="2"/>
+<g transform="translate(256 256) scale(.92) translate(-256 -256)"><g fill="none" stroke-width="64"><path d="M336 176A80 80 0 1 0 251.5 255.9" stroke="#b7afe0"/><path d="M260.5 256.1A80 80 0 1 1 176 336" stroke="#f3e9d2"/></g></g>
+</svg>

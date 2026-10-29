@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>Sleeve - Record peeking from a sleeve (single colour)</title>
+<defs><clipPath id="c1clip"><rect x="0" y="0" width="512" height="260"/></clipPath></defs>
+<g clip-path="url(#c1clip)" fill="none" stroke="currentColor">
+<circle cx="256" cy="214" r="146" stroke-width="16"/>
+<circle cx="256" cy="214" r="98" stroke-width="7" opacity=".6"/></g>
+<circle cx="256" cy="214" r="42" fill="currentColor"/>
+<path fill="currentColor" fill-rule="evenodd" d="M120 292a36 36 0 0 1 36-36h200a36 36 0 0 1 36 36v112a36 36 0 0 1-36 36H156a36 36 0 0 1-36-36Zm44 90a8 8 0 0 0 8 8h96a8 8 0 0 0 8-8 8 8 0 0 0-8-8h-96a8 8 0 0 0-8 8Z"/>
+</svg>

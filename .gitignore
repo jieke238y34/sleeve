@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+sleeve/_build.py
+*.egg-info/
+.coverage
+config.ini
+playlists.txt
+genre_overrides.txt
+cookies*
+*.cookies
+.env
