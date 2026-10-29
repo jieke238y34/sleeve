@@ -355,6 +355,7 @@ class MainWindow(QMainWindow):
 
         for view in self.findChildren(QAbstractItemView):         # one scroll feel everywhere
             SmoothScroll.attach(view)
+        self.polish_controls()
 
         p = self.player
         p.positionChanged.connect(self._on_position)
@@ -1193,6 +1194,7 @@ class MainWindow(QMainWindow):
         self.health_folder_btn = QPushButton("Show in file manager")
         self.health_folder_btn.clicked.connect(self._health_show_folder)
         self.health_fix_btn = QPushButton("")
+        self.health_fix_btn.setAccessibleName("Fix this problem")
         self.health_fix_btn.setObjectName("primary")
         self.health_fix_btn.clicked.connect(self._health_fix)
         actions = FlowLayout()
@@ -1438,6 +1440,16 @@ class MainWindow(QMainWindow):
     def _earbuds_done(self, proc, code):
         self.earbuds_note.setText("Done" if code == 0 else "Maid BT reported a problem")
         proc.deleteLater()
+
+    def polish_controls(self):
+        """Every button says what it is (screen readers read the tooltip when there is no text) and shows a pointer
+        cursor, like a link would."""
+        for b in self.findChildren(QAbstractButton):
+            if not b.accessibleName():
+                b.setAccessibleName(b.toolTip() or b.text())
+            b.setCursor(Qt.PointingHandCursor)
+        for box in self.findChildren(QComboBox):
+            box.setCursor(Qt.PointingHandCursor)
 
     def run_command(self, name):
         "What `sleeve --toggle`, `--play-pause`, `--next`, `--previous` ask of the open window."
@@ -2302,6 +2314,7 @@ class MainWindow(QMainWindow):
         if job is not None:
             label, what = FRIENDLY[job]
             self.health_fix_btn.setText(f"Fix: {label}")
+            self.health_fix_btn.setAccessibleName(f"Fix: {label}")
             self.health_fix_btn.setToolTip(what)
             self.health_fix_btn.setEnabled(self.cfg.has_dl)
             if not self.cfg.has_dl:

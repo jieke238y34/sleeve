@@ -5,7 +5,10 @@ when they ship.
 
 ## Bugs
 
-- [ ] **High CPU and GPU use while playing**, which makes the fans spin up. Cause not found yet. Things to measure
+- [x] **High CPU and GPU use while playing**, which makes the fans spin up. Measured live: Sleeve 5 to 8% of a core
+      when idle but visible, 25 to 60% while interacting, plus the compositor. Fixed the steady part (the backdrop
+      gradient is now drawn once and copied, and the seek bar redraws about 5 times a second instead of 10). The
+      spikes while interacting still need measuring after this build. Original notes: things to measure
       first: the gradient background and its fade animation, the smooth-scroll timers, the lyrics position updates,
       and the repaint rate of the seek bar and cover. Profile with the window shown, hidden and minimised.
 - [ ] **Health page should fill in missing tags from MusicBrainz**, without an account. The MusicBrainz web service

@@ -175,3 +175,21 @@ def test_album_art_size_is_a_saved_setting(qapp, cfg, monkeypatch, tmp_path):  #
         assert win.settings.cover_size == 700
     finally:
         win.close()
+
+
+def test_every_button_has_a_name_a_pointer_and_a_visible_focus(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    "antislop R-32 and R-39: keyboard users see where they are, and icon-only buttons say what they are."
+    from PySide6.QtWidgets import QAbstractButton
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        buttons = [b for b in win.findChildren(QAbstractButton) if not b.objectName().startswith("qt_")
+                   and type(b).__name__ != "QToolButton"]            # Qt's own scrollbar and spin-box parts
+        assert len(buttons) > 20
+        nameless = [b.objectName() or type(b).__name__ for b in buttons if not b.accessibleName()]
+        assert nameless == []
+        assert all(b.cursor().shape() == Qt.PointingHandCursor for b in buttons)
+        assert win.play_btn.accessibleName() == "Play / pause"
+        assert "QPushButton:focus" in win.styleSheet() or "QPushButton:focus" in qapp.styleSheet()
+    finally:
+        win.close()
