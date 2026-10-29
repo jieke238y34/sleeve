@@ -18,6 +18,7 @@ QToolTip {{ background: #24202f; color: {TEXT}; border: 1px solid #3a3450; paddi
 
 QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
     background: rgba(10, 8, 16, 120); border: none; border-radius: 12px; outline: 0;
+    padding: 3px;
     alternate-background-color: rgba(255, 255, 255, 10);
     selection-background-color: rgba({rgb}, 80); selection-color: #ffffff;
 }}
@@ -67,10 +68,10 @@ QSlider::groove:horizontal {{ height: 6px; background: rgba(255, 255, 255, 40); 
 QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {CREAM}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }}
 
-QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 12px 2px; }}
 QScrollBar::handle:vertical {{ background: rgba(255, 255, 255, 50); border-radius: 4px; min-height: 28px; }}
 QScrollBar::handle:vertical:hover {{ background: rgba(255, 255, 255, 90); }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 12px; }}
 QScrollBar::handle:horizontal {{ background: rgba(255, 255, 255, 50); border-radius: 4px; min-width: 28px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}

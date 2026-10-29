@@ -392,7 +392,7 @@ class MainWindow(QMainWindow):
         right = QVBoxLayout()
         top = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Filter this list…   (Ctrl+K searches everything)")
+        self.search.setPlaceholderText("Filter…  (Ctrl+K: search all)")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
         rescan = QPushButton("Rescan")
