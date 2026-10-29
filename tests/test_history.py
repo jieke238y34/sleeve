@@ -316,3 +316,22 @@ def test_a_short_seek_is_not_counted_as_listening(qapp, cfg, monkeypatch, tmp_pa
         assert win._seeking is True
     finally:
         win.close()
+
+
+def test_keyboard_and_lyric_seeks_are_not_credited_as_listening(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    "From opencode's review: every way of seeking must set the flag, including a click on a lyric line."
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        song = win.songs[0]
+        win.player.current = lambda: song.path
+        win._on_track(0, song.path)
+        win._current_path, win._dur, win._is_playing, win._pos = song.path, 200.0, True, 10.0
+        win._seek_by(1)                                           # an arrow key
+        win._on_position(11.0)
+        assert win._listened == 0.0
+        win._lyrics, win._lyric_synced = [(30.0, "a line")], True
+        win.lyrics.addItem("a line")
+        win._lyric_clicked(win.lyrics.item(0))                    # a click on a lyric line
+        assert win._seeking is True and win.player.calls[-1] == ("seek", (30.0,))
+    finally:
+        win.close()

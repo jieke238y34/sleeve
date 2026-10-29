@@ -2803,7 +2803,7 @@ class MainWindow(QMainWindow):
         "Clicking a line of synced lyrics jumps the song to that line."
         row = self.lyrics.row(item)
         if self._lyric_synced and 0 <= row < len(self._lyrics):
-            self.player.seek(self._lyrics[row][0])
+            self._seek_now(self._lyrics[row][0])
 
     def _show_lyrics(self):
         self.show_page("Now Playing")
