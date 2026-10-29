@@ -72,20 +72,23 @@ def test_the_panel_follows_the_period_pills(qapp):  # noqa: F811
     card.periodChanged.connect(lambda p: seen.append(p))
     card.set_data([("Song A", "Artist", 4), ("Song B", "", 1)], 5400, True)
     assert card.heading.text() == "Your top songs this week"
+    assert card.heading.accessibleName() == "Your top songs this week"
     assert "1.5 hours" in card.total.text() and "this week" in card.total.text()
     assert card.rows.count() == 2
     card.month_btn.click()                                        # the pill
     assert seen == ["month"] and card.period == "month" and card.month_btn.isChecked()
     assert card.heading.text() == "Your top songs this month"
     card.set_data([], 0, True)
-    assert card.heading.text() == "Nothing played this month yet" and card.rows.count() == 0
+    assert card.heading.text() == "Nothing played this month yet"
+    assert card.heading.accessibleName() == "Nothing played this month yet" and card.rows.count() == 0
     card.month_btn.click()                                        # clicking the pill that is already chosen does nothing
     card.week_btn.click()
     assert seen == ["month", "week"]
     card.set_period("month")                                      # loading the saved choice is silent
     assert card.month_btn.isChecked() and seen == ["month", "week"]
     card.set_data([("x", "y", 1)], 60, False)
-    assert card.heading.text() == "Listening history is off" and card.rows.count() == 0
+    assert card.heading.text() == "Listening history is off"
+    assert card.heading.accessibleName() == "Listening history is off" and card.rows.count() == 0
 
 
 def test_long_titles_do_not_widen_the_panel_and_more_songs_can_be_shown(qapp):  # noqa: F811
@@ -129,6 +132,30 @@ def test_listening_is_counted_once_per_song_in_the_window(qapp, cfg, monkeypatch
         assert len(win.history) == 2
         panel = win.identity_page.listening
         assert panel.heading.text() == "Your top songs this week" and panel.rows.count() == 1
+    finally:
+        win.close()
+
+
+def test_a_seek_is_not_credited_as_listening_time(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        song = win.songs[0]
+        win.player.current = lambda: song.path
+        win._current_path, win._dur, win._is_playing = song.path, 200.0, True
+        win._on_track(0, song.path)
+        win._is_playing = True
+        win._pos = 0.0
+        for step in range(1, 38):                                # 18.5 s of real listening: not a play yet
+            win._on_position(step * 0.5)
+        assert len(win.history) == 0 and win._listened == 18.5
+        win._seek_by(1)                                           # a forward seek of one second is a seek
+        win._on_position(19.5)                                   # the position report after the seek
+        assert len(win.history) == 0 and win._listened == 18.5       # ...not credited as listening time
+        t = 19.5
+        for _ in range(30):                                       # 15 s of real listening after the seek
+            t += 0.5
+            win._on_position(t)
+        assert len(win.history) == 1
     finally:
         win.close()
 

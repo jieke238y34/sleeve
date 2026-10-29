@@ -6,6 +6,7 @@
 |---|---|
 | `~/.config/sleeve/liked.json` | Your liked songs |
 | `~/.config/sleeve/settings.json` | Your settings |
+| `~/.config/sleeve/history.json` | What you listened to, for the top songs on the Identity page |
 | `~/.config/sleeve/trusted_dl.json` | Which `dl.py` you have said you trust |
 | `~/.cache/sleeve` | Remembered tags and loudness measurements |
 | `Playlists/My Playlists` | Your playlists, as `.m3u8` files |

@@ -1012,6 +1012,7 @@ class MainWindow(QMainWindow):
         def section(text):
             lab = QLabel(text)
             lab.setObjectName("heading")
+            lab.setAccessibleName(text)             # the section heading is announced as a heading
             lay.addSpacing(10)
             lay.addWidget(lab)
 
@@ -1765,10 +1766,13 @@ class MainWindow(QMainWindow):
 
     def _count_listening(self, previous, pos):
         "Add the time since the last report to the song's listening time, and record a play once it counts."
+        if self._seeking:                                   # a seek just happened: not listening
+            self._seeking = False
+            return
         if not (self.settings.track_listening and self._is_playing and self._current_path):
             return
         step = pos - previous
-        if not 0 < step < 2.0:                                # a seek or a new song is not listening
+        if not 0 < step < 2.0:                                # a new song is not listening
             return
         self._listened += step
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
@@ -1861,14 +1865,19 @@ class MainWindow(QMainWindow):
 
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
+        if on:                                            # a fresh listen starts when the history is on again
+            self._listened, self._listen_counted = 0.0, False
         self._refresh_listening()
 
     def _clear_listening(self):
+        saved = list(self.history.events)                 # kept back until the clear is safely on disk
         self.history.clear()
         try:
             self.history.save()
         except OSError as e:
+            self.history.events = saved                 # the in-memory history stays intact if the save failed
             self.status.showMessage(f"Could not clear your listening history: {e}", 8000)
+            return
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
@@ -2850,6 +2859,7 @@ class MainWindow(QMainWindow):
         self._current_path = path
         self._listened, self._listen_counted = 0.0, False
         self._update_presence()
+        self._seeking = False                               # a new song starts a fresh listen, not a seek
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
@@ -2866,6 +2876,8 @@ class MainWindow(QMainWindow):
             s = self.by_path.get(path) or library.read_song(path, self.cfg.music_dir)
         except Exception as e:
             self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
+            self._current_path = ""                       # the song did not load: nothing is being listened to
+            self._listened, self._listen_counted = 0.0, False
             return
         self.now.setText(f"{s.name}\n{s.artist}")
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")

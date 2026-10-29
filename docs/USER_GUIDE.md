@@ -36,7 +36,8 @@ you run an action Sleeve asks you to trust `dl.py`.
 
 **Health and Identity.** Health lists problem songs and never deletes anything. Identity describes your library from
 its tags: a persona, seven trait meters (Discovery, Loyalty, Range, Fidelity, Tidiness, Languages, Heart), charts,
-languages and moods.
+languages and moods. The Identity page also has a Listening panel with your top songs this week or this month, taken
+from a local history of what you actually played; it can be switched off or cleared in Settings.
 
 **Sound.** Gapless playback, same volume (ReplayGain tags, or measured with `ffmpeg`), and a loudest-volume setting.
 

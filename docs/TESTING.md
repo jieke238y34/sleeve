@@ -24,7 +24,7 @@ and a package build. `.github/workflows/security.yml` runs bandit, pip-audit and
 | Same-volume levelling | `test_loudness.py`, `test_loudness_wiring.py` |
 | MPRIS | `test_mpris.py` |
 | Window, pages and interaction (stub player) | `test_app.py`, `test_interaction.py`, `test_window_behaviour.py`, `test_nowplaying.py` |
-| Settings and Identity | `test_settings.py`, `test_identity.py` |
+| Settings and Identity | `test_settings.py`, `test_identity.py`, `test_history.py` |
 | Downloads, activity feed, dl.py trust | `test_downloads.py`, `test_sync_trust.py` |
 | In-app docs | `test_docs.py` |
 
