@@ -1,7 +1,9 @@
 """The Sleeve main window: library, playlists, queue, sync dashboard and health, with a player bar."""
 import argparse
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QPoint, QSize, Qt, QThread, QTimer, QUrl, Signal
@@ -11,11 +13,13 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
     QApplication,
+    QColorDialog,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -30,6 +34,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSplitter,
     QStackedWidget,
@@ -47,6 +52,7 @@ from . import (
     activity,
     art,
     config,
+    desktop,
     docs,
     filedrop,
     health,
@@ -58,16 +64,34 @@ from . import (
     myplaylists,
     playlists,
     settings,
+    singleton,
     sync,
     tags,
     theme,
 )
+from .coverview import CoverScreen, CoverView
 from .mpris import Mpris
 from .player import REPEAT_ALL, REPEAT_ONE, Player
+from .smoothscroll import SmoothScroll
 from .switch import Switch
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
+CUSTOM_LABEL = "Custom…"
+DL_HOME = "https://github.com/jieke238y34/playlist-sync"
+LYRICS_MAX_BATCHES = 200                     # 200 x 300 songs: more than any library, but a loop must end
+SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
+
+
+def scrollable(page):
+    "The page inside a scroll area, so that a small window scrolls it instead of being forced to grow."
+    area = QScrollArea()
+    area.setWidget(page)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.NoFrame)
+    area.viewport().setAutoFillBackground(False)
+    SmoothScroll.attach(area)
+    return area
 # dl.py action -> (what the button says, what it does). The action names themselves stay in sync.ACTIONS.
 FRIENDLY = {
     "Sync playlists": ("Get new music", "Download new songs from your playlists, then sort them into genre folders."),
@@ -75,19 +99,42 @@ FRIENDLY = {
     "Repair genres": ("Fix missing genres", "Look up songs that have no genre and file them in the right folder."),
     "Dedupe (report only)": ("Find duplicates", "Show which songs are in your library twice. Nothing is moved."),
     "Build playlist files": ("Update playlist files", "Rebuild the playlist files from your Spotify playlists."),
-    "Fetch lyrics": ("Get lyrics", "Look for lyrics for songs that do not have any."),
+    "Fetch lyrics": ("Get lyrics", "Look for lyrics for songs that do not have any. dl.py checks 300 songs at a time; "
+                                   "Sleeve keeps going until every song has been tried."),
     "Status": ("Check progress", "See whether a download is running and how it is going."),
 }
 KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
-COVER = 380                                       # size of the big cover on the Now Playing page
+COVER = 440                                       # the biggest the cover gets on the Now Playing page
 LIKED = "♥ Liked Songs"
 
 
 def fmt_time(seconds):
     s = int(max(0, seconds))
     return f"{s // 60}:{s % 60:02d}"
+
+
+class ClickLabel(QLabel):
+    "A label that says when it was clicked once, or double-clicked (a double click does not also count as a click)."
+
+    clicked = Signal()
+    doubleClicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._after_double = False
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mouseReleaseEvent(self, e):
+        if self._after_double:
+            self._after_double = False
+        elif e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit()
+
+    def mouseDoubleClickEvent(self, _e):
+        self._after_double = True
+        self.doubleClicked.emit()
 
 
 class ClickSlider(QSlider):
@@ -230,44 +277,53 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
-        self.resize(1180, 760)
+        self._restore_size()
 
-        self.setStyleSheet(theme.build_style(self.settings.accent_color))
-        Switch.set_accent(self.settings.accent_color)
+        self._accent_shown = self.settings.accent_color        # the accent on screen (it may follow the song)
+        self.setStyleSheet(theme.build_style(self._accent_shown))
+        Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        body = QHBoxLayout()
         self.nav = QListWidget()
         self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(190)
+        self.nav.setMinimumWidth(120)
+        self.nav.setMaximumWidth(420)
+        self.nav.setTextElideMode(Qt.ElideRight)
         self.nav.setFrameShape(QListWidget.NoFrame)
         self.nav.setIconSize(self.nav.iconSize() * 1.2)
         self.stack = QStackedWidget()
         self.identity_page = identity.IdentityPage()
-        self.docs_page = docs.DocsPage(accent=self.settings.accent_color)
-        self.identity_page.set_accent(self.settings.accent_color)
-        for name, page in (("Now Playing", self._now_playing_page()), ("Library", self._library_page()),
-                           ("Playlists", self._playlists_page()), ("Downloads", self._downloads_page()),
-                           ("Health", self._health_page()), ("Identity", self.identity_page),
+        self.docs_page = docs.DocsPage(accent=self._accent_shown)
+        self.identity_page.set_accent(self._accent_shown)
+        for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
+                           ("Library", self._library_page()), ("Identity", self.identity_page),
+                           ("Downloads", self._downloads_page()), ("Health", self._health_page()),
                            ("Settings", self._settings_page()), ("Docs", self.docs_page)):
             self.nav.addItem(name)
-            self.stack.addWidget(page)
+            self.stack.addWidget(scrollable(page) if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
-        body.addWidget(self.nav)
-        body.addWidget(self.stack, 1)
-        self.lyrics = QListWidget()
-        self.lyrics.setFixedWidth(280)
-        self.lyrics.setVisible(False)
-        self.lyrics.setWordWrap(True)
-        body.addWidget(self.lyrics)
-        outer.addLayout(body, 1)
+        self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(6)
+        self.splitter.addWidget(self.nav)
+        self.splitter.addWidget(self.stack)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([self.settings.nav_width, 10_000])
+        self.splitter.splitterMoved.connect(self._nav_resized)
+        outer.addWidget(self.splitter, 1)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
         self.status = self.statusBar()
-        self.nav.setCurrentRow(1)
+        names = [self.nav.item(i).text() for i in range(self.nav.count())]
+        last = self.settings.last_page
+        self.nav.setCurrentRow(names.index(last) if last in names else names.index("Library"))
+
+        for view in self.findChildren(QAbstractItemView):         # one scroll feel everywhere
+            SmoothScroll.attach(view)
 
         p = self.player
         p.positionChanged.connect(self._on_position)
@@ -287,6 +343,10 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_F11), self, self._toggle_fullscreen)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
+        self._lyrics_run = None                               # the lyrics job in progress (see _lyrics_begin)
+        self._lyrics_timer = QTimer(self)                     # while it runs, look for the files it has just written
+        self._lyrics_timer.setInterval(4000)
+        self._lyrics_timer.timeout.connect(self._lyrics_scan)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -319,6 +379,7 @@ class MainWindow(QMainWindow):
         self.table.setModel(self.model)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
+        SmoothScroll.attach(self.table)
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
         head.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -462,6 +523,16 @@ class MainWindow(QMainWindow):
         head.addLayout(titles, 1)
         head.addWidget(save_pl)
         head.addWidget(clear)
+        tabs = QHBoxLayout()
+        tabs.setSpacing(4)
+        self.tab_queue, self.tab_lyrics = QPushButton("Playlist"), QPushButton("Lyrics")
+        for b in (self.tab_queue, self.tab_lyrics):
+            b.setObjectName("seg")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            tabs.addWidget(b)
+        tabs.addStretch(1)
+        self.tab_queue.setChecked(True)
         self.queue_list = QListWidget()
         self.queue_list.setObjectName("queue")
         self.queue_list.setIconSize(QSize(44, 44))
@@ -470,28 +541,57 @@ class MainWindow(QMainWindow):
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
         self.queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.queue_list.customContextMenuRequested.connect(self._queue_menu)
-        left.addLayout(head)
-        left.addWidget(self.queue_list, 1)
+        queue_page = QWidget()
+        ql = QVBoxLayout(queue_page)
+        ql.setContentsMargins(0, 0, 0, 0)
+        ql.addLayout(head)
+        ql.addWidget(self.queue_list, 1)
+        self.lyrics = QListWidget()
+        self.lyrics.setObjectName("lyrics")
+        self.lyrics.setWordWrap(True)
+        self.lyrics.setFocusPolicy(Qt.NoFocus)
+        self.lyrics.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.lyrics.itemClicked.connect(self._lyric_clicked)
+        self.lyrics_empty = QLabel("No imported lyrics found")
+        self.lyrics_empty.setObjectName("muted")
+        self.lyrics_empty.setAlignment(Qt.AlignCenter)
+        self.lyrics_empty.setWordWrap(True)
+        self.lyrics_note = QLabel("These lyrics are not synced to the song.")
+        self.lyrics_note.setObjectName("muted")
+        self.lyrics_note.setAlignment(Qt.AlignCenter)
+        lyrics_page = QWidget()
+        ll = QVBoxLayout(lyrics_page)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.addWidget(self.lyrics, 1)
+        ll.addWidget(self.lyrics_empty, 1)
+        ll.addWidget(self.lyrics_note)
+        self.np_tabs = QStackedWidget()
+        self.np_tabs.addWidget(queue_page)
+        self.np_tabs.addWidget(lyrics_page)
+        self.tab_queue.toggled.connect(lambda on: on and self.np_tabs.setCurrentIndex(0))
+        self.tab_lyrics.toggled.connect(lambda on: on and self.np_tabs.setCurrentIndex(1))
+        for view in (self.queue_list, self.lyrics):
+            SmoothScroll.attach(view)
+        self._lyric_synced, self._lyric_row = False, -1
+        self._set_lyrics_state()
+        left.addLayout(tabs)
+        left.addWidget(self.np_tabs, 1)
         side = self.np_side = QWidget()
         side.setFixedWidth(360)
         side.setLayout(left)
         left.setContentsMargins(0, 0, 0, 0)
 
         right = QVBoxLayout()
-        right.addStretch(1)
-        self.np_cover = QLabel()
-        self.np_cover.setFixedSize(COVER, COVER)
+        self.np_cover = CoverView(COVER)
+        self.np_cover.clicked.connect(self._toggle_cover)
         self.np_title, self.np_artist, self.np_album = QLabel(), QLabel(), QLabel()
         for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
             lab.setObjectName(name)
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
-        self.np_cover.setCursor(Qt.PointingHandCursor)
-        self.np_cover.mousePressEvent = lambda _e: (
-            self._toggle_fullscreen() if self._fullscreen else self._toggle_cover())
-        right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
-        right.addSpacing(18)
+        right.addWidget(self.np_cover, 1)
+        right.addSpacing(14)
         for lab in (self.np_title, self.np_artist, self.np_album):
             right.addWidget(lab)
         self.expand_btn = QPushButton("⤢")
@@ -509,8 +609,7 @@ class MainWindow(QMainWindow):
         cover_btns.addStretch(1)
         right.addSpacing(8)
         right.addLayout(cover_btns)
-        right.addStretch(2)
-        self._np_pix, self._cover_expanded, self._fullscreen = None, False, False
+        self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
@@ -555,7 +654,7 @@ class MainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
         self.stop_btn.setToolTip("Stop what is running")
-        self.stop_btn.clicked.connect(self.runner.stop)
+        self.stop_btn.clicked.connect(self._stop_clicked)
         main.addWidget(self.stop_btn)
         main.addStretch(1)
         tidy = QHBoxLayout()
@@ -575,6 +674,7 @@ class MainWindow(QMainWindow):
 
         self.activity = QListWidget()
         self.activity.setObjectName("activity")
+        SmoothScroll.attach(self.activity)
         self.activity.setWordWrap(True)
         self.activity.setSelectionMode(QAbstractItemView.NoSelection)
         self.activity.setFocusPolicy(Qt.NoFocus)
@@ -594,7 +694,7 @@ class MainWindow(QMainWindow):
         foot.addWidget(self.details_btn)
         foot.addWidget(clear)
         foot.addStretch(1)
-        self.sync_note = QLabel(f"Using {self.cfg.dl_path}")
+        self.sync_note = QLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
         self.sync_note.setObjectName("muted")
         self.sync_note.setTextFormat(Qt.PlainText)
         foot.addWidget(self.sync_note)
@@ -605,7 +705,30 @@ class MainWindow(QMainWindow):
         self.sync_log.setFont(QFont("monospace"))
         self.sync_log.setVisible(False)
 
+        self.no_dl = QFrame()                                  # shown instead of the controls when there is no dl.py
+        no_dl = QVBoxLayout(self.no_dl)
+        no_dl_text = QLabel("Downloads use dl.py (playlist-sync), a separate, optional program. It was not found, so "
+                            "this page is switched off. Everything else in Sleeve works without it.")
+        no_dl_text.setObjectName("muted")
+        no_dl_text.setWordWrap(True)
+        no_dl_buttons = QHBoxLayout()
+        what = QPushButton("What is dl.py?")
+        what.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DL_HOME)))
+        choose = QPushButton("Choose dl.py…")
+        choose.clicked.connect(self._choose_dl)
+        no_dl_buttons.addWidget(what)
+        no_dl_buttons.addWidget(choose)
+        no_dl_buttons.addStretch(1)
+        no_dl.addWidget(no_dl_text)
+        no_dl.addLayout(no_dl_buttons)
+        self.no_dl.setVisible(not self.cfg.has_dl)
+        if not self.cfg.has_dl:
+            for b in self.sync_buttons:
+                b.setEnabled(False)
+                b.setToolTip("Needs dl.py")
+            self.dl_state.setText("dl.py was not found")
         lay.addLayout(head)
+        lay.addWidget(self.no_dl)
         lay.addLayout(main)
         lay.addLayout(tidy)
         lay.addWidget(self.sync_bar)
@@ -614,6 +737,15 @@ class MainWindow(QMainWindow):
         lay.addLayout(foot)
         lay.addWidget(self.sync_log, 2)
         return page
+
+    def _choose_dl(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(self, "Choose dl.py", str(Path.home()),
+                                              "dl.py (dl.py);;Python files (*.py)")
+        if path and path.endswith(".py"):
+            self._set_setting("dl_path", path)
+            self.status.showMessage("Saved. Restart Sleeve to use that dl.py.", 10000)
 
     def _toggle_details(self, on):
         self.sync_log.setVisible(on)
@@ -695,17 +827,26 @@ class MainWindow(QMainWindow):
         section("Look")
         row = QHBoxLayout()
         self.accent_box = QComboBox()
-        self.accent_box.addItems(list(settings.ACCENTS))
-        self.accent_box.setCurrentText(self.settings.accent)
+        for name, colour in settings.ACCENTS.items():
+            self.accent_box.addItem(QIcon(theme.swatch(colour)), name)
+        self.accent_box.addItem(QIcon(theme.swatch(self.settings.accent_custom)), CUSTOM_LABEL)
+        self._show_accent_choice()
         self.accent_box.currentTextChanged.connect(self._accent_changed)
         row.addWidget(QLabel("Accent colour"))
         row.addWidget(self.accent_box)
         row.addStretch(1)
         lay.addLayout(row)
+        self.match_box = Switch("Match the colours of the song")
+        self.match_box.setChecked(self.settings.accent_from_cover)
+        self.match_box.toggled.connect(self._match_toggled)
+        lay.addWidget(self.match_box)
+        lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
+                           "is used when nothing is playing."))
 
         section("Your files")
         grid = QGridLayout()
-        for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir), ("dl.py", self.cfg.dl_path),
+        for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
+                                            ("dl.py", self.cfg.dl_path or "not found (optional)"),
                                             ("Liked songs", self.likes.file), ("Settings", self.settings.file))):
             value_label = QLabel(str(value))
             value_label.setTextFormat(Qt.PlainText)
@@ -716,6 +857,10 @@ class MainWindow(QMainWindow):
         grid.setColumnStretch(1, 1)
         lay.addLayout(grid)
         buttons = QHBoxLayout()
+        if not self.cfg.has_dl:                                # with a dl.py its config.ini says where the music is
+            change = QPushButton("Change music folder…")
+            change.clicked.connect(self._change_music_dir)
+            buttons.addWidget(change)
         open_music = QPushButton("Open music folder")
         open_music.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.cfg.music_dir))))
         rescan = QPushButton("Rescan library")
@@ -727,6 +872,21 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {__version__}"))
         return page
+
+    def _change_music_dir(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        chosen = QFileDialog.getExistingDirectory(self, "Where is your music?", str(self.cfg.music_dir))
+        if chosen:
+            self._set_music_dir(Path(chosen))
+
+    def _set_music_dir(self, path):
+        "Point Sleeve at another music folder (only when there is no dl.py to decide it) and read it."
+        self._set_setting("music_dir", str(path))
+        self.cfg.music_dir, self.cfg.playlist_dir = path, path / "Playlists"
+        self.my_playlists = myplaylists.PlaylistStore(self.cfg.playlist_dir, self.cfg.music_dir)
+        self.rescan()
+        self.status.showMessage(f"Reading {path}…", 6000)
 
     def _set_setting(self, key, value):
         if self.settings.set(key, value):
@@ -740,8 +900,8 @@ class MainWindow(QMainWindow):
 
     def _ceiling_changed(self, value):
         self.ceiling_label.setText(f"{value}%")
+        self._set_setting("max_volume", value)                 # saved first: nothing below can stop it
         self.player.set_max_volume(value)
-        self._set_setting("max_volume", value)
 
     def enable_loudness(self, ffmpeg):
         "Start levelling songs to the same volume. ffmpeg (path or None) measures the songs that have no tags."
@@ -780,19 +940,75 @@ class MainWindow(QMainWindow):
             self._measure_loudness()
 
     def _gapless_toggled(self, on):
-        self.player.set_gapless(on)
         self._set_setting("gapless", on)
+        self.player.set_gapless(on)
+
+    def _show_accent_choice(self):
+        "Make the combo show the accent in use (a custom colour is the last entry, with its own chip)."
+        box = self.accent_box
+        box.blockSignals(True)
+        custom = self.settings.accent == settings.CUSTOM
+        box.setItemIcon(box.count() - 1, QIcon(theme.swatch(self.settings.accent_custom)))
+        box.setCurrentIndex(box.count() - 1 if custom else max(box.findText(self.settings.accent), 0))
+        box.blockSignals(False)
 
     def _accent_changed(self, name):
-        if self.settings.set("accent", name):
-            self.setStyleSheet(theme.build_style(self.settings.accent_color))
-            Switch.set_accent(self.settings.accent_color)
-            self.identity_page.set_accent(self.settings.accent_color)
-            self.docs_page.set_accent(self.settings.accent_color)
-            for switch in self.findChildren(Switch):
-                switch.update()
-            self._update_toggle_icons()
-            self._save_settings()
+        if name == CUSTOM_LABEL:                                # the user wants a colour of their own
+            colour = QColorDialog.getColor(QColor(self.settings.accent_custom), self, "Choose an accent colour")
+            if not colour.isValid():                            # cancelled: back to what was chosen before
+                self._show_accent_choice()
+                return
+            self.settings.set("accent_custom", colour.name())
+            name = settings.CUSTOM
+        self.settings.set("accent", name)
+        self._save_settings()                                   # first, so a slip below cannot lose the choice
+        self._show_accent_choice()
+        self._apply_accent()
+
+    def _effective_accent(self):
+        "The accent to show: the chosen one, or (if asked) one in the hue of the cover that is playing."
+        if self.settings.accent_from_cover and self._np_pix is not None:
+            return theme.accent_from_cover(self._np_pix) or self.settings.accent_color
+        return self.settings.accent_color
+
+    def _apply_accent(self, force=True):
+        "Repaint everything that uses the accent colour."
+        colour = self._effective_accent()
+        if not force and colour == self._accent_shown:
+            return
+        self._accent_shown = colour
+        self.setStyleSheet(theme.build_style(colour))
+        Switch.set_accent(colour)
+        self.identity_page.set_accent(colour)
+        self.docs_page.set_accent(colour)
+        for switch in self.findChildren(Switch):
+            switch.update()
+        self._update_toggle_icons()
+        if self._lyric_row >= 0:
+            self._mark_lyric(self._lyric_row)                   # the line being sung wears the new colour
+
+    def _restore_size(self):
+        "The size the window had last time, but never bigger than the screen it opens on."
+        width, height = self.settings.window_size
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            room = screen.availableGeometry()
+            width, height = min(width, room.width()), min(height, room.height())
+        self.resize(width, height)
+
+    def _remember_window(self):
+        "Keep the window size and the open page for next time (the size it had before maximizing, if it is)."
+        size = self.normalGeometry().size() if self.isMaximized() or self.isFullScreen() else self.size()
+        self.settings.set("window_size", [size.width(), size.height()])
+        self.settings.set("nav_width", self.nav.width())
+        item = self.nav.currentItem()
+        if item is not None:
+            self.settings.set("last_page", item.text())
+        self._save_settings()
+
+    def _match_toggled(self, on):
+        self._set_setting("accent_from_cover", on)
+        self._apply_accent()
 
     def _health_page(self):
         page = QWidget()
@@ -814,9 +1030,16 @@ class MainWindow(QMainWindow):
         bar = QWidget()
         bar.setObjectName("playerbar")
         lay = QHBoxLayout(bar)
-        self.cover = QLabel()
+        self.cover = ClickLabel()
         self.cover.setFixedSize(56, 56)
         self.cover.setScaledContents(True)
+        self.cover.setToolTip("Open Now Playing (double-click for fullscreen)")
+        self._cover_click_timer = QTimer(self)        # a single click waits to see whether a second one follows
+        self._cover_click_timer.setSingleShot(True)
+        self._cover_click_timer.setInterval(QApplication.doubleClickInterval())
+        self._cover_click_timer.timeout.connect(lambda: self.show_page("Now Playing"))
+        self.cover.clicked.connect(self._cover_click_timer.start)
+        self.cover.doubleClicked.connect(self._cover_double_clicked)
         self.now = QLabel("Nothing playing")
         self.now.setTextFormat(Qt.PlainText)
         self.now.setMinimumWidth(220)
@@ -859,8 +1082,8 @@ class MainWindow(QMainWindow):
         self.volume.setMaximumWidth(180)
         self.volume.valueChanged.connect(self.player.set_volume)
         self.lyrics_btn = QPushButton("Lyrics")
-        self.lyrics_btn.setCheckable(True)
-        self.lyrics_btn.toggled.connect(self.lyrics.setVisible)
+        self.lyrics_btn.setToolTip("Show the lyrics of this song")
+        self.lyrics_btn.clicked.connect(self._show_lyrics)
         # left: the song; middle: the buttons with the seek bar under them; right: volume and lyrics
         for w in (self.cover, self.now):
             lay.addWidget(w)
@@ -939,6 +1162,7 @@ class MainWindow(QMainWindow):
         "A plain click on a row that is already highlighted clears the highlight. The sidebar keeps showing its page."
         view = obj.parent() if isinstance(obj, QWidget) else None
         if (not isinstance(view, QAbstractItemView) or obj is not view.viewport() or view is self.nav
+                or view is getattr(self, "lyrics", None)
                 or not self.isAncestorOf(view) or view.selectionMode() == QAbstractItemView.NoSelection):
             return False
         if ev.button() != Qt.LeftButton or ev.modifiers() != Qt.NoModifier:   # ctrl/shift clicks still multi-select
@@ -1430,6 +1654,7 @@ class MainWindow(QMainWindow):
             self.queue_label.setText(f"{n} songs, {span} remaining")
         if 0 <= self.player.index < n:
             self.queue_list.setCurrentRow(self.player.index)
+            QTimer.singleShot(0, lambda row=self.player.index: self.queue_list._smooth.center_on(row))
         self._thumb_timer.start()
 
     def _load_thumbs(self):
@@ -1458,75 +1683,56 @@ class MainWindow(QMainWindow):
         return theme.rounded_pixmap(logo, 44, 8) if not logo.isNull() else logo
 
     def _show_cover(self, pix, title, artist, album):
-        "The Now Playing page and the window backdrop for one song (pix None: nothing playing)."
+        "The Now Playing page, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
         self._np_pix = pix if pix is not None and not pix.isNull() else None
-        self._apply_cover_size()
+        self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
+        if self.settings.accent_from_cover:
+            self._apply_accent(force=False)                 # a new song may bring a new colour
         self.np_title.setText(title or "Nothing playing")
         self.np_artist.setText(artist)
         self.np_album.setText(album)
-
-    def _cover_size(self):
-        if self._fullscreen:
-            return max(COVER, min(self.stack.height(), self.stack.width()) - 24)
-        if not self._cover_expanded:
-            return COVER
-        # what is left of the page after the button and the margins (the song details are hidden meanwhile)
-        room = min(self.stack.height() - 120, self.stack.width() - 60)
-        return max(COVER, room)
-
-    def _apply_cover_size(self):
-        size = self._cover_size()
-        self.np_cover.setFixedSize(size, size)
-        if self._np_pix is not None:
-            self.np_cover.setPixmap(theme.rounded_pixmap(self._np_pix, size, size // 14))
-        else:
-            logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(size // 2, size // 2)
-            self.np_cover.setPixmap(logo)
-            self.np_cover.setAlignment(Qt.AlignCenter)
+        if self._cover_screen is not None:
+            self._cover_screen.set_song(self._np_pix, title, artist)
 
     def _toggle_cover(self):
-        "Expand the album art over the whole page (the playlist is hidden), or go back."
+        "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
         self.np_side.setVisible(not self._cover_expanded)
         for lab in (self.np_title, self.np_artist, self.np_album):
             lab.setVisible(not self._cover_expanded)
+        self.np_cover.set_max_side(100_000 if self._cover_expanded else COVER)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
-        self._apply_cover_size()
 
     def _toggle_fullscreen(self):
-        "The album art alone, filling the screen. Esc, F11 or a click on the art brings the window back."
-        if not self._fullscreen:
-            self._fs_row, self._fs_was_expanded = self.nav.currentRow(), self._cover_expanded
-            self.nav.setCurrentRow(0)
-            if not self._cover_expanded:
-                self._toggle_cover()
-            self._fullscreen = True
-            for w in (self.nav, self.bar, self.status, self.expand_btn, self.full_btn):
-                w.hide()
-            self.showFullScreen()
-        else:
-            self._fullscreen = False
-            self.showNormal()
-            for w in (self.nav, self.bar, self.status, self.expand_btn, self.full_btn):
-                w.show()
-            if not self._fs_was_expanded:
-                self._toggle_cover()
-            self.nav.setCurrentRow(self._fs_row)
-        self._apply_cover_size()
+        "A separate full-screen window of the album art. Esc, F11, Enter or a click closes it; this one is untouched."
+        if self._cover_screen is not None:
+            self._cover_screen.close()
+            return
+        screen = CoverScreen(self)
+        screen.closed.connect(self._cover_screen_closed)
+        screen.set_song(self._np_pix, self.np_title.text(), self.np_artist.text())
+        self._cover_screen = screen
+        if self.screen() is not None:
+            screen.setScreen(self.screen())                   # on the screen this window is on
+        screen.showFullScreen()
+        screen.activateWindow()
+        screen.setFocus()
+
+    def _cover_screen_closed(self):
+        self._cover_screen = None
+        self.activateWindow()
 
     def _leave_fullscreen(self):
-        if self._fullscreen:
-            self._toggle_fullscreen()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if getattr(self, "_cover_expanded", False):
-            self._apply_cover_size()
+        if self._cover_screen is not None:
+            self._cover_screen.close()
 
     # --- sync ---------------------------------------------------------------
     def _run_action(self, name):
+        if not self.cfg.has_dl:
+            self.status.showMessage("Downloads need dl.py, which was not found", 6000)
+            return
         if self.runner.running or self._external:
             return
         label, what = FRIENDLY.get(name, (name, ""))
@@ -1556,12 +1762,14 @@ class MainWindow(QMainWindow):
                 started = self.runner.run(name)
             if started:
                 self._add_activity(activity.STEP, f"Starting: {label}")
+                if name == "Fetch lyrics":
+                    self._lyrics_begin()
         except Exception as e:
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
-            b.setEnabled(not running)
+            b.setEnabled(not running and self.cfg.has_dl)
         self.stop_btn.setEnabled(running)
         self.dl_state.setText("Working…" if running else "Ready")
         if not running and not self._closing:
@@ -1570,6 +1778,10 @@ class MainWindow(QMainWindow):
     def _on_sync_finished(self, code):
         if self._closing:
             return
+        if self._lyrics_run is not None:
+            self._lyrics_after_batch(code)
+            if self._lyrics_run is not None:                       # more batches to come: not finished, not an error
+                return
         if code == 0:
             self._add_activity(activity.GOOD, "Finished")
         elif code in (15, -15, 143, -1) and not self.runner.running:
@@ -1580,6 +1792,82 @@ class MainWindow(QMainWindow):
     def _on_sync_line(self, line):
         self.sync_log.appendPlainText(line)
         self._show_line(line)
+        run = self._lyrics_run
+        if run is not None:
+            looking = re.match(r"^Lyrics: looking for (\d[\d,]*) of (\d[\d,]*) songs", line)
+            if looking:                                            # dl.py asks 300 at a time: how many are still left?
+                asked, total = (int(n.replace(",", "")) for n in looking.groups())
+                run["more"] = max(0, total - asked)
+            elif line.startswith("Lyrics: every song already has a lyrics file"):
+                run["more"] = 0
+
+    # --- lyrics: all the batches, and which songs got some ------------------------
+    def _lyrics_begin(self):
+        self._lyrics_run = {"start": time.time(), "seen": set(), "batches": 1, "more": 0, "synced": 0, "plain": 0,
+                            "stop": False}
+        self._lyrics_timer.start()
+
+    def _stop_clicked(self):
+        if self._lyrics_run is not None:
+            self._lyrics_run["stop"] = True                         # Stop ends the whole job, not just this batch
+        self.runner.stop()
+
+    def _lyrics_scan(self):
+        "List the songs whose lyrics file has appeared since the job began (dl.py itself never says which)."
+        run = self._lyrics_run
+        if run is None:
+            return
+        found = []
+        for song in self.songs:
+            if song.path in run["seen"]:
+                continue
+            base = Path(song.path)
+            for suffix in (".lrc", ".txt"):
+                try:
+                    fresh = os.stat(base.with_suffix(suffix)).st_mtime >= run["start"] - 1
+                except OSError:
+                    continue
+                if fresh:
+                    run["seen"].add(song.path)
+                    run["synced" if suffix == ".lrc" else "plain"] += 1
+                    found.append((song, suffix == ".lrc"))
+                    break
+        for song, synced in found[:80]:
+            label = f"{song.artist} - {song.name}" if song.artist else song.name
+            self._add_activity(activity.GOOD, f"Lyrics added: {label} ({'synced' if synced else 'text only'})")
+        if len(found) > 80:
+            self._add_activity(activity.INFO, f"…and {len(found) - 80} more songs got lyrics")
+
+    def _lyrics_after_batch(self, code):
+        "A batch of lyrics ended: start the next one while songs are left, or say how it all went."
+        run = self._lyrics_run
+        self._lyrics_scan()
+        if code == 0 and run["more"] > 0 and not run["stop"] and run["batches"] < LYRICS_MAX_BATCHES:
+            QTimer.singleShot(800, self._lyrics_next_batch)
+            return
+        self._lyrics_timer.stop()
+        added = run["synced"] + run["plain"]
+        if run["stop"]:
+            self._add_activity(activity.WARN, f"Lyrics stopped. {added} songs got lyrics so far.")
+        elif code == 0:
+            self._add_activity(
+                activity.GOOD, f"Lyrics done: {added} songs got lyrics ({run['synced']} synced, "
+                               f"{run['plain']} text only) in {run['batches']} batches")
+        self._lyrics_run = None
+
+    def _lyrics_next_batch(self):
+        run = self._lyrics_run
+        if run is None or run["stop"] or self.runner.running or self._closing:
+            return
+        run["batches"] += 1
+        self._add_activity(activity.STEP, f"Batch {run['batches']}: {run['more']:,} songs still to try")
+        try:
+            if not self.runner.run("Fetch lyrics"):
+                self._lyrics_after_batch(1)
+        except Exception as e:                                     # e.g. dl.py changed and needs approving again
+            self._add_activity(activity.BAD, f"Could not start the next batch: {e}")
+            self._lyrics_timer.stop()
+            self._lyrics_run = None
 
     def _show_line(self, line):
         "One line of dl.py output: shown as a friendly message (or not at all) and as the progress summary."
@@ -1596,7 +1884,7 @@ class MainWindow(QMainWindow):
 
     def _poll_log(self):
         "Follow a download started outside the app (a terminal, a timer); keep this page from starting another."
-        if self.runner.running:
+        if self.runner.running or not self.cfg.has_dl:
             return
         try:
             fresh = sync.other_dl_running()
@@ -1624,7 +1912,7 @@ class MainWindow(QMainWindow):
             self._on_sync_progress(*prog)
 
     def _set_external(self, on):
-        if on == self._external:
+        if on == self._external or not self.cfg.has_dl:
             return
         self._external = on
         for name, b in self._action_buttons.items():
@@ -1675,6 +1963,18 @@ class MainWindow(QMainWindow):
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
 
+    def show_page(self, name):
+        "Open a page by its name in the sidebar. Returns False if there is no such page."
+        for row in range(self.nav.count()):
+            if self.nav.item(row).text() == name:
+                self.nav.setCurrentRow(row)
+                return True
+        return False
+
+    def _nav_resized(self, *_):
+        if self.settings.set("nav_width", self.nav.width()):
+            self._vol_timer.start()                       # saved a moment after the dragging stops
+
     def _on_volume(self, value):
         if not self.volume.isSliderDown():           # do not fight the user's drag
             self._set_slider_silently(self.volume, value)
@@ -1693,7 +1993,7 @@ class MainWindow(QMainWindow):
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
-        accent, mode = self.settings.accent_color, getattr(self, "_repeat_mode", 0)
+        accent, mode = self._accent_shown, getattr(self, "_repeat_mode", 0)
         shuffle_on = self.shuffle_btn.isChecked()
         self.shuffle_btn.setIcon(QIcon(theme.toggle_icon("shuffle", accent if shuffle_on else theme.MUTED, shuffle_on)))
         self.shuffle_btn.setToolTip("Shuffle: on" if shuffle_on else "Shuffle: off")
@@ -1720,10 +2020,11 @@ class MainWindow(QMainWindow):
         self.pos_label.setText(fmt_time(pos))
         if not self._dragging:
             self._set_slider_silently(self.seek, int(pos * 10))
-        if self._lyrics and self.lyrics.isVisible():
+        if self._lyrics:
             i = lrc.current_index(self._lyrics, pos)
-            if i >= 0 and i != self.lyrics.currentRow():
-                self.lyrics.setCurrentRow(i)
+            if i >= 0 and i != self._lyric_row:
+                self._mark_lyric(i)
+                self.lyrics._smooth.center_on(i)
 
     def _on_duration(self, dur):
         self._dur = dur
@@ -1744,6 +2045,7 @@ class MainWindow(QMainWindow):
             self.cover.clear()
             self.lyrics.clear()
             self._lyrics = []
+            self._set_lyrics_state()
             self.setWindowTitle("Sleeve")
             self._show_cover(None, "", "", "")
             self._on_duration(0)
@@ -1769,23 +2071,72 @@ class MainWindow(QMainWindow):
             self._show_cover(None, s.name, s.artist, s.album)
         self._load_lyrics(s)
 
+    def _read_lyrics_file(self, path):
+        try:
+            if path and path.stat().st_size <= lrc.MAX_BYTES:
+                return path.read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+        return ""
+
     def _load_lyrics(self, song):
+        "Lyrics from the song's .lrc file (synced to the music), or else its .txt file (just text)."
         self.lyrics.clear()
-        self._lyrics = []
-        f = song.lrc
-        if f:
-            try:
-                if f.stat().st_size <= lrc.MAX_BYTES:
-                    self._lyrics = lrc.parse_lrc(f.read_text(encoding="utf-8", errors="replace"))
-            except (OSError, ValueError):
-                pass
-        for _, line in self._lyrics:
-            self.lyrics.addItem(line or "♪")
-        if not self._lyrics:
-            self.lyrics.addItem("No synced lyrics for this song")
+        self._lyric_row = -1
+        self._lyrics = lrc.parse_lrc(self._read_lyrics_file(song.lrc))
+        lines = [line or "♪" for _, line in self._lyrics]
+        self._lyric_synced = bool(self._lyrics)
+        if not lines:
+            text = self._read_lyrics_file(Path(song.path).with_suffix(".txt"))
+            lines = [ln.strip() for ln in text.splitlines()]
+            while lines and not lines[0]:
+                lines.pop(0)
+        for line in lines:
+            item = QListWidgetItem(line)
+            item.setTextAlignment(Qt.AlignCenter)
+            self.lyrics.addItem(item)
+        self._set_lyrics_state()
+
+    def _set_lyrics_state(self):
+        "The lyrics list when there are lyrics, otherwise a plain message."
+        has = self.lyrics.count() > 0
+        self.lyrics.setVisible(has)
+        self.lyrics_empty.setVisible(not has)
+        self.lyrics_note.setVisible(has and not self._lyric_synced)
+
+    def _mark_lyric(self, row):
+        "The line being sung: the accent colour, bold and a little larger; the one before goes back to normal."
+        old = self.lyrics.item(self._lyric_row) if self._lyric_row >= 0 else None
+        if old is not None:
+            old.setData(Qt.ForegroundRole, None)
+            old.setData(Qt.FontRole, None)
+        self._lyric_row = row
+        item = self.lyrics.item(row)
+        if item is not None:
+            font = self.lyrics.font()
+            font.setBold(True)
+            font.setPointSizeF(font.pointSizeF() * 1.12)
+            item.setForeground(QColor(self._accent_shown))
+            item.setFont(font)
+        self.lyrics.setCurrentRow(row)
+
+    def _lyric_clicked(self, item):
+        "Clicking a line of synced lyrics jumps the song to that line."
+        row = self.lyrics.row(item)
+        if self._lyric_synced and 0 <= row < len(self._lyrics):
+            self.player.seek(self._lyrics[row][0])
+
+    def _show_lyrics(self):
+        self.show_page("Now Playing")
+        self.tab_lyrics.setChecked(True)
+
+    def _cover_double_clicked(self):
+        self._cover_click_timer.stop()                 # it was a double click, not two single ones
+        self._toggle_fullscreen()
 
     def raise_window(self):
-        "Bring the window to the front (the desktop asked for it)."
+        "Bring the window to the front, on the virtual desktop you are on now (the launcher or the panel asked)."
+        desktop.move_to_current_desktop()
         if self.isMinimized():
             self.showNormal()
         self.show()
@@ -1794,6 +2145,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._closing = True                         # no new scans from here on
+        self._remember_window()
+        if self._cover_screen is not None:
+            self._cover_screen.close()
         self.log_timer.stop()
         for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
                     self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
@@ -1818,6 +2172,33 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+def ask_music_folder(start):
+    "A folder chooser for the first start without dl.py. Returns a path, or None if the user cancelled."
+    from PySide6.QtWidgets import QFileDialog
+
+    QMessageBox.information(None, "Welcome to Sleeve", "Sleeve plays and organises the music you already have.\n\n"
+                            "Next, choose the folder your music is in.")
+    chosen = QFileDialog.getExistingDirectory(None, "Where is your music?", str(start))
+    return Path(chosen) if chosen else None
+
+
+def startup_config(dl_arg, ask_folder):
+    """The configuration to start with. Sleeve always starts: with a dl.py it takes the music folder from dl.py's
+    config.ini; without one it asks once for the music folder (ask_folder(default) -> path or None) and remembers it."""
+    prefs = settings.Settings()
+    cfg = config.load(dl_arg or prefs.dl_path or None, prefs.music_dir or None)
+    if not cfg.has_dl and not prefs.music_dir:
+        chosen = ask_folder(cfg.music_dir)
+        if chosen:
+            prefs.set("music_dir", str(chosen))
+            try:
+                prefs.save()
+            except OSError:
+                pass
+            cfg = config.without_dl(chosen)
+    return cfg
+
+
 def attach_media_keys(win, app, suffix="sleeve"):
     "Let the desktop (media keys, the panel, the lock screen) see and control the player. Returns the Mpris or None."
     mpris = Mpris(win.player, lambda path: win.by_path.get(path),
@@ -1837,15 +2218,16 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version=f"sleeve {__version__}")
     args = ap.parse_args(argv)
     app = QApplication(sys.argv[:1])
+    if singleton.already_running():                  # Sleeve is open already and has been told to come forward
+        return 0
     app.setApplicationName("Sleeve")
     app.setDesktopFileName("io.github.jieke238y34.Sleeve")
     app.setWindowIcon(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")))
-    try:
-        cfg = config.load(args.dl)
-    except FileNotFoundError as e:
-        QMessageBox.critical(None, "Sleeve", f"{e}\n\nInstall playlist-sync's dl.py or pass --dl /path/to/dl.py")
-        return 2
+    cfg = startup_config(args.dl, ask_music_folder)
     win = MainWindow(cfg)
+    instance = singleton.InstanceServer(parent=win)             # a later launch brings this window forward
+    if instance.start():
+        instance.raiseRequested.connect(win.raise_window)
     attach_media_keys(win, app)
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()

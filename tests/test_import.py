@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl  # noqa: E402
 from PySide6.QtGui import QDragEnterEvent, QDropEvent  # noqa: E402
-from PySide6.QtWidgets import QApplication, QFileDialog  # noqa: E402
+from PySide6.QtWidgets import QApplication, QFileDialog, QWidget  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
@@ -73,7 +73,7 @@ def test_dropping_a_playlist_file_makes_a_playlist_of_your_own(qapp, cfg, monkey
         drop_on(win.pl_table, f)
         assert [n for n, _ in win.my_playlists.names()] == ["Road trip", "Road trip (2)"]
         # dropping on the page itself works too
-        drop_on(win.stack.widget(2), f)
+        drop_on(win.findChild(QWidget, "playlistspage"), f)
         assert len(win.my_playlists.names()) == 3
     finally:
         win.close()

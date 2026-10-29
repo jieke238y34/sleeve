@@ -570,7 +570,7 @@ class IdentityPage(QWidget):
         col.setContentsMargins(30, 26, 30, 30)
         col.setSpacing(18)
 
-        hero = Card()
+        hero = self.hero = Card()
         hero.box.setContentsMargins(30, 26, 30, 28)
         hero.box.setSpacing(6)
         hero.box.addWidget(_label("IDENTITY", 8.5, MUTED, bold=True))
@@ -709,6 +709,9 @@ class IdentityPage(QWidget):
         self.mood_chips.set_items([(name, _plural(c, "playlist")) for name, c in p.moods], a)
         self.script_card.setVisible(bool(p.scripts))
         self.mood_card.setVisible(bool(p.moods))
+        for card in self.findChildren(Card):                  # an empty library shows only the welcome, no empty boxes
+            if card not in (self.hero, self.script_card, self.mood_card):
+                card.setVisible(p.songs > 0)
         notes = []
         if p.no_genre_share >= CAVEAT_SHARE:
             notes.append(f"{p.no_genre_share:.0%} of your songs sit in genres called Other or Unknown, so the genre "

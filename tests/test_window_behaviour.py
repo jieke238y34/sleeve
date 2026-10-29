@@ -60,25 +60,6 @@ def test_close_disconnects_player(qapp, cfg, monkeypatch, tmp_path):  # noqa: F8
     assert win.windowTitle() == "Sleeve"
 
 
-def test_album_art_expands_and_shrinks(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
-    win = make(cfg, monkeypatch, tmp_path)
-    try:
-        win.show()
-        qapp.processEvents()
-        normal = win.np_cover.width()
-        assert normal == sleeve_app.COVER and not win.np_side.isHidden()
-        win.expand_btn.click()
-        qapp.processEvents()
-        assert win.np_side.isHidden() and win.np_cover.width() >= normal
-        assert win.np_cover.width() == win.np_cover.height()
-        win.resize(1500, 1000)                     # a bigger window gives a bigger cover
-        qapp.processEvents()
-        assert win.np_cover.width() > normal
-        win.expand_btn.click()
-        assert not win.np_side.isHidden() and win.np_cover.width() == normal
-    finally:
-        win.close()
-
 
 def test_clicking_a_slider_track_jumps_there(qapp):  # noqa: F811
     from PySide6.QtCore import QPoint, Qt
@@ -102,25 +83,3 @@ def test_volume_follows_a_perceptual_curve():
     assert player.gain(0) == 0.0 and abs(player.gain(100) - player.MAX_GAIN) < 1e-6   # the ceiling
     # half way on the slider is clearly quieter than full, not the 6 dB a straight line gives
     assert player.gain(50) < 0.2 and player.gain(25) < player.gain(50) < player.gain(75)
-
-
-def test_fullscreen_album_art_hides_the_chrome_and_comes_back(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
-    win = make(cfg, monkeypatch, tmp_path)
-    try:
-        win.show()
-        win.nav.setCurrentRow(2)
-        qapp.processEvents()
-        win.full_btn.click()
-        qapp.processEvents()
-        assert win._fullscreen and win.isFullScreen() and win.nav.isHidden() and win.bar.isHidden()
-        assert win.nav.currentRow() == 0 and win.np_side.isHidden()
-        win._leave_fullscreen()
-        qapp.processEvents()
-        assert not win._fullscreen and not win.isFullScreen()
-        assert not win.nav.isHidden() and not win.bar.isHidden() and not win.np_side.isHidden()
-        assert win.nav.currentRow() == 2                      # back on the page the user was on
-        assert win.np_cover.width() == sleeve_app.COVER
-        win._leave_fullscreen()                               # Esc when not fullscreen does nothing
-        assert not win._fullscreen
-    finally:
-        win.close()

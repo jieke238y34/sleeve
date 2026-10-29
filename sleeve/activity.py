@@ -27,6 +27,13 @@ RULES = [
      "Skipped {0} songs you already have", False),
     (re.compile(r"^Found (\d[\d,]*) songs? in (.+?) \(Playlist\)"), STEP, "Found {0} songs in “{1}”", False),
     (re.compile(r"^Processing query: .*spotify"), INFO, "Looking at a playlist…", False),
+    (re.compile(r"^Lyrics: looking for (\d[\d,]*) of (\d[\d,]*) songs"), STEP,
+     "Looking for lyrics for {0} of {1} songs without any", False),
+    (re.compile(r"^\s*(\d[\d,]*) of (\d[\d,]*)\.\.\.$"), INFO, "{0} of {1} songs checked", False),
+    (re.compile(r"^Lyrics: (\d+) timed \(\.lrc\) and (\d+) plain \(\.txt\) files written, (\d+) songs? without a "
+                r"result"), GOOD, "Lyrics found: {0} synced, {1} text only, {2} without a result", False),
+    (re.compile(r"^Lyrics: every song already has a lyrics file"), INFO,
+     "Every song already has lyrics, or was tried recently", False),
     (re.compile(r"^Pass (\d+): playlist (\d+) of (\d+)"), STEP, "Round {0}: playlist {1} of {2}", False),
     (re.compile(r"YouTube: \d+ results?, none close enough for (.+)"), WARN, "Could not find a good match for {0}",
      False),

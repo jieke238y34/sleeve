@@ -18,7 +18,7 @@ def test_clicking_a_highlighted_row_clears_the_highlight(qapp, cfg, monkeypatch,
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.show()
-        win.nav.setCurrentRow(1)
+        win.show_page("Library")
         qapp.processEvents()
         click_row(win.table, 1)
         assert [i.row() for i in win.table.selectionModel().selectedRows()] == [1]
@@ -38,10 +38,10 @@ def test_the_sidebar_keeps_its_highlight(qapp, cfg, monkeypatch, tmp_path):  # n
     try:
         win.show()
         qapp.processEvents()
-        win.nav.setCurrentRow(1)
-        pos = win.nav.visualItemRect(win.nav.item(1)).center()
+        win.show_page("Library")
+        pos = win.nav.visualItemRect(win.nav.item(win.nav.currentRow())).center()
         QTest.mouseClick(win.nav.viewport(), Qt.LeftButton, Qt.NoModifier, pos)
-        assert win.nav.selectedItems() and win.nav.currentRow() == 1
+        assert win.nav.selectedItems() and win.nav.currentItem().text() == "Library"
     finally:
         win.close()
 
@@ -50,7 +50,7 @@ def test_double_click_on_a_highlighted_row_still_plays(qapp, cfg, monkeypatch, t
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.show()
-        win.nav.setCurrentRow(1)
+        win.show_page("Library")
         qapp.processEvents()
         click_row(win.table, 1)                                     # highlighted first
         win.player.calls.clear()
@@ -121,7 +121,7 @@ def test_shuffle_and_repeat_show_their_state_in_the_icon(qapp, cfg, monkeypatch,
         win.repeat_btn.click()
         assert key(win.repeat_btn) != before and "this song" in win.repeat_btn.toolTip()
         assert "QPushButton#round:checked" in win.styleSheet()                    # no fill when switched on
-        win.accent_box.setCurrentText("Mint")                                    # a new accent recolours the icons
+        win.accent_box.setCurrentText("Emerald")                                    # a new accent recolours the icons
         assert key(win.repeat_btn) != key(win.shuffle_btn)
     finally:
         win.close()

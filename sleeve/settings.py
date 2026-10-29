@@ -1,34 +1,68 @@
 """Sleeve's own preferences, kept in ~/.config/sleeve/settings.json (never in dl.py's files)."""
 
+import colorsys
 import json
 import os
+import re
 from pathlib import Path
 
 SETTINGS_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "settings.json"
 MAX_BYTES = 100_000
 
-ACCENTS = {"Lavender": "#b7afe0", "Rose": "#e3b0c7", "Mint": "#a8d8c0", "Sky": "#a9c8e8", "Amber": "#e8cf9f"}
+ACCENTS = {                        # bold, in the order of the colour wheel, then a white
+    "Crimson": "#ff4d6d", "Coral": "#ff7a6b", "Tangerine": "#ff8a1f", "Amber": "#e8cf9f",
+    "Sunflower": "#ffc533", "Lime": "#a6e22e", "Emerald": "#2ee59d", "Aqua": "#1fd1c8", "Sky": "#a9c8e8",
+    "Azure": "#2f9bff", "Cobalt": "#5b7cff", "Indigo": "#7a5cff", "Violet": "#a595f0", "Magenta": "#e040fb",
+    "Hot Pink": "#ff4fa3", "Pearl": "#f2efe9",
+}
+CUSTOM = "Custom"                  # the accent name when the user picked their own colour (see accent_custom)
+_HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
-# name -> (default, check). A value that fails its check falls back to the default, so a hand-edited file cannot
-# break the app.
+# name -> default. A value that fails its check falls back to the default, so a hand-edited file cannot break the app.
 DEFAULTS = {
     "volume": 80,              # 0-100, where the slider was left
     "max_volume": 75,          # 30-100, how much of the output's loudest level the full slider means
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
-    "accent": "Lavender",      # a key of ACCENTS
+    "accent": "Violet",        # a key of ACCENTS, or CUSTOM
+    "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
+    "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
     "show_spotify_playlists": False,   # list the playlist files dl.py made from Spotify (off: only your own)
+    "window_size": [1180, 760],        # width and height the window had when it was closed
+    "last_page": "Library",            # the page that was open
+    "nav_width": 190,                  # width of the sidebar, which can be dragged
+    "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
+    "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
 }
+
+
+def legible(colour):
+    "The colour, lightened if needed so that dark text on it stays readable (accents are used as fills)."
+    h, s, v = colorsys.rgb_to_hsv(*(int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+    v = max(v, 0.78)
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
 def _valid(key, value):
     if key in ("volume", "max_volume"):
         low = 30 if key == "max_volume" else 0
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= 100
-    if key in ("gapless", "same_volume", "show_spotify_playlists"):
+    if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover"):
         return isinstance(value, bool)
     if key == "accent":
-        return value in ACCENTS
+        return value in ACCENTS or value == CUSTOM
+    if key == "accent_custom":
+        return isinstance(value, str) and bool(_HEX.fullmatch(value))
+    if key == "window_size":
+        return (isinstance(value, list) and len(value) == 2
+                and all(isinstance(n, int) and not isinstance(n, bool) and 500 <= n <= 10000 for n in value))
+    if key in ("music_dir", "dl_path"):
+        return isinstance(value, str) and len(value) <= 4096
+    if key == "nav_width":
+        return isinstance(value, int) and not isinstance(value, bool) and 120 <= value <= 420
+    if key == "last_page":
+        return isinstance(value, str) and 0 < len(value) <= 40
     return False
 
 
@@ -49,7 +83,7 @@ class Settings:
         if isinstance(data, dict):
             for key, value in data.items():
                 if key in DEFAULTS and _valid(key, value):
-                    self.values[key] = value
+                    self.values[key] = value.lower() if key == "accent_custom" else value
 
     def __getattr__(self, name):
         try:
@@ -59,13 +93,20 @@ class Settings:
 
     def set(self, key, value):
         "Change one setting (ignored if the value is not allowed). Returns True if it changed. Call save() after."
-        if key not in DEFAULTS or not _valid(key, value) or self.values[key] == value:
+        if key not in DEFAULTS or not _valid(key, value):
+            return False
+        if key == "accent_custom":
+            value = value.lower()
+        if self.values[key] == value:
             return False
         self.values[key] = value
         return True
 
     @property
     def accent_color(self):
+        "The accent as #rrggbb (a custom colour is lightened if it is too dark to carry dark text)."
+        if self.values["accent"] == CUSTOM:
+            return legible(self.values["accent_custom"])
         return ACCENTS[self.values["accent"]]
 
     def save(self):

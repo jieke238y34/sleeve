@@ -47,13 +47,17 @@ def write_trusted(fingerprint, trust_file=None):
 
 @dataclass
 class Config:
-    dl_path: Path
-    config_path: Path
+    dl_path: Path | None                  # None: dl.py was not found, and only the Downloads page is unavailable
+    config_path: Path | None
     music_dir: Path
     state_dir: Path
     playlist_dir: Path
-    playlists_file: Path
+    playlists_file: Path | None
     trust_file: Path = TRUST_FILE
+
+    @property
+    def has_dl(self):
+        return self.dl_path is not None
 
     @property
     def log_file(self):
@@ -73,11 +77,18 @@ def _path(cp, section, key, default):
     return Path(os.path.expanduser(raw)) if raw else default
 
 
-def load(dl_path=None):
-    "Config from the config.ini that sits next to dl.py. Raises FileNotFoundError if dl.py is missing."
+def without_dl(music_dir=None):
+    "The configuration for playing and organising music with no dl.py: just a music folder."
+    music = Path(music_dir).expanduser() if music_dir else HOME / "Music"
+    return Config(None, None, music, HOME / ".dl-music", music / "Playlists", None)
+
+
+def load(dl_path=None, music_dir=None):
+    """Config from the config.ini that sits next to dl.py. With no dl.py to be found, Sleeve still works (everything
+    but downloads): the music folder is `music_dir`, or ~/Music."""
     dl = find_dl(dl_path)
     if dl is None:
-        raise FileNotFoundError("dl.py not found (set SLEEVE_DL or pass --dl)")
+        return without_dl(music_dir)
     ini = dl.with_name("config.ini")
     cp = configparser.ConfigParser(interpolation=None)
     cp.read(ini, encoding="utf-8")

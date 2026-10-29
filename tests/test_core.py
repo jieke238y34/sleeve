@@ -61,11 +61,12 @@ def test_config_dot_folder_means_music_dir(tmp_path):
     assert config.load(dl).playlist_dir == (tmp_path / "M").resolve()
 
 
-def test_config_missing_dl_raises(tmp_path, monkeypatch):
+def test_config_missing_dl_still_loads_without_downloads(tmp_path, monkeypatch):
+    "dl.py is optional: without it Sleeve still starts, and only the Downloads page is unavailable."
     monkeypatch.setattr(config, "DL_CANDIDATES", [])
     monkeypatch.delenv("SLEEVE_DL", raising=False)
-    with pytest.raises(FileNotFoundError):
-        config.load(tmp_path / "nope.py")
+    cfg = config.load(tmp_path / "nope.py", music_dir=tmp_path / "Songs")
+    assert cfg.has_dl is False and cfg.dl_path is None and cfg.music_dir == tmp_path / "Songs"
 
 
 # --- library ---------------------------------------------------------------

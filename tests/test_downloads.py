@@ -4,6 +4,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from test_app import StubPlayer, cfg, qapp  # noqa: E402,F401  (fixtures)
+from test_likes import make_window  # noqa: E402
 
 from sleeve import (
     activity,  # noqa: E402
@@ -138,3 +139,83 @@ def test_other_dl_running_reads_the_process_list(tmp_path):
     assert sync.other_dl_running(tmp_path) is False
     proc(os.getpid(), "/usr/bin/python3", "/x/dl.py")                           # Sleeve's own process never counts
     assert sync.other_dl_running(tmp_path) is False
+
+
+def test_dl_py_lyrics_lines_become_plain_sentences():
+    t = activity.Translator()
+    assert t.feed("Lyrics: looking for 300 of 1420 songs (lrclib)...") == (
+        activity.STEP, "Looking for lyrics for 300 of 1420 songs without any")
+    assert t.feed("  150 of 300...") == (activity.INFO, "150 of 300 songs checked")
+    assert t.feed("Lyrics: 120 timed (.lrc) and 30 plain (.txt) files written, 150 songs without a result.") == (
+        activity.GOOD, "Lyrics found: 120 synced, 30 text only, 150 without a result")
+    assert t.feed("Lyrics: every song already has a lyrics file, or was tried recently.")[0] == activity.INFO
+
+
+def lyric_names(win):
+    return [win.activity.item(i).text() for i in range(win.activity.count()) if "Lyrics added" in
+            win.activity.item(i).text()]
+
+
+def test_lyrics_job_lists_each_song_that_got_lyrics(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    import os
+    import time
+    from pathlib import Path
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        a, b, c = sorted(win.songs, key=lambda s: s.path)[:3]
+        old = Path(a.path).with_suffix(".lrc")
+        old.write_text("[00:01.00]old\n")                                       # lyrics from before the job
+        long_ago = time.time() - 3600
+        os.utime(old, (long_ago, long_ago))
+        win._lyrics_begin()
+        Path(b.path).with_suffix(".lrc").write_text("[00:01.00]new\n")           # written while it runs
+        Path(c.path).with_suffix(".txt").write_text("plain words\n")
+        win._lyrics_scan()
+        names = lyric_names(win)
+        assert len(names) == 2 and any("(synced)" in n for n in names) and any("(text only)" in n for n in names)
+        assert not any(a.name in n for n in names)                              # the old one is not claimed
+        win._lyrics_scan()
+        assert len(lyric_names(win)) == 2                                       # and nothing is listed twice
+        assert win._lyrics_run["synced"] == 1 and win._lyrics_run["plain"] == 1
+        win._lyrics_timer.stop()
+    finally:
+        win.close()
+
+
+def test_get_lyrics_keeps_going_batch_after_batch_until_done_or_stopped(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    started = []
+    try:
+        monkeypatch.setattr(win.runner, "run", lambda name: started.append(name) or True)
+        win._lyrics_begin()
+        win._on_sync_line("Lyrics: looking for 300 of 700 songs (lrclib)...")
+        assert win._lyrics_run["more"] == 400
+        win._on_sync_finished(0)                                                # batch 1 ended: 400 are left
+        assert win._lyrics_run is not None                                      # so the job is not over
+        win._lyrics_next_batch()                                                # (normally fired by a timer)
+        assert started == ["Fetch lyrics"] and win._lyrics_run["batches"] == 2
+        win._on_sync_line("Lyrics: looking for 300 of 400 songs (lrclib)...")
+        win._on_sync_finished(0)
+        win._lyrics_next_batch()
+        win._on_sync_line("Lyrics: looking for 100 of 100 songs (lrclib)...")
+        assert win._lyrics_run["more"] == 0
+        win._on_sync_finished(0)                                                # the last one: all done
+        assert win._lyrics_run is None and not win._lyrics_timer.isActive()
+        texts = [win.activity.item(i).text() for i in range(win.activity.count())]
+        assert any("Lyrics done" in t and "3 batches" in t for t in texts)
+        # Stop ends the whole job, not just one batch
+        started.clear()
+        win._lyrics_begin()
+        win._on_sync_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
+        win._stop_clicked()
+        win._on_sync_finished(-1)
+        assert win._lyrics_run is None and started == []
+        assert any("Lyrics stopped" in win.activity.item(i).text() for i in range(win.activity.count()))
+        # a failed batch does not loop forever
+        win._lyrics_begin()
+        win._on_sync_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
+        win._on_sync_finished(1)
+        assert win._lyrics_run is None and started == []
+    finally:
+        win.close()

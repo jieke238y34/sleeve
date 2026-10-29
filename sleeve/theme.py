@@ -85,7 +85,10 @@ QComboBox QAbstractItemView {{ background: #1e1a2a; border: 1px solid rgba(255, 
 QProgressBar {{ background: rgba(255, 255, 255, 30); border: none; border-radius: 6px; text-align: center; }}
 QProgressBar::chunk {{ background: {accent}; border-radius: 6px; }}
 QStatusBar {{ background: transparent; color: {MUTED}; }}
+QScrollArea {{ background: transparent; border: none; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QSplitter::handle {{ background: transparent; }}
+QSplitter::handle:hover {{ background: rgba(255, 255, 255, 30); }}
 
 QMenu {{ background: #1e1a2a; border: 1px solid rgba(255, 255, 255, 30); border-radius: 10px; padding: 6px; }}
 QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
@@ -93,6 +96,12 @@ QMenu::item:selected {{ background: {accent}; color: {BG}; }}
 QMenu::separator {{ height: 1px; background: rgba(255, 255, 255, 30); margin: 5px 8px; }}
 
 QWidget#playerbar {{ background: rgba(10, 8, 16, 170); }}
+QPushButton#seg {{ background: transparent; color: {MUTED}; border-radius: 14px; padding: 6px 18px; font-weight: 600; }}
+QPushButton#seg:hover {{ background: rgba(255, 255, 255, 22); color: {TEXT}; }}
+QPushButton#seg:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
+QListWidget#lyrics {{ font-size: 13pt; background: rgba(10, 8, 16, 90); }}
+QListWidget#lyrics::item {{ padding: 9px 8px; color: {MUTED}; border-radius: 8px; }}
+QListWidget#lyrics::item:selected {{ background: transparent; color: {accent}; font-weight: 700; }}
 QLabel#title {{ font-size: 20pt; font-weight: 700; }}
 QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {MUTED}; }}
@@ -178,6 +187,19 @@ def playlist_add_icon(color, size=22):
     return pix
 
 
+def swatch(color, size=16):
+    "A small rounded square of one colour (for choosing an accent)."
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(color))
+    p.drawRoundedRect(QRectF(1, 1, size - 2, size - 2), 4, 4)
+    p.end()
+    return pix
+
+
 def rounded_pixmap(pix, size, radius):
     "pix cropped to a square of `size` pixels with rounded corners."
     pix = pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
@@ -235,6 +257,18 @@ def palette_from(pix, count=3):
         h, sat, val, _ = colour.getHsvF()
         out.append(QColor.fromHsvF(max(h, 0.0), min(1.0, sat), min(val, 0.52), 1.0))   # dark enough for text
     return out
+
+
+def accent_from_cover(pix):
+    """A bright accent colour (#rrggbb) in the hue of the cover's main colour, so the interface matches the song.
+    A cover with no real colour (black and white) gets a soft white. None for a missing cover."""
+    colours = palette_from(pix, 1)
+    if not colours:
+        return None
+    h, s, _v, _a = colours[0].getHsvF()
+    if s < 0.16:                                           # grey cover: no hue to follow
+        return "#f2efe9"
+    return QColor.fromHsvF(max(h, 0.0), min(0.85, max(0.45, s * 1.15)), 0.96).name()
 
 
 class Backdrop(QWidget):

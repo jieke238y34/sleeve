@@ -7,7 +7,7 @@ Changes are applied and saved as you make them.
 | Loudest volume | How loud the slider gets at the top (30 to 100 percent) |
 | Gapless playback | Start the next song a moment early so there is no pause |
 | Play songs at the same volume | Even out loud and quiet songs |
-| Accent colour | Lavender, Rose, Mint, Sky or Amber |
+| Accent colour | One of 16 bold colours, or Custom… to pick any colour you like |
 
 Where you left the volume slider is remembered too.
 

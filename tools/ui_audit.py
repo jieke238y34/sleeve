@@ -4,7 +4,7 @@ go wrong, and save the screenshots for a human (or an agent) to look at.
 
     python tools/ui_audit.py                       # real library (read-only), 4 sizes, 2 accents
     python tools/ui_audit.py --demo                # a small made-up library (works anywhere, e.g. CI)
-    python tools/ui_audit.py --pages Settings,Docs --sizes 1180x760 --accents Lavender
+    python tools/ui_audit.py --pages Settings,Docs --sizes 1180x760 --accents Violet
     python tools/ui_audit.py --baseline old-run    # also list screenshots that changed since a previous run
 
 Writes <out>/<size>/<accent>/<page>.png and <out>/report.json, prints the problems grouped by page, and exits 1 if
@@ -214,6 +214,8 @@ def build_window(args, tmp):
                 for j in range(3):
                     name = f"{artist} - Song number {i}{j} with a rather long title.mp3"
                     (music / folder / name).write_bytes(b"x")
+                    lyric_lines = [f"[0:{k * 5:02d}.00]Demo lyric line number {k + 1} of this song" for k in range(12)]
+                    (music / folder / name.replace(".mp3", ".lrc")).write_text("\n".join(lyric_lines), encoding="utf-8")
                     table[name] = (f"Song number {i}{j} with a rather long title", artist, folder)
         (music / "Lists").mkdir()
         (tmp / "dl.py").write_text("print('hi')\n")
@@ -274,7 +276,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "sleeve-ui-audit"))
     ap.add_argument("--sizes", default=SIZES, help="WxH,WxH,... (default: %(default)s)")
-    ap.add_argument("--accents", default="Lavender,Mint")
+    ap.add_argument("--accents", default="Violet,Emerald")
     ap.add_argument("--pages", default="", help="comma separated page names (default: all)")
     ap.add_argument("--demo", action="store_true", help="use a made-up library instead of your real one")
     ap.add_argument("--dl", help="path to dl.py (real library only)")
@@ -323,6 +325,17 @@ def main(argv=None):
                 page = win.stack.currentWidget()
                 for issue in audit.run(page, img) + audit.run(win.bar, img):
                     found.setdefault(issue, set()).add(f"{name}@{size}/{accent}")
+                if name == "Now Playing":                      # the same page with the lyrics tab showing
+                    win.tab_lyrics.setChecked(True)
+                    win._on_position(25.0)
+                    settle(qapp, 25)
+                    img2 = win.grab().toImage()
+                    img2.save(str(folder / "nowplaying-lyrics.png"))
+                    shots += 1
+                    for issue in audit.run(page, img2):
+                        found.setdefault(issue, set()).add(f"Now Playing (lyrics)@{size}/{accent}")
+                    win.tab_queue.setChecked(True)
+                    settle(qapp, 5)
     win.close()
     issues = [{"severity": s, "kind": k, "where": where, "detail": d, "seen": sorted(seen)}
               for (s, k, where, d), seen in found.items()]

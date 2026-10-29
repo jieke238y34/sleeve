@@ -119,3 +119,20 @@ def test_moods():
 def test_caveat_share():
     assert compute(lib(10, genre="Other")).no_genre_share == 1
     assert compute(lib(100) + [S("/m/x.mp3", genre="")]).no_genre_share < 0.05
+
+
+def test_an_empty_library_shows_the_welcome_and_no_empty_boxes():
+    from sleeve.identity import Card, IdentityPage
+
+    page = IdentityPage()
+    page.resize(900, 700)
+    page.show()
+    page.set_library([])
+    others = [c for c in page.findChildren(Card) if c is not page.hero]
+    assert others and all(c.isHidden() for c in others) and not page.hero.isHidden()
+    from sleeve.library import Song
+
+    page.set_library([Song(path=f"/m/{i}.mp3", title=f"t{i}", artist=f"a{i}", genre="Pop", album="x", length=100.0,
+                           bitrate=192, folder="Pop") for i in range(30)])
+    assert any(not c.isHidden() for c in others if c not in (page.script_card, page.mood_card))
+    page.close()

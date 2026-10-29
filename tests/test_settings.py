@@ -14,12 +14,12 @@ from sleeve import player, settings  # noqa: E402
 def test_defaults_save_and_reload(tmp_path):
     f = tmp_path / "sub" / "settings.json"
     st = settings.Settings(f)
-    assert st.volume == 80 and st.max_volume == 75 and st.gapless is True and st.accent == "Lavender"
-    assert st.set("max_volume", 60) and st.set("accent", "Mint") and not st.set("accent", "Mint")
+    assert st.volume == 80 and st.max_volume == 75 and st.gapless is True and st.accent == "Violet"
+    assert st.set("max_volume", 60) and st.set("accent", "Emerald") and not st.set("accent", "Emerald")
     st.save()
     assert stat.S_IMODE(f.stat().st_mode) == 0o600
     again = settings.Settings(f)
-    assert again.max_volume == 60 and again.accent_color == settings.ACCENTS["Mint"]
+    assert again.max_volume == 60 and again.accent_color == settings.ACCENTS["Emerald"]
 
 
 def test_bad_values_never_get_in(tmp_path):
@@ -27,7 +27,7 @@ def test_bad_values_never_get_in(tmp_path):
     f.write_text(json.dumps({"volume": 500, "max_volume": 5, "gapless": "yes", "accent": "Neon", "other": 1,
                              "same_volume": False}))
     st = settings.Settings(f)
-    assert (st.volume, st.max_volume, st.gapless, st.accent) == (80, 75, True, "Lavender")
+    assert (st.volume, st.max_volume, st.gapless, st.accent) == (80, 75, True, "Violet")
     assert st.same_volume is False                                   # the one valid value is kept
     assert not st.set("volume", True) and not st.set("volume", -1) and not st.set("nope", 1)
     f.write_text("not json")
@@ -72,10 +72,10 @@ def test_settings_page_applies_and_saves(qapp, cfg, monkeypatch, tmp_path):  # n
         assert ("set_max_volume", (55,)) in win.player.calls
         win.gapless_box.setChecked(False)
         assert ("set_gapless", (False,)) in win.player.calls and win.settings.gapless is False
-        win.accent_box.setCurrentText("Rose")
-        assert settings.ACCENTS["Rose"] in win.styleSheet()
+        win.accent_box.setCurrentText("Crimson")
+        assert settings.ACCENTS["Crimson"] in win.styleSheet()
         saved = settings.Settings(win.settings.file)                   # all of it reached the disk
-        assert (saved.max_volume, saved.gapless, saved.accent) == (55, False, "Rose")
+        assert (saved.max_volume, saved.gapless, saved.accent) == (55, False, "Crimson")
     finally:
         win.close()
 
