@@ -2,20 +2,31 @@
 
 Sleeve is a Python application. Linux is the supported platform for v0.1.0.
 
-## Requirements
+## The easy way
 
-- Python 3.10 or newer
-- PySide6 6.6 or newer and mutagen (installed automatically by `pip` and `pipx`)
-- [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`), optional, only for the Downloads page. It is a
-  separate project with its own setup. In v0.1.0 Sleeve still needs a `dl.py` file to start (see below)
-- `ffmpeg`, optional: measures loudness for same-volume playback on files without ReplayGain tags
-- `mpv` is not needed
-
-On Fedora you can use the system Qt bindings instead of the pip ones:
+Sleeve is built from source on your machine. You need Python 3.10 or newer and `git`:
 
 ```sh
-sudo dnf install python3-pyside6 python3-mutagen pipx
+git clone https://github.com/jieke238y34/sleeve.git
+cd sleeve
+./install.sh
 ```
+
+The script makes a private Python environment in `~/.local/share/sleeve/venv`, builds and installs Sleeve into it, adds
+a `sleeve` command in `~/.local/bin`, and adds Sleeve (with its icon) to your application menu. It needs no root access.
+Run it again after `git pull` to update. `./install.sh --uninstall` removes it and leaves your music and settings alone.
+
+To install without cloning first: `curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | sh`.
+
+## Requirements
+
+- Python 3.10 or newer, with the `venv` module (Debian and Ubuntu: `sudo apt install python3-venv`)
+- `git`
+- PipeWire or PulseAudio for sound (already present on current desktops)
+- Optional: `pactl` for volume above 100% (Fedora `pulseaudio-utils`, Debian and Ubuntu `pulseaudio-utils`)
+- Optional: `ffmpeg`, to measure loudness for same-volume playback on files without ReplayGain tags
+- Optional: [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`), only for the Downloads page
+- `mpv` is not needed
 
 ## From the GitHub release
 
@@ -52,28 +63,16 @@ sleeve
 
 `python -m sleeve` works too.
 
-## Telling Sleeve where dl.py is
+## Music folder and dl.py
 
-Sleeve looks for `dl.py` in this order: the `--dl` option, the `SLEEVE_DL` environment variable, then two folders under
-`~/claude-projects` (the author's own layout). Normally you pass the path yourself:
+On first start Sleeve asks for your music folder and remembers it (change it any time in Settings). It does not need
+`dl.py` for that. If you use playlist-sync, Sleeve finds `dl.py` on its own, or you can point to it with
+`sleeve --dl /path/to/dl.py` or the `SLEEVE_DL` environment variable, and then takes the music folder from the
+`config.ini` beside it. The Downloads page has a **Set up…** button that helps you choose the folder and paste Spotify
+playlist links.
 
-```sh
-sleeve --dl /path/to/dl.py
-```
-
-or set it for your session:
-
-```sh
-export SLEEVE_DL=/path/to/dl.py
-```
-
-If it finds no `dl.py` file, Sleeve shows an error and exits. It reads the `config.ini` that sits next to `dl.py` for
-the music folder (`music_dir` under `[paths]`), state folder and playlist folder. To try Sleeve on an existing music
-folder without installing playlist-sync, a `dl.py` file with a `config.ini` beside it that names your folder is enough
-to start (Sleeve runs the file only if you press a Downloads button and trust it). A first-run setup that removes this
-step is on the roadmap.
-`dl.py` must be a file only you can write to: owned by you, not group or world writable, in a folder other users
-cannot change. Otherwise Sleeve refuses to run it.
+`dl.py` must be a file only you can write to: owned by you, not group or world writable, in a folder other users cannot
+change. Otherwise Sleeve refuses to run it. Sleeve runs it only when you press a Downloads button and have trusted it.
 
 ## Not available yet
 

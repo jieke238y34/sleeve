@@ -36,7 +36,7 @@ files, and only when you press Save. Back up your music first if it matters to y
 Sleeve remembers the tags it has read, so a big library opens quickly. If you add files outside Sleeve, press
 Rescan (also on the [Settings](08-settings) page).
 
-## Album view <!-- planned -->
+## Album view
 
 Open an album to see all its tracks together, with the cover, and play or queue the whole album at once.
 

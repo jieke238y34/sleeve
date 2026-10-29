@@ -19,7 +19,7 @@ instead.
 - Click on a slider to jump straight to that spot.
 - Right-click songs for the menu.
 
-## Quick search <!-- planned -->
+## Quick search
 
 | Key | What it does |
 |---|---|

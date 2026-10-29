@@ -9,9 +9,9 @@ Before you ship any closed build, pay for a short consult with an open-source / 
 | Item | Finding |
 |---|---|
 | Sleeve licence | GPL-3.0-or-later (`LICENSE`, `pyproject.toml`, `packaging/sleeve.spec`). CONTRIBUTING.md says contributions are GPL-3.0-or-later. |
-| Sleeve authors | `git log`: 26 commits, two author identities (`Jack <jack.thomas894@proton.me>`, `jack <...@users.noreply.github.com>`). Looks like one person. No outside contributors. |
+| Sleeve authors | `git log`: 26 commits, two author identities. Looks like one person. No outside contributors. |
 | dl.py licence | `/home/jack/claude-projects/playlist-sync`: GPL **version 2** (LICENSE and README). I found no "or later" wording, so treat it as GPL-2.0-only (uncertain; check the file header). |
-| dl.py authors | 42 commits, identities `jack <nogg.insula@gmail.com>` and `jieke238y34 <jack.thomas894@proton.me>`. Probably you under two names. Confirm there are no outside patches. |
+| dl.py authors | 42 commits under two author identities. Probably you under two names. Confirm there are no outside patches. |
 | GitHub | `origin` is `https://github.com/jieke238y34/sleeve.git`. Whether it is public I could not verify from here (no network check of the repo). Assume public; `pyproject.toml` and the packaging files point at it. |
 | Published releases | `packaging/README.md`: "Nothing here is published yet." No PyPI, Copr or winget release. Check GitHub Releases/tags yourself. |
 | Qt modules used | QtCore, QtGui, QtWidgets, QtMultimedia, QtDBus (MPRIS). QtTest is tests only. (QtNetwork: not imported by Sleeve itself.) |

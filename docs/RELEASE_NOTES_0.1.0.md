@@ -17,7 +17,7 @@ Linux. Back up your music before using the tag editor.
 - **Identity:** a persona, trait meters, charts, languages and moods drawn from your own tags.
 - **Downloads (optional):** a front end for [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`)
   with a plain-English activity feed. Sleeve asks you to trust `dl.py` before running it.
-- **Settings and Docs:** fifteen accent colours, switches, and a user guide inside the app.
+- **Settings and Docs:** sixteen accent colours and a custom one, switches, and a user guide inside the app.
 
 No accounts, no telemetry, and Sleeve makes no network calls of its own.
 

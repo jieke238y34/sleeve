@@ -10,6 +10,16 @@ First release. Alpha, Linux.
 
 ### Added
 
+- One-command install: `./install.sh` builds Sleeve from source into a private environment, with a menu entry and icon,
+  and `./install.sh --uninstall`.
+- Quick search (Ctrl+K) across songs, playlists and folders. An Albums view of covers in the Library.
+- Downloads first-run setup (**Set up…**) for the music folder and Spotify playlist links. Sleeve starts without dl.py.
+- Health page buttons: play, show in the file manager and run the matching dl.py job.
+- Volume ceiling up to 150% through PipeWire, with a hearing warning. Album art size setting. Sound output chooser that
+  follows PipeWire when outputs appear and disappear.
+- `sleeve --play-pause`, `--next`, `--previous` and `--toggle`, and launcher actions. Works with KDE Connect,
+  PlasMusic Toolbar and Maid BT. Build number in the version (`sleeve --version`, Settings).
+
 - Library: genre folders, instant search, a sortable song table with a cached tag scan, and a tag editor for title,
   artist, album and genre.
 - Health page: missing title or artist, no genre, low bitrate, same artist and title, and files `dl.py` parked as

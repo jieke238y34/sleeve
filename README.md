@@ -11,9 +11,8 @@ Sleeve plays, organises and edits the music files you already have. It needs no 
 no network calls of its own.
 
 [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) is a separate open source tool that downloads
-music from your Spotify playlists. Sleeve's Downloads page can run it for you. You only need it for that page.
-In v0.1.0 Sleeve still looks for a `dl.py` file at start-up to learn where your music folder is (see
-[First run](#first-run)); a first-run setup that removes this is on the roadmap.
+music from your Spotify playlists. Sleeve's Downloads page can run it for you, and walks you through setting it up. You
+only need it for that page: without it Sleeve is a complete player and library manager for a folder of music.
 
 ![Now Playing: the cover, a gradient taken from its colours, and the queue](docs/screenshots/now-playing.png)
 
@@ -38,12 +37,12 @@ The screenshots show a small made-up demo library with generated covers.
 
 **Library**
 
-- Genre folders, instant search across title, artist, album and genre, and a sortable song table. Tags are cached,
-  so a large library opens quickly.
+- Genre folders, instant search across title, artist, album and genre, a sortable song table and an album grid of
+  covers. Ctrl+K searches songs, playlists and folders at once. Tags are cached, so a large library opens quickly.
 - Tag editor for title, artist, album and genre. This is the only thing Sleeve writes into your music files, and
   only when you press Save.
 - Health page: missing title or artist, no genre, low bitrate, same artist and title, and files `dl.py` parked as
-  duplicates or broken.
+  duplicates or broken, with buttons to play, show in the file manager, or run the matching `dl.py` fix.
 - Identity page: a persona, seven trait meters, charts, languages and moods, all worked out from your own tags and
   playlist names.
 
@@ -51,7 +50,7 @@ The screenshots show a small made-up demo library with generated covers.
 
 - Gapless playback through Qt Multimedia, with a queue, shuffle, repeat and seeking. No external player is needed.
 - Same-volume levelling from ReplayGain tags, or measured with `ffmpeg` when it is installed, and a volume ceiling
-  setting.
+  setting that can go up to 150% (with a hearing warning).
 - Media keys and the Plasma and GNOME media widgets (MPRIS).
 - Now Playing: the cover with a gradient background drawn from its colours, the queue with thumbnails, and a cover you
   can expand. Fullscreen album art (Esc or a click to leave).
@@ -76,51 +75,69 @@ The screenshots show a small made-up demo library with generated covers.
 
 **Appearance**
 
-- Fifteen accent colours, switches for settings, smooth scrolling and a built-in Docs page.
+- Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. Switches for
+  settings, a resizable sidebar, smooth scrolling and a built-in Docs page.
 
 ## Install
 
-Sleeve needs Python 3.10 or newer. The full guide is [docs/INSTALL.md](docs/INSTALL.md).
-
-**From the GitHub release** (recommended). Download the wheel from the
-[Releases page](https://github.com/jieke238y34/sleeve/releases) and install it with `pipx`:
-
-```sh
-pipx install ./sleeve-0.1.0-py3-none-any.whl
-sleeve
-```
-
-`pip install --user ./sleeve-0.1.0-py3-none-any.whl` works as well. Sleeve is not on PyPI.
-
-**From source**, for development:
+Sleeve is built from source on your own machine, so you need only Python 3.10 or newer and `git`. One command does it all:
+it makes a private Python environment, builds and installs Sleeve into it, adds a `sleeve` command, and puts Sleeve in
+your application menu with its icon. It needs no root access and changes nothing outside your home folder.
 
 ```sh
 git clone https://github.com/jieke238y34/sleeve.git
 cd sleeve
+./install.sh
+```
+
+Then start **Sleeve** from your application menu, or run `sleeve`. The first install downloads Qt (about 200 MB).
+
+To update, run `git pull` and `./install.sh` again. To remove it, run `./install.sh --uninstall`. Your music, playlists
+and settings (`~/.config/sleeve`) are never touched.
+
+Prefer not to clone first? This does the same from the web (read the script before you run it, as with any script):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | sh
+```
+
+**Optional extras** (the installer tells you which are missing and how to get them):
+
+| Tool | What it adds | Fedora | Debian / Ubuntu |
+|---|---|---|---|
+| `pactl` | Volume above 100% | `sudo dnf install pulseaudio-utils` | `sudo apt install pulseaudio-utils` |
+| `ffmpeg` | Same-volume playback for files without ReplayGain tags | `sudo dnf install ffmpeg-free` | `sudo apt install ffmpeg` |
+
+**Developing Sleeve?**
+
+```sh
+git clone https://github.com/jieke238y34/sleeve.git && cd sleeve
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 sleeve
 ```
 
+The full guide, including other ways to install, is [docs/INSTALL.md](docs/INSTALL.md).
+
 ## First run
 
-In v0.1.0 Sleeve finds your music through the `config.ini` that sits next to `dl.py` (its `music_dir` setting), and it
-shows an error and exits if it cannot find a `dl.py` file. Tell it where the file is with
-`sleeve --dl /path/to/dl.py` or the `SLEEVE_DL` environment variable. If you only want to play an existing music
-folder, a `dl.py` file with a `config.ini` beside it that names the folder is enough to start; Sleeve runs `dl.py`
-only when you press a Downloads button and trust it. See [docs/INSTALL.md](docs/INSTALL.md).
+The first time you start Sleeve it asks which folder holds your music (you can change this later in Settings). That is
+all it needs to play. Double-click a song to play it. Space pauses and resumes. Press **Ctrl+K** to search everything.
 
-Then double-click a song to play it. Space pauses and resumes.
+**Downloads (optional).** If you also use [playlist-sync](https://github.com/jieke238y34/playlist-sync), open the
+Downloads page: **Set up…** helps you choose the music folder and paste your Spotify playlist links. Sleeve finds
+`dl.py` on its own, or you can point to it with `sleeve --dl /path/to/dl.py`.
 
-**Downloads and trust.** The first time you press a Downloads button, Sleeve shows the path and a SHA-256 fingerprint
-of `dl.py` and asks whether to trust it. Say yes only if you wrote the script or have read it. Sleeve asks again if the
-script's path or content changes. If you say no, nothing is run. `dl.py` is a separate project with its own setup; see
-its [README](https://github.com/jieke238y34/playlist-sync) for how to install and configure it.
+**Trust.** The first time you press a Downloads button, Sleeve shows the path and a SHA-256 fingerprint of `dl.py` and
+asks whether to trust it. Say yes only if you wrote the script or have read it. Sleeve asks again if the script's path
+or content changes. If you say no, nothing is run.
 
 ## Requirements
 
-- Python 3.10 or newer, with PySide6 (6.6 or newer) and mutagen. `pip` installs both.
-- `ffmpeg` (optional): measures loudness for same-volume playback on files without ReplayGain tags.
+- Linux with Python 3.10 or newer. PySide6 (6.6 or newer) and mutagen are installed for you.
+- `git`, to fetch and update the source.
+- PipeWire (or PulseAudio) for sound output. It is already there on current Fedora, Ubuntu and most other desktops.
+- `ffmpeg` and `pactl` (both optional, see above).
 - `mpv` is **not** needed. Playback uses Qt Multimedia.
 - [playlist-sync](https://github.com/jieke238y34/playlist-sync) (optional): only for the Downloads page.
 
@@ -148,19 +165,36 @@ Details and how to report a vulnerability are in [SECURITY.md](SECURITY.md).
 |---|---|
 | Space | Play or pause |
 | Left / Right arrow | Back or forward 5 seconds |
+| Ctrl+K | Search everything: songs, playlists and folders |
 | F11 | Fullscreen album art |
 | Esc | Leave fullscreen |
 | Media keys | Play, pause, next, previous |
 
 When a text box, list or button has focus, Space and the arrows keep their normal job there.
 
+**From a terminal, a shortcut or a launcher:** `sleeve --play-pause`, `sleeve --next`, `sleeve --previous` and
+`sleeve --toggle` control the Sleeve that is already open. Right-clicking Sleeve in the menu offers the same.
+
+## Works with
+
+- **KDE Connect:** pair your phone and turn on its "Multimedia control" plugin. Sleeve appears in the phone's media
+  remote. The Plasma media widget and lock screen controls work too.
+- **[PlasMusic Toolbar](https://github.com/ccatterina/plasmusic-toolbar):** pick Sleeve as its source for title, cover,
+  seek bar and controls in your panel.
+- **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** if installed, Settings gets earbuds buttons, and Sleeve
+  follows the sound when the earbuds switch.
+- **PipeWire:** Sleeve follows your desktop's output, and Settings can pick a specific one.
+
+All of this goes through MPRIS (track information and controls) and PipeWire (the sound itself).
+
 ## Troubleshooting
 
-- **Sleeve says it cannot find `dl.py`:** start it with `--dl /path/to/dl.py` or set `SLEEVE_DL`.
 - **The Library is empty:** check the music folder shown on the Settings page, then press Rescan.
 - **Nothing happens on Downloads:** you may have answered no to the trust prompt. Run the action again and say yes.
 - **Media keys do nothing:** they need a desktop with MPRIS support, such as KDE Plasma or GNOME.
-- **No sound:** check your output device, and run `sleeve` from a terminal to see Qt's messages.
+- **Volume above 100% does nothing:** it needs `pactl` (see Install).
+- **No sound:** check your output device (Settings > Play through), and run `sleeve` from a terminal to see Qt's messages.
+- **`sleeve: command not found` after installing:** add `~/.local/bin` to your PATH, or use the menu entry.
 
 More in the in-app Docs page and [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
@@ -181,10 +215,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 These are not in v0.1.0:
 
-- First-run setup for downloads (a dialog to choose the music folder and add Spotify playlists).
-- Quick search (Ctrl+K).
-- Album view.
-- Volume above 100%.
+- A tag editor for the Health page's problems (today it shows them and starts the matching `dl.py` job).
 - A Windows build and installer.
 - A Fedora package (the RPM spec is in [packaging/](packaging/README.md) but nothing is published).
 - Publishing to PyPI.

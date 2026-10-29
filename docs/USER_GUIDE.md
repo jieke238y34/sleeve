@@ -45,4 +45,3 @@ languages and moods.
 First-run download setup, quick search (Ctrl+K), album view and volume above 100% are not in this release, even where
 an in-app topic file mentions them as planned. See the roadmap in the [README](../README.md#roadmap-and-not-yet).
 
-Note: the in-app Settings topic lists five accent colours; Sleeve has fifteen.

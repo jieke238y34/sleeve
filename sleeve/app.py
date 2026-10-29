@@ -829,6 +829,7 @@ class MainWindow(QMainWindow):
     def _refresh_setup_banner(self):
         reasons = dlsetup.needs_setup(self.cfg) if self.cfg.has_dl else []
         self.setup_banner.setVisible(bool(reasons))
+        self.setup_btn.setVisible(self.cfg.has_dl and not reasons)        # the banner has its own button
         self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
 
     def _open_setup(self):

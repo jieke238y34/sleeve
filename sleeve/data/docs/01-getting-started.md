@@ -30,6 +30,6 @@ Sleeve is the front end for a script called `dl.py` (playlist-sync). The script 
 Sleeve plays it and shows it. You can use Sleeve to play files without ever running the script.
 See [Downloads](04-downloads).
 
-## Quick search (Ctrl+K) <!-- planned -->
+## Quick search (Ctrl+K)
 
 Press Ctrl+K anywhere to jump to a song, album or artist by typing a few letters.
