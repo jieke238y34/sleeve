@@ -23,6 +23,8 @@ QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
 }}
 QListWidget::item {{ padding: 4px 6px; border-radius: 8px; }}
 QListWidget::item:selected {{ background: rgba({rgb}, 80); }}
+QListWidget::item, QListWidget::item:focus, QListWidget::item:selected:!active {{ border: none; outline: none; }}
+QListWidget::item:selected:!active {{ background: rgba({rgb}, 80); }}
 QListWidget#nav {{ background: rgba(10, 8, 16, 170); border-radius: 0; padding: 10px 8px; font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {MUTED}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {TEXT}; }}
