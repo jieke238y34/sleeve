@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QApplication, QListWidget, QListWidgetItem  # noqa
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
-from sleeve import app as sleeve_app  # noqa: E402
 from sleeve import settings  # noqa: E402
 from sleeve.smoothscroll import SmoothScroll  # noqa: E402
 from sleeve.switch import Switch  # noqa: E402
@@ -167,7 +166,7 @@ def test_expanding_the_cover_never_changes_the_window_size(qapp, cfg, monkeypatc
         win.show_page("Now Playing")
         settle(qapp, 0.2)
         normal_side = win.np_cover.side()
-        assert 120 <= normal_side <= sleeve_app.COVER
+        assert 120 <= normal_side <= win.settings.cover_size
         for _ in range(6):
             win.expand_btn.click()
             settle(qapp, 0.1)

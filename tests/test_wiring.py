@@ -132,3 +132,45 @@ def test_escape_inside_a_text_box_is_left_to_the_box(qapp, cfg, monkeypatch, tmp
         assert not other.isAccepted()                                                   # elsewhere the shortcut works
     finally:
         win.close()
+
+
+def test_health_buttons_play_open_and_fix(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.show_page("Health")
+        names = list(win._health)
+        assert win.health_fix_btn.isHidden()                                       # first problem has no dl.py job
+        win.health_list.setCurrentRow(names.index("No genre tag"))
+        assert not win.health_fix_btn.isHidden() and "Fix:" in win.health_fix_btn.text()
+        assert win.health_play_btn.isEnabled() is False                            # nothing selected yet
+        song = tmp_path / "Rock" / "a.mp3"
+        win._health_rows = [str(song)]
+        win.health_table.setRowCount(1)
+        win.health_table.setCurrentCell(0, 0)
+        assert win.health_play_btn.isEnabled() and win.health_folder_btn.isEnabled()
+        opened = []
+        monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url) or True)
+        win._health_show_folder()
+        assert opened == [QUrl.fromLocalFile(str(song.parent))]
+        ran = []
+        monkeypatch.setattr(win, "_run_action", lambda name: ran.append(name))
+        win._health_fix()
+        assert ran == ["Repair genres"]
+    finally:
+        win.close()
+
+
+def test_album_art_size_is_a_saved_setting(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.settings.cover_size == 520
+        win.cover_slider.setValue(700)
+        assert win.settings.cover_size == 700 and win.cover_label.text() == "700 px"
+        assert settings.Settings(win.settings.file).cover_size == 700
+        win.settings.set("cover_size", 5000)                                       # out of range: refused
+        assert win.settings.cover_size == 700
+    finally:
+        win.close()

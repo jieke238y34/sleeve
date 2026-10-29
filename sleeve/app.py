@@ -127,7 +127,8 @@ FRIENDLY = {
 KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
-COVER = 440                                       # the biggest the cover gets on the Now Playing page
+HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
+              "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = "♥ Liked Songs"
 
 
@@ -647,7 +648,7 @@ class MainWindow(QMainWindow):
         left.setContentsMargins(0, 0, 0, 0)
 
         right = QVBoxLayout()
-        self.np_cover = CoverView(COVER)
+        self.np_cover = CoverView(self.settings.cover_size)
         self.np_cover.clicked.connect(self._toggle_cover)
         self.np_title, self.np_artist, self.np_album = QLabel(), QLabel(), QLabel()
         for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
@@ -958,6 +959,20 @@ class MainWindow(QMainWindow):
 
         section("Look")
         row = QHBoxLayout()
+        self.cover_slider = ClickSlider(Qt.Horizontal)
+        self.cover_slider.setRange(240, 900)
+        self.cover_slider.setSingleStep(20)
+        self.cover_slider.setValue(self.settings.cover_size)
+        self.cover_slider.setMaximumWidth(280)
+        self.cover_label = QLabel(f"{self.settings.cover_size} px")
+        self.cover_slider.valueChanged.connect(self._cover_size_changed)
+        row.addWidget(QLabel("Album art size"))
+        row.addWidget(self.cover_slider)
+        row.addWidget(self.cover_label)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
+        row = QHBoxLayout()
         self.accent_box = QComboBox()
         for name, colour in settings.ACCENTS.items():
             self.accent_box.addItem(QIcon(theme.swatch(colour)), name)
@@ -1155,8 +1170,24 @@ class MainWindow(QMainWindow):
         self.health_table.cellDoubleClicked.connect(self._play_health_row)
         self._health = {}
         self._health_rows = []
+        self.health_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.health_table.itemSelectionChanged.connect(self._health_buttons)
+        self.health_play_btn = QPushButton("Play")
+        self.health_play_btn.clicked.connect(lambda: self._play_health_row(self.health_table.currentRow(), 0))
+        self.health_folder_btn = QPushButton("Show in file manager")
+        self.health_folder_btn.clicked.connect(self._health_show_folder)
+        self.health_fix_btn = QPushButton("")
+        self.health_fix_btn.setObjectName("primary")
+        self.health_fix_btn.clicked.connect(self._health_fix)
+        actions = FlowLayout()
+        for b in (self.health_play_btn, self.health_folder_btn, self.health_fix_btn):
+            actions.addWidget(b)
+        right = QVBoxLayout()
+        right.addWidget(self.health_table, 1)
+        right.addLayout(actions)
         lay.addWidget(self.health_list)
-        lay.addWidget(self.health_table, 1)
+        lay.addLayout(right, 1)
+        self._health_buttons()
         return page
 
     def _player_bar(self):
@@ -1351,6 +1382,13 @@ class MainWindow(QMainWindow):
         dlg.enqueue.connect(lambda paths: self.player.enqueue(paths))
         dlg.play_next.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         dlg.show()
+
+    def _cover_size_changed(self, value):
+        self.cover_label.setText(f"{value} px")
+        if self.settings.set("cover_size", int(value)):
+            self._save_settings()
+        if not self._cover_expanded:
+            self.np_cover.set_max_side(value)
 
     def _fill_outputs(self):
         "List the sound outputs PipeWire offers; keep the chosen one selected."
@@ -1972,7 +2010,7 @@ class MainWindow(QMainWindow):
         self.np_side.setVisible(not self._cover_expanded)
         for lab in (self.np_title, self.np_artist, self.np_album):
             lab.setVisible(not self._cover_expanded)
-        self.np_cover.set_max_side(100_000 if self._cover_expanded else COVER)
+        self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
 
@@ -2208,6 +2246,7 @@ class MainWindow(QMainWindow):
         self.health_list.setCurrentRow(row)           # signals still blocked: draw the table once, below
         self.health_list.blockSignals(False)
         self._health_selected(row)
+        self._health_buttons()
 
     def _health_selected(self, row):
         names = list(self._health)
@@ -2223,6 +2262,45 @@ class MainWindow(QMainWindow):
                 vals = (Path(it).stem, "", it)
             for c, text in enumerate(vals):
                 self.health_table.setItem(r, c, QTableWidgetItem(text))
+        self._health_buttons()
+
+    def _health_path(self):
+        row = self.health_table.currentRow()
+        if not 0 <= row < len(self._health_rows):
+            return None
+        it = self._health_rows[row]
+        return it.path if isinstance(it, library.Song) else it
+
+    def _health_job(self):
+        "The dl.py job that fixes the problem shown, or None."
+        row = self.health_list.currentRow()
+        names = list(self._health)
+        return HEALTH_FIX.get(names[row]) if 0 <= row < len(names) else None
+
+    def _health_buttons(self):
+        has = self._health_path() is not None
+        self.health_play_btn.setEnabled(has)
+        self.health_folder_btn.setEnabled(has)
+        job = self._health_job()
+        self.health_fix_btn.setVisible(job is not None)
+        if job is not None:
+            label, what = FRIENDLY[job]
+            self.health_fix_btn.setText(f"Fix: {label}")
+            self.health_fix_btn.setToolTip(what)
+            self.health_fix_btn.setEnabled(self.cfg.has_dl)
+            if not self.cfg.has_dl:
+                self.health_fix_btn.setToolTip("Needs dl.py (see the Downloads page)")
+
+    def _health_show_folder(self):
+        path = self._health_path()
+        if path:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).parent)))
+
+    def _health_fix(self):
+        job = self._health_job()
+        if job and self.cfg.has_dl:
+            self.show_page("Downloads")
+            self._run_action(job)
 
     def _play_health_row(self, row, _col):
         if not 0 <= row < len(self._health_rows):

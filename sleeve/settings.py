@@ -32,6 +32,7 @@ DEFAULTS = {
     "last_page": "Library",            # the page that was open
     "nav_width": 190,                  # width of the sidebar, which can be dragged
     "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
+    "cover_size": 520,                 # the biggest the cover gets on the Now Playing page, in pixels
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
     "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
@@ -61,6 +62,8 @@ def _valid(key, value):
                 and all(isinstance(n, int) and not isinstance(n, bool) and 500 <= n <= 10000 for n in value))
     if key == "library_view":
         return value in ("songs", "albums")
+    if key == "cover_size":
+        return isinstance(value, int) and not isinstance(value, bool) and 240 <= value <= 900
     if key == "output_device":
         return isinstance(value, str) and len(value) <= 512
     if key in ("music_dir", "dl_path"):
