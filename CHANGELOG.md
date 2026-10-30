@@ -22,7 +22,16 @@ First release. Alpha, Linux.
 - Settings search; the Identity page has two tabs, Identity and Listening.
 - Health page: **Find tags online** fills missing title, artist, album and genre from MusicBrainz. It asks first, sends
   one request a second, only fills empty tags, and shows you the results to tick before anything is written.
-- Identity page: a Listening panel with your top songs this week or this month, chosen with a slider. It is built
+- Seasons and holidays looks: seven dark palettes (spring, summer, autumn, winter, Halloween, Christmas and New Year)
+  that follow the calendar or can be pinned by hand in Settings > Look, with a switch to turn the whole thing off.
+  A holiday wins over a season when both apply. All stay dark so the cover keeps carrying the colour.
+- A percentage tooltip on the volume slider while it is dragged or moved with the keys. The Lyrics button and the
+  "Vol" label left the player bar; lyrics live on Now Playing, where the words are big enough to read.
+- Window and sidebar memory now survives the first layout pass (the remembered size was dropped when the pages and
+  player bar were still being built, so a restart could open the window at its layout minimum).
+- Security fix: Spotify links are classified by parsed hostname, not by whether the text contains "spotify", so a
+  pasted link such as `https://evil.com/?u=open.spotify.com` is no longer mistaken for Spotify.
+- Identity page: a Listening panel with your top songs this week or this month, chosen with a pill switch. It is built
   from what you actually play (a song counts after 30 seconds), kept in a file on this computer, and can be switched
   off or cleared in Settings.
 - Lower idle CPU and GPU use while playing; keyboard focus rings, accessible names and pointer cursors on every button.

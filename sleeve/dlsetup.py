@@ -5,6 +5,7 @@ import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -36,6 +37,7 @@ KINDS = {
     "collection": "a collection",
 }
 MAX_TEXT, MAX_TOKEN = 2_000_000, 600
+SPOTIFY_HOSTS = frozenset(("spotify.com", "spotify.link", "spotify.app.link"))   # our links, and their exact domains
 SPOTIFY_MADE = "Spotify-made playlists (Daily Mix, This Is ...) cannot be downloaded"
 SPLIT_RE = re.compile(r"[\s,;]+")
 QUOTES = "\"'`<>()[]{}"
@@ -64,12 +66,31 @@ class Parsed:
     ignored: int = 0  # pieces that are not Spotify at all
 
 
-def _reject(token):
-    "(kind, reason) for a Spotify-looking token that is no playlist, or ('', '') if it does not look like Spotify."
+def _spotify_host(token):
+    "The link's hostname, or the whole token lowercased when it has no scheme, or None for a spotify: URI."
     low = token.lower()
-    if "spotify" not in low:
+    if low.startswith("spotify:"):
+        return None                                         # a URI: not a web link, so no host to parse
+    if not re.match(r"[a-z][a-z0-9+.-]*://", low):
+        low = "//" + low                                    # a link pasted without its scheme still has a host
+    return urlparse(low).hostname
+
+
+def _is_spotify(token):
+    "True when the token is us: a spotify: URI, or a link whose own host is Spotify's (or a sub of one)."
+    if token.lower().startswith("spotify:"):
+        return True
+    host = _spotify_host(token)
+    return bool(host) and (host in SPOTIFY_HOSTS or any(host.endswith("." + d) for d in SPOTIFY_HOSTS))
+
+
+def _reject(token):
+    "(kind, reason) for a Spotify link that is no playlist, or ('', '') if it does not look like Spotify."
+    if not _is_spotify(token):
         return "", ""
-    if "spotify.link" in low or "spotify.app.link" in low:
+    low = token.lower()
+    host = _spotify_host(token)
+    if host and any(host == d or host.endswith("." + d) for d in ("spotify.link", "spotify.app.link")):
         return "a short link", "that is a short link; open it in Spotify and copy the full playlist link"
     m = OTHER_RE.search(low)
     kind = KINDS.get(m.group(1).lower()) if m else None
