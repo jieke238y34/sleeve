@@ -6,11 +6,17 @@ This describes how to cut a release such as v0.2.0. The release workflow is `.gi
 
 It runs when a tag matching `v*` is pushed. On Ubuntu with Python 3.12 it:
 
-1. builds the sdist and wheel with `python -m build` into `dist/`
-2. checks that the tag equals `v` plus the version in `pyproject.toml`, and fails if not
-3. creates a build provenance attestation for every file in `dist/` (`actions/attest-build-provenance`)
-4. creates a GitHub release named after the tag with `gh release create`, attaches `dist/*` (the wheel and the
-   sdist) and fills the notes with `--generate-notes`
+1. checks the tag and works out the **build number**: the tag must be `v` plus the version in `pyproject.toml`
+   (`v0.2.0`, build = the number of commits) or that with `-build.N` (`v0.2.0-build.99`, build = 99), else it fails
+2. stamps the build number into the package (`tools/stamp_build.py --build N`), so the app shows `0.2.0 · build 99`
+3. builds the sdist and wheel with `python -m build` into `dist/`
+4. creates a build provenance attestation for every file in `dist/` (`actions/attest-build-provenance`)
+5. creates a GitHub release titled `Sleeve 0.2.0 (build 99)` with `gh release create`, attaches `dist/*` (the wheel
+   and the sdist) and fills the notes with `--generate-notes`
+
+**Updates.** Sleeve's *Check for updates* and `sleeve --update` read the newest release: a higher version is an
+update, and so is the same version with a higher build number. So to ship a new build of 0.2.0, tag it
+`v0.2.0-build.N` with N higher than the last one.
 
 It does not run the tests, publish to PyPI, or attach a checksum file.
 

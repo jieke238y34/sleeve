@@ -45,3 +45,18 @@ def test_the_stamp_tool_writes_the_file(tmp_path, monkeypatch):
     assert tool.main() == 0
     text = (tmp_path / "sleeve" / "_build.py").read_text(encoding="utf-8")
     assert "REVISION = 12" in text and "COMMIT = 'abc1234'" in text and "DIRTY = True" in text
+
+
+def test_the_stamp_tool_takes_a_build_number_by_hand(tmp_path, monkeypatch):
+    "The release workflow stamps the number from a tag such as v0.2.0-build.99, not the commit count."
+    path = Path(sleeve.__file__).parent.parent / "tools" / "stamp_build.py"
+    spec = importlib.util.spec_from_file_location("stamp_build", path)
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    (tmp_path / "sleeve").mkdir()
+    monkeypatch.setattr(tool, "ROOT", tmp_path)
+    monkeypatch.setattr(tool, "git", lambda *a: {"rev-list": "12", "rev-parse": "abc1234", "status": ""}[a[0]])
+    monkeypatch.setattr(sys, "argv", ["stamp_build.py", "--build", "99"])
+    assert tool.main() == 0
+    text = (tmp_path / "sleeve" / "_build.py").read_text(encoding="utf-8")
+    assert "REVISION = 99" in text and "DIRTY = False" in text

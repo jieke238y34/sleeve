@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Write sleeve/_build.py: the number of revisions, the commit and whether there were uncommitted changes.
 
-Run it right before building (the local reinstall script does). A release built from a tag does not run it, so a
+Run it right before building (the local reinstall script does). `--build N` sets the number by hand (the release
+workflow uses it for a tag such as v0.2.0-build.99). A release built from a tag does not run it, so a
 release shows just its version number. The file is ignored by git.
 """
 
@@ -18,7 +19,8 @@ def git(*args):
 
 
 def main():
-    revision = int(git("rev-list", "--count", "HEAD"))
+    revision = int(sys.argv[sys.argv.index("--build") + 1]) if "--build" in sys.argv else int(
+        git("rev-list", "--count", "HEAD"))
     commit = git("rev-parse", "--short", "HEAD")
     dirty = bool(git("status", "--porcelain", "--", "sleeve", "tools", "pyproject.toml"))
     (ROOT / "sleeve" / "_build.py").write_text(
