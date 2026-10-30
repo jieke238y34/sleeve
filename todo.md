@@ -52,8 +52,9 @@ Current version: **0.2.0** (every build also shows its build number).
 
 - [ ] **RAM above 2 GB for one tester** (not reproduced here): stream the library cache to disk, then measure with a
       very large library.
-- [ ] **Shuffle**: going back must return to the previously played song; shuffle the library on startup or on a set
-      interval, changing now and then so the Identity listening data stays honest.
+- [x] **Shuffle: going back** returns to the previously played song (a played-history of the last 200 songs).
+- [ ] **Shuffle order**: shuffle the library on startup or on a set interval, changing now and then so the Identity
+      listening data stays honest.
 - [ ] **Listening time already recorded** stays at 30 s per play; only new plays are measured properly.
 - [ ] **Thermals on this PC** are higher than usual and Cooler Control does not see the fans (outside Sleeve).
 - [ ] **README video and screenshots** must show the current version.
