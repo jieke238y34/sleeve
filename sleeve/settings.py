@@ -40,6 +40,7 @@ DEFAULTS = {
     "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
     "identity_tab": "identity",        # "identity" or "listening": which tab of the Identity page was open
     "online_lookup_ok": False,         # the user agreed that tags may be looked up on musicbrainz.org
+    "update_check_ok": False,          # the user agreed that Sleeve may ask GitHub for the newest release
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
     "discord_client_id": "",           # the user's own Discord application id (digits), needed for the above
@@ -66,7 +67,7 @@ def _valid(key, value):
     if key == "identity_tab":
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
-                "online_lookup_ok", "discord_presence", "discord_art"):
+                "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM

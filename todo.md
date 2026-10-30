@@ -82,7 +82,7 @@ Current version: **0.2.0** (every build also shows its build number).
       title colour, a create-playlist tile first, album-sized tiles.
 - [ ] **Text colour options** with default swatches, **custom fonts** (no font-size setting).
 - [ ] **Settings**: disable the dl.py integration (hides Downloads and Health until a downloader is attached); an
-      Update button and an Uninstall button.
+      (an Update button and an Uninstall button are in, under Settings > Updates).
 
 ## Not started: services and downloads
 
@@ -94,7 +94,7 @@ Current version: **0.2.0** (every build also shows its build number).
 - [ ] **Smart playlists and smart albums** that fill themselves; a **smart DJ** that picks from your library to match
       what you chose.
 - [ ] **Explicit label** on songs; **AI tag** for AI-made songs (needs a database to look them up in).
-- [ ] **CLI**: `sleeve` starts and opens it, `sleeve --uninstall`, `sleeve --update`.
+- [x] **CLI**: `sleeve` starts and opens it; `sleeve --update` and `sleeve --uninstall` (asks first, `--yes` skips).
 
 ## Not started: project
 

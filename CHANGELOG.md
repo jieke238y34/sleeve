@@ -30,6 +30,13 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Added
 
+- Updating and removing Sleeve from the program itself. Settings > Updates has **Check for updates**, **Update now**
+  and **Uninstall Sleeve**, and the command line has `sleeve --update` and `sleeve --uninstall`. A check happens only
+  when you press the button, asks first, and sends GitHub nothing but the Sleeve version. Updating installs the wheel
+  of the newest GitHub release into Sleeve's own environment; removing deletes that environment, the `sleeve` command,
+  the launcher entry and the icon, and keeps your music, playlists and settings. A copy installed by a package manager
+  is never touched: Sleeve says which `dnf`, `zypper` or `apt` command to use instead.
+- The setup banner on Downloads says **Add IDs** once the music folder is set and only the playlists are missing.
 - Discord status can show the album cover (own switch, asks first): the address comes from MusicBrainz and the Cover
   Art Archive, nothing is uploaded, and each album is looked up once.
 - Downloads page: **Get dl.py for me** fetches playlist-sync from GitHub with `git` after asking, and switches the page on.
