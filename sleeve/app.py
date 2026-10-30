@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -83,6 +84,7 @@ from . import (
     musicbrainz,
     myplaylists,
     playlists,
+    seasons,
     settings,
     singleton,
     sync,
@@ -316,6 +318,10 @@ class MainWindow(QMainWindow):
         self._vol_timer.setSingleShot(True)
         self._vol_timer.setInterval(600)
         self._vol_timer.timeout.connect(self._save_settings)
+        self._vol_tip_timer = QTimer(self)                # the percentage tooltip goes away when the drag stops
+        self._vol_tip_timer.setSingleShot(True)
+        self._vol_tip_timer.setInterval(250)
+        self._vol_tip_timer.timeout.connect(QToolTip.hideText)
         self.runner = sync.SyncRunner(cfg, self)
         self.worker = None
         self._closing = self._rescan_again = False
@@ -326,10 +332,10 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
-        self._restore_size()
-
-        self._accent_shown = self.settings.accent_color        # the accent on screen (it may follow the song)
-        self.setStyleSheet(theme.build_style(self._accent_shown))
+        self._look = seasons.resolve(self.settings.seasonal, self.settings.season_choice,   # the seasonal look
+                                     self.settings.holiday_choice)                          # in use, if any
+        self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
+        self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
         Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
         outer = QVBoxLayout(root)
@@ -370,6 +376,11 @@ class MainWindow(QMainWindow):
         self.splitter.setSizes([self.settings.nav_width, 10_000])
         self.splitter.splitterMoved.connect(self._nav_resized)
         outer.addWidget(self.splitter, 1)
+        # after the window is laid out, since a first pass can clamp sizes to unfinished minimums: re-assert both
+        def _late_restore():
+            self._restore_size()
+            self.splitter.setSizes([self.settings.nav_width, 10_000])
+        QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
@@ -414,6 +425,7 @@ class MainWindow(QMainWindow):
         p.start()
         self.rescan()
         self._poll_log()
+        self._restore_size()        # after the layout is complete: an early call is lost to the layout minimums
 
     # --- pages --------------------------------------------------------------
     def _library_page(self):
@@ -1012,6 +1024,7 @@ class MainWindow(QMainWindow):
         def section(text):
             lab = QLabel(text)
             lab.setObjectName("heading")
+            lab.setAccessibleName(text)             # the section heading is announced as a heading
             lay.addSpacing(10)
             lay.addWidget(lab)
 
@@ -1115,6 +1128,39 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.match_box)
         lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
                            "is used when nothing is playing."))
+        row = QHBoxLayout()
+        self.seasonal_box = QComboBox()
+        for label, value in (("Off", "off"), ("Seasons", "seasons"), ("Holidays", "holidays"), ("Both", "both")):
+            self.seasonal_box.addItem(label, value)
+        self.seasonal_box.setCurrentIndex(max(self.seasonal_box.findData(self.settings.seasonal), 0))
+        row.addWidget(QLabel("Seasons and holidays"))
+        row.addWidget(self.seasonal_box)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("A look changes the colours of the window for the time of year. Holidays follow their "
+                           "dates; seasons follow today's date. Nothing is sent anywhere."))
+        row = QHBoxLayout()
+        self.season_choice_box = QComboBox()
+        for label, value in (("Follow the calendar", "auto"), ("Spring", "spring"), ("Summer", "summer"),
+                             ("Autumn", "autumn"), ("Winter", "winter")):
+            self.season_choice_box.addItem(label, value)
+        self.season_choice_box.setCurrentIndex(max(self.season_choice_box.findData(self.settings.season_choice), 0))
+        self.season_choice_box.currentIndexChanged.connect(self._seasonal_changed)
+        row.addWidget(QLabel("Season"))
+        row.addWidget(self.season_choice_box)
+        self.holiday_choice_box = QComboBox()
+        for label, value in (("Follow the calendar", "auto"), ("Christmas", "christmas"), ("Halloween", "halloween"),
+                             ("New Year", "newyear")):
+            self.holiday_choice_box.addItem(label, value)
+        self.holiday_choice_box.setCurrentIndex(max(self.holiday_choice_box.findData(self.settings.holiday_choice), 0))
+        self.holiday_choice_box.currentIndexChanged.connect(self._seasonal_changed)
+        row.addWidget(QLabel("Holiday"))
+        row.addWidget(self.holiday_choice_box)
+        row.addStretch(1)
+        self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
+        lay.addLayout(row)
+        self.season_choice_box.setEnabled(self.settings.seasonal in ("seasons", "both"))
+        self.holiday_choice_box.setEnabled(self.settings.seasonal in ("holidays", "both"))
 
         section("Listening")
         section("Discord")
@@ -1344,18 +1390,37 @@ class MainWindow(QMainWindow):
         self._apply_accent()
 
     def _effective_accent(self):
-        "The accent to show: the chosen one, or (if asked) one in the hue of the cover that is playing."
+        "The accent to show: a look carries its own, else the chosen one, or (if asked) one in the cover's hue."
         if self.settings.accent_from_cover and self._np_pix is not None:
             return theme.accent_from_cover(self._np_pix) or self.settings.accent_color
+        if self._look:
+            return theme.look_accent(self._look)
         return self.settings.accent_color
+
+    def _look_name(self):
+        "The seasonal or holiday look for today from the settings, or None."
+        return seasons.resolve(self.settings.seasonal, self.settings.season_choice, self.settings.holiday_choice)
+
+    def _seasonal_changed(self):
+        "The user changed a seasons and holidays control in Settings: save it and repaint."
+        self.settings.set("seasonal", self.seasonal_box.currentData())
+        self.season_choice_box.setEnabled(self.seasonal_box.currentData() in ("seasons", "both"))
+        self.holiday_choice_box.setEnabled(self.seasonal_box.currentData() in ("holidays", "both"))
+        self.settings.set("season_choice", self.season_choice_box.currentData())
+        self.settings.set("holiday_choice", self.holiday_choice_box.currentData())
+        self._save_settings()
+        self._look = self._look_name()
+        self._apply_accent(force=True)
 
     def _apply_accent(self, force=True):
         "Repaint everything that uses the accent colour."
+        look = self._look_name()
         colour = self._effective_accent()
-        if not force and colour == self._accent_shown:
-            return
+        if not force and colour == self._accent_shown and look == self._look:
+            return                                                  # nothing changed since the last repaint
+        self._look = look
         self._accent_shown = colour
-        self.setStyleSheet(theme.build_style(colour))
+        self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
         for switch in self.findChildren(Switch):
@@ -1480,10 +1545,12 @@ class MainWindow(QMainWindow):
         self.volume.setMinimumWidth(150)
         self.volume.setMaximumWidth(180)
         self.volume.valueChanged.connect(self.player.set_volume)
-        self.lyrics_btn = QPushButton("Lyrics")
-        self.lyrics_btn.setToolTip("Show the lyrics of this song")
-        self.lyrics_btn.clicked.connect(self._show_lyrics)
-        # left: the song; middle: the buttons with the seek bar under them; right: volume and lyrics
+        self.volume.setToolTip("Volume")
+        self.volume.sliderPressed.connect(self._volume_tip)
+        self.volume.sliderMoved.connect(self._volume_tip)       # dragging and keyboard both count
+        self.volume.sliderReleased.connect(self._volume_tip_done)
+        # left: the song; middle: the buttons with the seek bar under them; right: the volume alone (lyrics live on
+        # the Now Playing page, where the words are big enough to read)
         for w in (self.cover, self.now):
             lay.addWidget(w)
         middle = QVBoxLayout()
@@ -1500,7 +1567,7 @@ class MainWindow(QMainWindow):
         middle.addLayout(buttons)
         middle.addLayout(seek_row)
         lay.addLayout(middle, 1)
-        for w in (QLabel("Vol"), self.volume, self.lyrics_btn):
+        for w in (self.volume,):
             lay.addWidget(w)
         return bar
 
@@ -1765,10 +1832,13 @@ class MainWindow(QMainWindow):
 
     def _count_listening(self, previous, pos):
         "Add the time since the last report to the song's listening time, and record a play once it counts."
+        if self._seeking:                                   # a seek just happened: not listening
+            self._seeking = False
+            return
         if not (self.settings.track_listening and self._is_playing and self._current_path):
             return
         step = pos - previous
-        if not 0 < step < 2.0:                                # a seek or a new song is not listening
+        if not 0 < step < 2.0:                                # a new song is not listening
             return
         self._listened += step
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
@@ -1861,14 +1931,19 @@ class MainWindow(QMainWindow):
 
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
+        if on:                                            # a fresh listen starts when the history is on again
+            self._listened, self._listen_counted = 0.0, False
         self._refresh_listening()
 
     def _clear_listening(self):
+        saved = list(self.history.events)                 # kept back until the clear is safely on disk
         self.history.clear()
         try:
             self.history.save()
         except OSError as e:
+            self.history.events = saved                 # the in-memory history stays intact if the save failed
             self.status.showMessage(f"Could not clear your listening history: {e}", 8000)
+            return
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
@@ -2774,6 +2849,15 @@ class MainWindow(QMainWindow):
         if self.settings.set("volume", int(value)):
             self._vol_timer.start()
 
+    def _volume_tip(self, *_):
+        "A clean tooltip over the volume slider: the percentage while it is being changed."
+        centre = self.volume.mapToGlobal(QPoint(self.volume.width() // 2 - 20, -32))
+        QToolTip.showText(centre, f"{self.volume.value()}% volume", self.volume)
+
+    def _volume_tip_done(self):
+        "The slider is let go: put the tooltip away on the next event loop tick."
+        self._vol_tip_timer.start()
+
     def _set_slider_silently(self, slider, value):
         slider.blockSignals(True)
         slider.setValue(value)
@@ -2850,6 +2934,7 @@ class MainWindow(QMainWindow):
         self._current_path = path
         self._listened, self._listen_counted = 0.0, False
         self._update_presence()
+        self._seeking = False                               # a new song starts a fresh listen, not a seek
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
@@ -2866,6 +2951,8 @@ class MainWindow(QMainWindow):
             s = self.by_path.get(path) or library.read_song(path, self.cfg.music_dir)
         except Exception as e:
             self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
+            self._current_path = ""                       # the song did not load: nothing is being listened to
+            self._listened, self._listen_counted = 0.0, False
             return
         self.now.setText(f"{s.name}\n{s.artist}")
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")

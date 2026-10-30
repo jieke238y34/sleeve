@@ -21,7 +21,8 @@ sleeve/
   art.py          embedded cover art (ID3, FLAC, MP4)
   tags.py         writes title / artist / album / genre with mutagen
   health.py       library problems (missing tags, low bitrate, same title, parked duplicates)
-  identity.py     the Identity page: persona, traits, charts, languages, moods
+  history.py      what you listened to: one line per play, kept in ~/.config/sleeve/history.json
+  identity.py     the Identity page: persona, traits, charts, languages, moods, the Listening panel
   sync.py         runs dl.py with fixed argument lists, follows dl.log
   activity.py     turns dl.py's log lines into plain-English messages
   theme.py        stylesheet and the cover-colour gradient backdrop
@@ -48,6 +49,8 @@ by the volume ceiling and by a per-song gain from `loudness.py` when same volume
 3. The window shows the songs. Double-clicking sends the visible list to `Player.set_queue()`.
 4. `Player` relays position, duration and state to the window and to `mpris.py`.
 5. When a job on the Downloads page ends, the library is rescanned.
+6. While a song plays, the window feeds `history.py` with what was listened to, once a play counts. Seeks and pauses
+   are not listening time.
 
 ## How Downloads works
 

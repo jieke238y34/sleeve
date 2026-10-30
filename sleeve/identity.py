@@ -174,7 +174,7 @@ def _span(seconds):
     if seconds >= 3600:
         h = seconds / 3600
         return f"{h:.0f} hours" if h >= 10 else f"{h:.1f} hours"
-    return f"{max(round(seconds / 60), 1)} min"
+    return f"{round(seconds / 60)} min"
 
 
 def _plural(n, word):
@@ -667,6 +667,7 @@ class ListeningCard(Card):
         self.accent = LAVENDER
         self.period = "week"
         self.heading = _label("", 15, bold=True)
+        self.heading.setObjectName("heading")           # the heading style, and the name screen readers announce
         self.box.addWidget(self.heading)
         pick = QHBoxLayout()
         pick.setSpacing(6)
@@ -710,6 +711,11 @@ class ListeningCard(Card):
             self.set_data(*self._data)              # the tab and heading follow at once; the app then reloads the rows
             self.periodChanged.emit(period)
 
+    def _set_heading(self, text):
+        "The panel heading, as text and as the accessible name screen readers announce it with."
+        self.heading.setText(text)
+        self.heading.setAccessibleName(text)
+
     def set_period(self, period):
         "Show this period without announcing it (used when the saved choice is loaded)."
         self.period = period if period in self.NAMES else "week"
@@ -740,16 +746,16 @@ class ListeningCard(Card):
                 old.setParent(None)
                 old.deleteLater()
         if not enabled:
-            self.heading.setText("Listening history is off")
+            self._set_heading("Listening history is off")
             self.total.setText("Turn on 'Remember what I listen to' in Settings and your top songs will appear here. "
                                "It stays on this computer.")
             return
         if not rows:
-            self.heading.setText(f"Nothing played {name} yet")
+            self._set_heading(f"Nothing played {name} yet")
             self.total.setText("A song counts once you have listened to it for 30 seconds. Play something and it "
                                "shows up here.")
             return
-        self.heading.setText(f"Your top songs {name}")
+        self._set_heading(f"Your top songs {name}")
         for rank, (title, artist, plays) in enumerate(rows[:shown], start=1):
             line = QWidget()
             lay = QHBoxLayout(line)

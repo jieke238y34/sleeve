@@ -43,15 +43,14 @@ when they ship.
 
 ## Notes
 
+- Nothing else has broken in testing so far.
 - Sound quality with local files is good.
-- Nothing seriously wrong has turned up so far.
 
 ## References
 
-- [Anti-Slop](https://github.com/miqdadbadjuber/Anti-Slop): linked here as requested. Not reviewed yet, so what it
-  offers Sleeve is still to be written down.
+- [Anti-Slop](https://github.com/miqdadbadjuber/Anti-Slop) (rulebook vendored and reviewed, in use)
 - [arRPC](https://arrpc.openasar.dev/)
-- [feishin](https://github.com/jeffvli/feishin)
+- [feishin](https://github.com/jeffvli/feishin) (theme system reference)
 - [PlasMusic Toolbar](https://github.com/ccatterina/plasmusic-toolbar),
-  [Maid BT](https://github.com/Maidware-Project/Maid-BT) and
+  [Maid BT](https://github.com/Maidware-Project/Maid-BT),
   [Maid Runner](https://github.com/Maidware-Project/Maid-Runner): already supported, see the README.

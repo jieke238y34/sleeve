@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPoint, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import QWheelEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QListWidget, QListWidgetItem  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QListWidgetItem  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
@@ -79,14 +79,25 @@ def test_no_lyrics_says_so(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
         win.close()
 
 
-def test_the_lyrics_button_opens_the_lyrics_tab_on_now_playing(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_lyrics_tab_opens_from_the_player(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.show_page("Library")
-        win.lyrics_btn.click()
+        win._show_lyrics()                                  # the bar has no lyrics button; the song itself opens them
         assert win.nav.currentItem().text() == "Now Playing" and win.np_tabs.currentIndex() == 1 and win.tab_lyrics.isChecked()
         win.tab_queue.click()
         assert win.np_tabs.currentIndex() == 0
+    finally:
+        win.close()
+
+
+def test_the_player_bar_right_side_is_a_bare_volume_slider(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        labels = [lab.text() for lab in win.findChildren(QLabel) if lab.parent() is not None]
+        assert not any(text in ("Vol", "Volume") for text in labels)          # no label by the slider
+        assert win.volume.valueChanged and win.volume.toolTip() == "Volume"   # the slider alone, named for a11y
+        win._volume_tip()                                                     # sliding shows the percentage
     finally:
         win.close()
 
@@ -351,7 +362,13 @@ def test_sidebar_order_width_and_memory(qapp, cfg, monkeypatch, tmp_path):  # no
         try:
             again.show()
             settle(qapp, 0.1)
-            assert 270 <= again.nav.width() <= 290 and again.settings.last_page == "Identity"
+            # the remembered size applies only while the screen (the offscreen one here is 800 px) has the room
+            room = again.width() - again.stack.minimumSizeHint().width() - again.splitter.handleWidth()
+            if again.settings.nav_width <= room:
+                assert 278 <= again.nav.width() <= 292          # the window has room: the chosen width is kept
+            else:
+                assert abs(again.nav.width() - room) <= 2       # no room (the fake screen here): nav takes what is left
+            assert again.settings.last_page == "Identity"
             assert again.nav.currentItem().text() == "Identity"
         finally:
             again.close()

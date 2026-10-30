@@ -27,6 +27,9 @@ DEFAULTS = {
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
     "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
+    "seasonal": "off",         # "off", "seasons", "holidays" or "both": which looks follow the calendar
+    "season_choice": "auto",   # "auto" or "spring"/"summer"/"autumn"/"winter": pin a season by hand
+    "holiday_choice": "auto",  # "auto", "christmas", "halloween" or "newyear": pin a holiday by hand
     "show_spotify_playlists": False,   # list the playlist files dl.py made from Spotify (off: only your own)
     "window_size": [1180, 760],        # width and height the window had when it was closed
     "last_page": "Library",            # the page that was open
@@ -67,6 +70,12 @@ def _valid(key, value):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
+    if key == "seasonal":
+        return value in ("off", "seasons", "holidays", "both")
+    if key == "season_choice":
+        return value in ("auto",) or value in ("spring", "summer", "autumn", "winter")
+    if key == "holiday_choice":
+        return value in ("auto",) or value in ("christmas", "halloween", "newyear")
     if key == "accent_custom":
         return isinstance(value, str) and bool(_HEX.fullmatch(value))
     if key == "window_size":
