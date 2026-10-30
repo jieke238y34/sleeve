@@ -198,6 +198,7 @@ def test_in_the_window_nothing_is_sent_until_it_is_switched_on_with_a_good_id(qa
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     fake = FakeDiscord(str(tmp_path))
     win.presence.paths = [fake.path]
+    monkeypatch.setattr(win, "_confirm_online", lambda: True)             # the cover lookup asks first; say yes
     try:
         song = win.songs[0]
         win._current_path = song.path

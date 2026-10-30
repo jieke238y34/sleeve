@@ -292,6 +292,7 @@ class MainWindow(QMainWindow):
         self.likes = likes.Likes(likes_file)
         self.history = History()
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
+        self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
         self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
         self._loud_timer.setSingleShot(True)
@@ -303,10 +304,11 @@ class MainWindow(QMainWindow):
         self.player = player or Player(parent=self)
         self._get_dl_proc = None                             # the running `git clone` of dl.py
         self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
-        self._art_cache, self._art_worker, self._art_wanted = ArtCache(), None, None
-        self._art_timer = QTimer(self)                      # a gap between cover lookups (MusicBrainz: one a second)
+        self._art_cache, self._art_worker = ArtCache(), None
+        self._art_wanted = []                               # [(album, artist)] still to look up, the next one first
+        self._art_last, self._art_item, self._art_answered, self._art_tries = 0.0, None, False, {}
+        self._art_timer = QTimer(self)                      # keeps cover lookups a second apart (MusicBrainz's limit)
         self._art_timer.setSingleShot(True)
-        self._art_timer.setInterval(1100)
         self._art_timer.timeout.connect(self._start_art_lookup)
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
@@ -1159,8 +1161,6 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
-        self.season_choice_box.setEnabled(self.settings.seasonal in ("seasons", "both"))
-        self.holiday_choice_box.setEnabled(self.settings.seasonal in ("holidays", "both"))
 
         section("Listening")
         section("Discord")
@@ -1404,8 +1404,6 @@ class MainWindow(QMainWindow):
     def _seasonal_changed(self):
         "The user changed a seasons and holidays control in Settings: save it and repaint."
         self.settings.set("seasonal", self.seasonal_box.currentData())
-        self.season_choice_box.setEnabled(self.seasonal_box.currentData() in ("seasons", "both"))
-        self.holiday_choice_box.setEnabled(self.seasonal_box.currentData() in ("holidays", "both"))
         self.settings.set("season_choice", self.season_choice_box.currentData())
         self.settings.set("holiday_choice", self.holiday_choice_box.currentData())
         self._save_settings()
@@ -1849,13 +1847,32 @@ class MainWindow(QMainWindow):
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
             self._listen_counted = True
             self.history.record(self._current_path, self._listened)
-            try:
-                self.history.save()
-            except OSError as e:
-                self.status.showMessage(f"Could not save your listening history: {e}", 8000)
+            self._listen_event, self._listen_saved = self.history.events[-1], self._listened
+            self._save_history()
+            self._refresh_listening()
+        elif self._listen_event is not None:
+            self._listen_event[2] = int(self._listened)       # the play keeps growing while you keep listening
+            if self._listened - self._listen_saved >= 60:
+                self._listen_saved = self._listened
+                self._save_history()
+
+    def _save_history(self):
+        try:
+            self.history.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save your listening history: {e}", 8000)
+
+    def _finish_listen(self):
+        "The song ended or changed: write the final listening time of the play, if one was running."
+        if self._listen_event is not None:
+            self._listen_event[2] = int(self._listened)
+            self._listen_event = None
+            self._save_history()
             self._refresh_listening()
 
     def _discord_toggled(self, on):
+        if on and self.settings.discord_art and not self._confirm_online():
+            self.discord_art_box.setChecked(False)         # the cover is on by default, but it needs a yes to go online
         self._set_setting("discord_presence", on)
         self._apply_presence()
 
@@ -1903,45 +1920,79 @@ class MainWindow(QMainWindow):
             known, cover = self._art_cache.get(song.album, artist)
             if not known:
                 self._want_art(song.album, artist)
+            self._prefetch_art()
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
-    def _want_art(self, album, artist):
-        "Look the cover up, one album at a time and a second apart; the newest request wins."
-        self._art_wanted = (album, artist)
-        if self._art_worker is None and not self._art_timer.isActive():
-            self._art_timer.start()
+    ART_GAP = 1.1                                           # seconds between two cover lookups
+
+    def _want_art(self, album, artist, first=True):
+        "Queue a cover lookup. The song playing now goes to the front, the ones coming up behind it."
+        item = (album, artist)
+        if item in self._art_wanted:
+            if first:
+                self._art_wanted.remove(item)
+            else:
+                return
+        if first:
+            self._art_wanted.insert(0, item)
+        else:
+            self._art_wanted.append(item)
+        self._kick_art()
+
+    def _kick_art(self):
+        "Start the next lookup now, or as soon as the one-a-second limit allows (no fixed wait before the first)."
+        if self._art_worker is not None or self._art_timer.isActive() or not self._art_wanted:
+            return
+        wait = self._art_last + self.ART_GAP - time.monotonic()
+        self._art_timer.start(max(0, int(wait * 1000)))
+
+    def _prefetch_art(self):
+        "Look up the covers of the next few songs now, so each is ready when its turn comes."
+        queue, here = self.player.queue, max(self.player.index, 0)
+        for path in queue[here + 1:here + 4]:
+            song = self.by_path.get(path)
+            if song is not None and song.album and not self._art_cache.get(song.album, song.artist)[0]:
+                self._want_art(song.album, song.artist, first=False)
 
     def _start_art_lookup(self):
-        if self._art_worker is not None or self._art_wanted is None:
-            return
-        album, artist = self._art_wanted
-        self._art_wanted = None
-        if self._art_cache.get(album, artist)[0]:
-            return
-        worker = self._art_worker = ArtWorker(album, artist, parent=self)
-        worker.found.connect(self._art_found)
-        worker.finished.connect(self._art_finished)
-        worker.start()
+        while self._art_worker is None and self._art_wanted:
+            album, artist = self._art_wanted.pop(0)
+            if self._art_cache.get(album, artist)[0]:
+                continue
+            self._art_item, self._art_answered = (album, artist), False
+            self._art_last = time.monotonic()
+            worker = self._art_worker = ArtWorker(album, artist, parent=self)
+            worker.found.connect(self._art_found)
+            worker.finished.connect(self._art_finished)
+            worker.start()
 
     def _art_found(self, album, artist, url):
+        self._art_answered = True
         if url == "" or is_art_url(url):
             self._art_cache.put(album, artist, url)
         self._update_presence()
 
     def _art_finished(self):
         self._art_worker = None
-        if self._art_wanted is not None:
-            self._art_timer.start()                           # the next one, a second after this one
+        self._art_last = time.monotonic()
+        item = self._art_item
+        if item is not None and not self._art_answered:       # no answer (MusicBrainz busy, or offline): try again
+            tries = self._art_tries[item] = self._art_tries.get(item, 0) + 1
+            if tries < 4 and item not in self._art_wanted:
+                self._art_wanted.append(item)
+        self._kick_art()
 
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
+        self._finish_listen()
         if on:                                            # a fresh listen starts when the history is on again
             self._listened, self._listen_counted = 0.0, False
         self._refresh_listening()
 
     def _clear_listening(self):
         saved = list(self.history.events)                 # kept back until the clear is safely on disk
+        self._listen_event = None                         # the play in progress goes with the rest
         self.history.clear()
         try:
             self.history.save()
@@ -2854,10 +2905,24 @@ class MainWindow(QMainWindow):
         if self.settings.set("volume", int(value)):
             self._vol_timer.start()
 
+    def _volume_handle_x(self):
+        "The middle of the volume handle, in the slider's own coordinates."
+        v = self.volume
+        handle = v.style().pixelMetric(QStyle.PM_SliderLength, None, v)
+        room = max(1, v.width() - handle)
+        return QStyle.sliderPositionFromValue(v.minimum(), v.maximum(), v.value(), room) + handle // 2
+
     def _volume_tip(self, *_):
-        "A clean tooltip over the volume slider: the percentage while it is being changed."
-        centre = self.volume.mapToGlobal(QPoint(self.volume.width() // 2 - 20, -32))
-        QToolTip.showText(centre, f"{self.volume.value()}% volume", self.volume)
+        "A tooltip with just the number, centred above the volume handle so it follows the thumb while sliding."
+        v = self.volume
+        text = str(v.value())
+        QToolTip.showText(v.mapToGlobal(QPoint(self._volume_handle_x(), -40)), text, v)
+        for tip in QApplication.topLevelWidgets():          # Qt puts a tip below-right of a point: use its real size
+            if tip.isVisible() and tip.metaObject().className() == "QTipLabel":
+                above = v.mapToGlobal(QPoint(self._volume_handle_x(), 0))
+                x, y = above.x() - tip.width() // 2, above.y() - tip.height() - 6
+                screen = v.screen().availableGeometry()
+                tip.move(max(screen.left(), min(x, screen.right() - tip.width())), max(screen.top(), y))
 
     def _volume_tip_done(self):
         "The slider is let go: put the tooltip away on the next event loop tick."
@@ -2936,6 +3001,7 @@ class MainWindow(QMainWindow):
 
     def _on_track(self, index, path):
         self._refresh_queue()
+        self._finish_listen()
         self._current_path = path
         self._listened, self._listen_counted = 0.0, False
         self._update_presence()
@@ -3051,6 +3117,7 @@ class MainWindow(QMainWindow):
             super().closeEvent(event)
             return
         self._closing = True                         # no new scans from here on
+        self._finish_listen()
         self._boost.reset()                          # leave no stream louder than it found it
         self.presence.configure(False, "")           # clear the song from Discord
         self._remember_window()

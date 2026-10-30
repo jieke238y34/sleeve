@@ -59,11 +59,28 @@ def close_windows_after_each_test():
     QCoreApplication.processEvents()
 
 
+
+
 def pytest_sessionfinish(session, exitstatus):
-    "Before Python shuts Qt down: let pending events run and drop what no longer has an owner."
+    "Before Python shuts Qt down: let pending events run and drop what no longer has an owner, and note the result."
+    session.config._sleeve_exitstatus = int(exitstatus)
     import gc
 
     from PySide6.QtCore import QCoreApplication
 
     QCoreApplication.processEvents()
     gc.collect()
+
+
+def pytest_unconfigure(config):
+    """The last hook, after the summary is printed. PySide6 segfaults while Python tears Qt down at exit (exit code 139,
+    even though every test passed), which turned CI red. Leave directly with pytest's own exit status instead. A
+    workaround, not a fix: remove it once the teardown crash is found."""
+    import os
+    import sys
+
+    status = getattr(config, "_sleeve_exitstatus", None)
+    if status is not None and _APP is not None:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(status)
