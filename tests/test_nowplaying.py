@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPoint, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import QWheelEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QListWidgetItem, QToolTip  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QListWidgetItem  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
@@ -99,21 +99,21 @@ def test_the_player_bar_right_side_is_a_bare_volume_slider(qapp, cfg, monkeypatc
         assert win.volume.valueChanged and win.volume.toolTip() == "Volume"   # the slider alone, named for a11y
         win.resize(790, 590)                                                  # inside the 800 px test screen
         win.show()
-        QTest.qWaitForWindowExposed(win)                                      # a tip only shows over a shown window
-        win.activateWindow()
-        centres = []
-        for value in (5, 95):
-            QToolTip.hideText()
-            win.volume.setValue(value)
-            win._volume_tip()
-            QTest.qWait(60)
-            tip = next(w for w in QApplication.topLevelWidgets()
-                       if w.isVisible() and w.metaObject().className() == "QTipLabel")
-            top = win.volume.mapToGlobal(QPoint(0, 0)).y()
-            assert tip.text() == str(value)                                   # the number only: no "%", no words
-            assert tip.geometry().bottom() < top                              # above the bar, clear of it
-            centres.append(tip.geometry().center().x() - win.volume.mapToGlobal(QPoint(0, 0)).x())
-        assert centres[1] > centres[0] + win.volume.width() // 2              # and it follows the handle
+        QTest.qWaitForWindowExposed(win)
+        win.volume.setValue(40)
+        win._volume_tip()
+        bubble = win._vol_bubble
+        assert bubble.isVisible() and bubble.text() == "40"                   # the number only: no "%", no words
+        top = win.volume.mapToGlobal(QPoint(0, 0))
+        assert bubble.geometry().bottom() < top.y()                           # above the bar, clear of it
+        middle = top.x() + win.volume.width() // 2
+        assert abs(bubble.geometry().center().x() - middle) <= 2              # centred over the middle of the slider
+        win.volume.setValue(90)                                               # and it stays put while the handle moves
+        win._volume_tip()
+        assert bubble.text() == "90" and abs(bubble.geometry().center().x() - middle) <= 2
+        win._volume_tip_done()
+        QTest.qWait(700)                                                      # and goes away by itself
+        assert not bubble.isVisible()
     finally:
         win.close()
 

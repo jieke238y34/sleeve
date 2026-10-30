@@ -59,7 +59,6 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
-    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -171,6 +170,33 @@ class ClickLabel(QLabel):
     def mouseDoubleClickEvent(self, _e):
         self._after_double = True
         self.doubleClicked.emit()
+
+
+class VolumeBubble(QLabel):
+    "The number shown above the volume slider while it is being changed: a small rounded bubble, no frame or arrows."
+
+    def __init__(self, parent):
+        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumWidth(38)
+        self.set_accent("#f2efe9")
+
+    def set_accent(self, colour):
+        self.setStyleSheet(f"QLabel {{ background: rgba(20, 17, 28, 238); color: {colour}; border-radius: 10px; "
+                           "padding: 4px 11px; font-weight: 700; }")
+
+    def show_above(self, slider, text):
+        "Show `text` centred above the middle of `slider`, a few pixels clear of it, and never off the screen."
+        self.setText(text)
+        self.adjustSize()
+        above = slider.mapToGlobal(QPoint(slider.width() // 2, 0))
+        screen = slider.screen().availableGeometry()
+        x = max(screen.left(), min(above.x() - self.width() // 2, screen.right() - self.width()))
+        self.move(x, max(screen.top(), above.y() - self.height() - 8))
+        self.show()
 
 
 class ClickSlider(QSlider):
@@ -323,7 +349,8 @@ class MainWindow(QMainWindow):
         self._vol_tip_timer = QTimer(self)                # the percentage tooltip goes away when the drag stops
         self._vol_tip_timer.setSingleShot(True)
         self._vol_tip_timer.setInterval(250)
-        self._vol_tip_timer.timeout.connect(QToolTip.hideText)
+        self._vol_bubble = VolumeBubble(self)
+        self._vol_tip_timer.timeout.connect(self._vol_bubble.hide)
         self.runner = sync.SyncRunner(cfg, self)
         self.worker = None
         self._closing = self._rescan_again = False
@@ -1421,6 +1448,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
+        self._vol_bubble.set_accent(colour)
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()
@@ -2905,28 +2933,16 @@ class MainWindow(QMainWindow):
         if self.settings.set("volume", int(value)):
             self._vol_timer.start()
 
-    def _volume_handle_x(self):
-        "The middle of the volume handle, in the slider's own coordinates."
-        v = self.volume
-        handle = v.style().pixelMetric(QStyle.PM_SliderLength, None, v)
-        room = max(1, v.width() - handle)
-        return QStyle.sliderPositionFromValue(v.minimum(), v.maximum(), v.value(), room) + handle // 2
-
     def _volume_tip(self, *_):
-        "A tooltip with just the number, centred above the volume handle so it follows the thumb while sliding."
-        v = self.volume
-        text = str(v.value())
-        QToolTip.showText(v.mapToGlobal(QPoint(self._volume_handle_x(), -40)), text, v)
-        for tip in QApplication.topLevelWidgets():          # Qt puts a tip below-right of a point: use its real size
-            if tip.isVisible() and tip.metaObject().className() == "QTipLabel":
-                above = v.mapToGlobal(QPoint(self._volume_handle_x(), 0))
-                x, y = above.x() - tip.width() // 2, above.y() - tip.height() - 6
-                screen = v.screen().availableGeometry()
-                tip.move(max(screen.left(), min(x, screen.right() - tip.width())), max(screen.top(), y))
+        "The number, in a small bubble centred above the volume slider, while it is being changed."
+        self._vol_bubble.show_above(self.volume, str(self.volume.value()))
+        self._vol_tip_timer.stop()
+        if not self.volume.isSliderDown():                  # keys and the wheel never "let go": hide it after a moment
+            self._vol_tip_timer.start(900)
 
     def _volume_tip_done(self):
         "The slider is let go: put the tooltip away on the next event loop tick."
-        self._vol_tip_timer.start()
+        self._vol_tip_timer.start(250)
 
     def _set_slider_silently(self, slider, value):
         slider.blockSignals(True)

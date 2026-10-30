@@ -16,7 +16,7 @@ only need it for that page: without it Sleeve is a complete player and library m
 
 ![Now Playing: the cover, a gradient taken from its colours, and the queue](docs/screenshots/now-playing.png)
 
-> **Status: alpha (v0.1.0).** Linux is the supported platform. Back up your music before using the tag editor, and
+> **Status: alpha (v0.2.0).** Linux is the supported platform. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
@@ -224,7 +224,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 ## Roadmap and not yet
 
-These are not in v0.1.0:
+These are not in v0.2.0:
 
 - A tag editor for the Health page's problems (today it shows them and starts the matching `dl.py` job).
 - A Windows build and installer.
