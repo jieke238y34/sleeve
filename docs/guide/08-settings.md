@@ -15,6 +15,7 @@ The search box at the top shows only the sections that mention what you type (tr
 | Accent colour | One of 16 bold colours, or Custom… to pick any colour you like |
 | Match the colours of the song | The accent follows the cover of the song that is playing |
 | Show what I'm listening to on Discord | Off by default. Needs your own Discord Application ID, see [Playback and sound](06-playback-and-sound) |
+| Also show the album cover | Adds the cover to the Discord status, looked up on MusicBrainz and the Cover Art Archive |
 | Remember what I listen to | Keeps which songs you play, on this computer only, for the Listening tab on the Identity page |
 | Clear listening history | Deletes that list |
 

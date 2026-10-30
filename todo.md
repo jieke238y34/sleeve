@@ -25,8 +25,9 @@ when they ship.
 - [x] (search added) **Better Settings menu:** group settings, search them, and explain each one in a line.
 - [x] **Move the user guide out of the app.** Drop the Docs page from the player and keep one well-organised guide on
       GitHub (`docs/`), cleaned up and linked from the README.
-- [~] (first part: a **Get dl.py for me** button; still to do: installing its Python requirements) **Easier downloads.** dl.py is confusing to set up. Offer a plain "Download music" button for Linux users, and
-      the same on Windows, which handles the setup behind the scenes.
+- [x] **Easier downloads.** dl.py is confusing to set up. Offer a plain "Download music" button for Linux users, and
+      the same on Windows, which handles the setup behind the scenes. First part shipped: a **Get dl.py for me** button
+      plus the setup dialog; dl.py installs its own requirements the first time it runs, so there is nothing left to do.
 - [x] (first part shipped: a Listening panel of top songs this week or month, from a local history; still to do: let
       it shape the persona and traits) **Identity that learns from listening.** Today it is worked out from tags and playlist names. Add a small,
       local, opt-in system that slowly learns from what is actually played and skipped. Keep the data on the

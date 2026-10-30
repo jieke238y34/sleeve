@@ -91,6 +91,7 @@ from . import (
 )
 from .albums import AlbumDetail, AlbumGrid
 from .boost import StreamBoost
+from .coverart import ArtCache, ArtWorker, is_art_url
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
@@ -300,6 +301,11 @@ class MainWindow(QMainWindow):
         self.player = player or Player(parent=self)
         self._get_dl_proc = None                             # the running `git clone` of dl.py
         self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
+        self._art_cache, self._art_worker, self._art_wanted = ArtCache(), None, None
+        self._art_timer = QTimer(self)                      # a gap between cover lookups (MusicBrainz: one a second)
+        self._art_timer.setSingleShot(True)
+        self._art_timer.setInterval(1100)
+        self._art_timer.timeout.connect(self._start_art_lookup)
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
@@ -1126,6 +1132,14 @@ class MainWindow(QMainWindow):
         row.addWidget(self.discord_id)
         row.addStretch(1)
         lay.addLayout(row)
+        self.discord_art_box = Switch("Also show the album cover")
+        self.discord_art_box.setChecked(self.settings.discord_art)
+        self.discord_art_box.toggled.connect(self._discord_art_toggled)
+        lay.addWidget(self.discord_art_box)
+        lay.addWidget(hint("Discord can only show a cover from a web address, so Sleeve asks MusicBrainz which release "
+                           "the album is and uses its public cover on coverartarchive.org. Only the album name and "
+                           "artist are sent, once per album, and nothing is uploaded. Albums without a match show no "
+                           "cover."))
         self.discord_status = hint("")
         lay.addWidget(self.discord_status)
         lay.addWidget(hint("Needs Discord, or arRPC for Vesktop and other clients, running on this computer. Create "
@@ -1793,6 +1807,15 @@ class MainWindow(QMainWindow):
                     "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
         self.discord_status.setText(text)
 
+    def _discord_art_toggled(self, on):
+        if on and not self._confirm_online():                # the cover lookup also uses the internet: ask first
+            self.discord_art_box.blockSignals(True)
+            self.discord_art_box.setChecked(False)
+            self.discord_art_box.blockSignals(False)
+            return
+        self._set_setting("discord_art", on)
+        self._update_presence()
+
     def _update_presence(self):
         "Tell Discord what is playing (or clear it when nothing is, or the song is paused)."
         if not self.presence.enabled:
@@ -1800,7 +1823,41 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(self._current_path) if self._current_path else None
         title = song.name if song else (Path(self._current_path).stem if self._current_path else "")
         artist = song.artist if song else ""
-        self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing))
+        cover = ""
+        if song is not None and song.album and self.settings.discord_art and self._is_playing:
+            known, cover = self._art_cache.get(song.album, artist)
+            if not known:
+                self._want_art(song.album, artist)
+        self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
+                                                art_url=cover, album=song.album if song else ""))
+
+    def _want_art(self, album, artist):
+        "Look the cover up, one album at a time and a second apart; the newest request wins."
+        self._art_wanted = (album, artist)
+        if self._art_worker is None and not self._art_timer.isActive():
+            self._art_timer.start()
+
+    def _start_art_lookup(self):
+        if self._art_worker is not None or self._art_wanted is None:
+            return
+        album, artist = self._art_wanted
+        self._art_wanted = None
+        if self._art_cache.get(album, artist)[0]:
+            return
+        worker = self._art_worker = ArtWorker(album, artist, parent=self)
+        worker.found.connect(self._art_found)
+        worker.finished.connect(self._art_finished)
+        worker.start()
+
+    def _art_found(self, album, artist, url):
+        if url == "" or is_art_url(url):
+            self._art_cache.put(album, artist, url)
+        self._update_presence()
+
+    def _art_finished(self):
+        self._art_worker = None
+        if self._art_wanted is not None:
+            self._art_timer.start()                           # the next one, a second after this one
 
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
@@ -2898,6 +2955,9 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def closeEvent(self, event):
+        if self._closing:                            # closed before: everything below has already been done once
+            super().closeEvent(event)
+            return
         self._closing = True                         # no new scans from here on
         self._boost.reset()                          # leave no stream louder than it found it
         self.presence.configure(False, "")           # clear the song from Discord

@@ -18,6 +18,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtNetwork import QLocalSocket
 
+from .coverart import is_art_url
+
 HANDSHAKE, FRAME, CLOSE, PING, PONG = 0, 1, 2, 3, 4
 MAX_BODY = 64_000               # an answer larger than this is not Discord
 RETRY_SECONDS = 30              # when no Discord or arRPC is running, look again this often while it is switched on
@@ -61,9 +63,10 @@ def _clip(text):
     return text if len(text) <= TEXT_LIMIT else text[:TEXT_LIMIT - 1] + "…"
 
 
-def activity(title, artist, position, length, playing, now=None):
-    """The activity to show: the song, the artist, and a progress bar (timestamps) while it plays.
-    Returns None when nothing should be shown (paused or stopped), which clears the presence."""
+def activity(title, artist, position, length, playing, now=None, art_url="", album=""):
+    """The activity to show: the song, the artist, and a progress bar (timestamps) while it plays, plus the album cover
+    when `art_url` is a Cover Art Archive address (anything else is ignored). Returns None when nothing should be shown
+    (paused or stopped), which clears the presence."""
     if not title or not playing:
         return None
     now = time.time() if now is None else now
@@ -72,6 +75,8 @@ def activity(title, artist, position, length, playing, now=None):
            "timestamps": {"start": start}}
     if length and length > position:
         act["timestamps"]["end"] = int(start + length)
+    if is_art_url(art_url):
+        act["assets"] = {"large_image": art_url, "large_text": _clip(album or title)}
     return act
 
 

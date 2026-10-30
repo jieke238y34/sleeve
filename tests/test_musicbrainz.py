@@ -16,20 +16,6 @@ from sleeve import musicbrainz as mb  # noqa: E402
 from sleeve.library import Song  # noqa: E402
 from sleeve.tagsuggest import TagSuggestions, describe  # noqa: E402
 
-
-@pytest.fixture(autouse=True)
-def tidy_widgets():
-    "Widgets made by a test must be gone before Python shuts Qt down, or the process can crash on exit."
-    yield
-    from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
-
-    for w in QApplication.topLevelWidgets():
-        w.close()
-        w.deleteLater()
-    QTest.qWait(1)
-
-
 MBID = "5b9b3cb4-0d36-4b8e-9d63-2c7d2b6a1f10"
 
 

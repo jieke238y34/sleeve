@@ -19,13 +19,6 @@ from sleeve import presence  # noqa: E402
 CLIENT_ID = "123456789012345678"
 
 
-@pytest.fixture(autouse=True)
-def tidy_widgets():
-    yield
-    for w in QApplication.topLevelWidgets():
-        w.close()
-        w.deleteLater()
-    QTest.qWait(1)
 
 
 def app():

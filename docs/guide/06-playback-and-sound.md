@@ -85,6 +85,8 @@ until you switch it on in Settings under Discord, and it needs two things:
 2. Your own Application ID: create an application at <https://discord.com/developers/applications>, name it (that name
    is what people see after "Listening to") and paste its Application ID into Settings.
 
+**Album cover.** Discord can only show a cover from a web address, so there is a separate switch, **Also show the album cover**. When it is on, Sleeve asks [MusicBrainz](https://musicbrainz.org) which release the album is and gives Discord the public cover address from the [Cover Art Archive](https://coverartarchive.org). Only the album name and artist are sent to MusicBrainz, once per album (one request a second), and nothing is uploaded. Albums MusicBrainz is not sure about show no cover. The answers are remembered in `~/.cache/sleeve/cover-urls.json`. Discord (or arRPC) then fetches the image itself from coverartarchive.org.
+
 Sleeve talks only to a local socket on your computer (`discord-ipc-0` in your runtime folder); your Discord client
 decides what to publish. The song title and artist are shared while it is on and cleared when you pause, switch it off
 or quit.

@@ -38,6 +38,7 @@ DEFAULTS = {
     "identity_tab": "identity",        # "identity" or "listening": which tab of the Identity page was open
     "online_lookup_ok": False,         # the user agreed that tags may be looked up on musicbrainz.org
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
+    "discord_art": False,              # also show the album cover (looked up on MusicBrainz and the Cover Art Archive)
     "discord_client_id": "",           # the user's own Discord application id (digits), needed for the above
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
@@ -62,7 +63,7 @@ def _valid(key, value):
     if key == "identity_tab":
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
-                "online_lookup_ok", "discord_presence"):
+                "online_lookup_ok", "discord_presence", "discord_art"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
