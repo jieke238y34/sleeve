@@ -859,11 +859,11 @@ class MainWindow(QMainWindow):
         self.setup_text = QLabel("")
         self.setup_text.setObjectName("muted")
         self.setup_text.setWordWrap(True)
-        sb_button = QPushButton("Set up…")
-        sb_button.setObjectName("primary")
-        sb_button.clicked.connect(self._open_setup)
+        self.setup_banner_btn = QPushButton("Set up…")
+        self.setup_banner_btn.setObjectName("primary")
+        self.setup_banner_btn.clicked.connect(self._open_setup)
         sb.addWidget(self.setup_text, 1)
-        sb.addWidget(sb_button)
+        sb.addWidget(self.setup_banner_btn)
         self.no_dl = QFrame()                                  # shown instead of the controls when there is no dl.py
         no_dl = QVBoxLayout(self.no_dl)
         no_dl_text = QLabel("Downloads use dl.py (playlist-sync), a separate, optional program. It was not found, so "
@@ -908,7 +908,14 @@ class MainWindow(QMainWindow):
         reasons = dlsetup.needs_setup(self.cfg) if self.cfg.has_dl else []
         self.setup_banner.setVisible(bool(reasons))
         self.setup_btn.setVisible(self.cfg.has_dl and not reasons)        # the banner has its own button
-        self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
+        only_ids = reasons == [dlsetup.NO_PLAYLISTS]          # the folder is chosen: all that is left is the playlists
+        self.setup_banner_btn.setText("Add IDs" if only_ids else "Set up…")
+        self.setup_banner_btn.setToolTip("Paste your Spotify playlist links or IDs" if only_ids
+                                         else "Choose the music folder and paste your Spotify playlist links")
+        if only_ids:
+            self.setup_text.setText("Your music folder is ready, but no playlists to download are added yet.")
+        else:
+            self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
 
     def _open_setup(self):
         dlg = self._setup_dialog = dlsetup.SetupDialog(self.cfg, self)

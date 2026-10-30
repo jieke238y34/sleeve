@@ -95,6 +95,10 @@ def test_first_run_banner_and_the_set_up_button(qapp, cfg, monkeypatch, tmp_path
         win._refresh_setup_banner()
         assert not win.setup_banner.isHidden() and "no playlists" in win.setup_text.text()
         assert win.setup_btn.isHidden()                                                # the banner has its own
+        assert win.setup_banner_btn.text() == "Add IDs"                                # only the playlists are missing
+        monkeypatch.setattr(dlsetup, "needs_setup", lambda c: ["the music folder does not exist", dlsetup.NO_PLAYLISTS])
+        win._refresh_setup_banner()
+        assert win.setup_banner_btn.text() == "Set up…"                                # more than that: the full setup
         monkeypatch.setattr(dlsetup, "needs_setup", lambda c: [])
         win._refresh_setup_banner()
         assert win.setup_banner.isHidden()
