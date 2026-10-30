@@ -29,7 +29,7 @@ sleeve/
   switch.py       the On/Off toggle used on the Settings page
   smoothscroll.py eased mouse-wheel scrolling and gliding to a row
   filedrop.py     accepts files dragged onto a widget (playlist import)
-  dlsetup.py      groundwork for a first-run download setup; not wired into v0.1.0
+  dlsetup.py      groundwork for a first-run download setup; not wired into v0.2.0
 ```
 
 ## How a song plays

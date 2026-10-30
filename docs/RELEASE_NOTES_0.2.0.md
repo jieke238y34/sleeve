@@ -1,6 +1,6 @@
-# Sleeve 0.1.0
+# Sleeve 0.2.0
 
-The first release of Sleeve, a desktop music player and library manager for the music you own. It is alpha software for
+A desktop music player and library manager for the music you own. It is alpha software for
 Linux. Back up your music before using the tag editor.
 
 ## Highlights
@@ -17,22 +17,26 @@ Linux. Back up your music before using the tag editor.
 - **Identity:** a persona, trait meters, charts, languages and moods drawn from your own tags.
 - **Downloads (optional):** a front end for [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`)
   with a plain-English activity feed. Sleeve asks you to trust `dl.py` before running it.
+- **Seasons and holidays:** seven dark looks (spring to winter, Halloween, Christmas, New Year) that follow the
+  calendar or can be pinned by hand.
+- **Listening:** an opt-in local history with your top songs this week or month on the Identity page.
+- **Discord (optional):** shows what is playing, with the album cover, through Discord or arRPC.
 - **Settings:** sixteen accent colours and a custom one, and switches. The user guide is in `docs/guide/`.
 
 No accounts and no telemetry. Sleeve uses the internet only when you ask: the optional tag lookup on MusicBrainz and `dl.py` downloads.
 
 ## Install
 
-Download `sleeve-0.1.0-py3-none-any.whl` below and run:
+Download `sleeve-0.2.0-py3-none-any.whl` below and run:
 
 ```sh
-pipx install ./sleeve-0.1.0-py3-none-any.whl
+pipx install ./sleeve-0.2.0-py3-none-any.whl
 sleeve
 ```
 
 Needs Python 3.10 or newer. See [docs/INSTALL.md](https://github.com/jieke238y34/sleeve/blob/main/docs/INSTALL.md).
 The wheel and sdist carry build provenance attestations:
-`gh attestation verify sleeve-0.1.0-py3-none-any.whl --repo jieke238y34/sleeve`.
+`gh attestation verify sleeve-0.2.0-py3-none-any.whl --repo jieke238y34/sleeve`.
 
 ## Known limits
 

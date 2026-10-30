@@ -6,12 +6,13 @@
   <name>Sleeve</name>
   <summary>Music library, player and sync dashboard</summary>
   <description>
-    <p>Sleeve browses your music library, plays it, and runs the playlist-sync downloader's sorting, genre repair, duplicate and playlist jobs from one window.</p>
+    <p>Sleeve is a desktop music player and library manager for the music you own. No accounts and no telemetry: it uses the internet only when you ask.</p>
     <ul>
       <li>Library browser with genre folders and instant search</li>
       <li>Playback with queue, shuffle, repeat, cover art and synced lyrics</li>
-      <li>Playlist view that shows which songs are missing from the library</li>
-      <li>Library health report and a tag editor</li>
+      <li>Playlists of your own, liked songs and a Health page for songs that need attention, with a tag editor</li>
+      <li>An Identity page built from your own listening, and looks that follow the album cover and the seasons</li>
+      <li>Optional Discord status and the optional playlist-sync downloader</li>
     </ul>
   </description>
   <launchable type="desktop-id">io.github.jieke238y34.Sleeve.desktop</launchable>
@@ -27,6 +28,7 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-10-30"/>
     <release version="0.1.0" date="2026-10-28"/>
   </releases>
 </component>

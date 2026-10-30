@@ -4,7 +4,7 @@ import shutil
 import subprocess  # nosec B404 (only used to ask git for the revision of a development checkout)
 from pathlib import Path
 
-__version__ = "0.1.0"                      # the release version; every build also carries its revision (see below)
+__version__ = "0.2.0"                      # the release version; every build also carries its revision (see below)
 
 
 def _git(root, *args):

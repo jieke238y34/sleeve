@@ -4,9 +4,9 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - Unreleased (2026-10-29)
+## [0.2.0] - 2026-10-30
 
-First release. Alpha, Linux.
+Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 93 (83504e0)`.
 
 ### Fixed
 
