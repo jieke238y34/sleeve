@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.2.0] - 2026-10-30
 
-Alpha, Linux. The version is one plain number now: no build counters.
+Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 93 (83504e0)`.
 
 ### Fixed
 

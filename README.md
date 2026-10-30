@@ -16,7 +16,8 @@ only need it for that page: without it Sleeve is a complete player and library m
 
 ![Now Playing: the cover, a gradient taken from its colours, and the queue](docs/screenshots/now-playing.png)
 
-> **Status: alpha (v0.2.0).** Linux is the supported platform. Back up your music before using the tag editor, and
+> **Status: alpha (v0.2.0).** Linux is the supported platform. Settings shows the version with its build number, for
+> example `0.2.0 · build 93`, so a bug report can name the exact build. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
@@ -50,6 +51,11 @@ The screenshots show a small made-up demo library with generated covers.
   duplicates or broken, with buttons to play, show in the file manager, or run the matching `dl.py` fix.
 - Identity page: a persona, seven trait meters, charts, languages and moods, all worked out from your own tags and
   playlist names.
+- Listening panel on the Identity page: your top songs this week or this month, from a history Sleeve keeps in one
+  file on your computer. It is opt in, shows real listening time, and can be switched off or cleared in Settings.
+- Seasons and holidays: seven dark looks (spring, summer, autumn, winter, Halloween, Christmas, New Year) that follow
+  the calendar or can be pinned by hand in Settings, with a switch to turn them off. Accent colours can still follow
+  the album cover.
 
 **Playback**
 
@@ -62,6 +68,7 @@ The screenshots show a small made-up demo library with generated covers.
 - Lyrics tab: synced lyrics from `.lrc` files scroll with the song and can be clicked to seek, plain `.txt` lyrics are
   shown unsynced, and the tab says "No imported lyrics found" otherwise.
 - The small cover in the player bar opens Now Playing with one click.
+- The volume is a bare slider; a small bubble above it shows the number while you change it.
 
 **Playlists**
 
