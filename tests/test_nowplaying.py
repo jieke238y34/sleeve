@@ -339,6 +339,25 @@ def test_matching_the_song_recolours_the_app_and_gives_the_colour_back(qapp, cfg
         win.close()
 
 
+def test_the_sung_lyric_line_takes_the_new_accent_when_the_song_changes(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QListWidgetItem
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.match_box.setChecked(True)
+        win._show_cover(striped(["#1830c0"]), "Blue song", "Artist", "Album")
+        for text in ("one", "two"):
+            win.lyrics.addItem(QListWidgetItem(text))
+        win._mark_lyric(1)
+        win._show_cover(striped(["#c01830"]), "Red song", "Artist", "Album")      # no click, no other interaction
+        shown = win.lyrics.item(1).foreground().color()
+        assert QColor(shown).name() == QColor(win._accent_shown).name()
+        assert QColor(shown).hue() < 20 or QColor(shown).hue() > 340
+    finally:
+        win.close()
+
+
 def test_sidebar_order_width_and_memory(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:

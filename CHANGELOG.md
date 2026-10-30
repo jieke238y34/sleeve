@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 First release. Alpha, Linux.
 
+### Fixed
+
+- Lyrics now take a new accent colour at once when the song changes, instead of waiting for the next click.
+
 ### Changed
 
 - The user guide moved out of the app to `docs/guide/` on GitHub, so the app is smaller and the guide can be

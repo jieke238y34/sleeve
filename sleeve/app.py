@@ -1428,6 +1428,11 @@ class MainWindow(QMainWindow):
         self._update_toggle_icons()
         if self._lyric_row >= 0:
             self._mark_lyric(self._lyric_row)                   # the line being sung wears the new colour
+        # An item view paints its ::item rules from a cache that a window-wide style change does not clear, so
+        # the lyrics kept the old colour until the next click. Re-polish and repaint them in this same pass.
+        self.lyrics.style().unpolish(self.lyrics)
+        self.lyrics.style().polish(self.lyrics)
+        self.lyrics.viewport().update()
 
     def _restore_size(self):
         "The size the window had last time, but never bigger than the screen it opens on."
