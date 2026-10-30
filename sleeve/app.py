@@ -64,7 +64,6 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
-    __version__,
     activity,
     art,
     build_label,
@@ -1328,14 +1327,14 @@ class MainWindow(QMainWindow):
             self.update_label.setText(error)
         elif release is None:
             self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
-        elif not updater.is_newer(release["version"]):
-            self.update_label.setText(f"You have the newest version, Sleeve {__version__}.")
+        elif not updater.is_newer(release["version"], release["build"]):
+            self.update_label.setText(f"You have the newest version, Sleeve {build_label()}.")
         elif updater.install_kind() == "venv":
-            self.update_label.setText(f"Sleeve {release['version']} is available (you have {__version__}). "
+            self.update_label.setText(f"Sleeve {updater.label(release)} is available (you have {build_label()}). "
                                       "Updating replaces Sleeve's own program files only.")
             self.update_btn.setVisible(True)
         else:
-            self.update_label.setText(f"Sleeve {release['version']} is available. "
+            self.update_label.setText(f"Sleeve {updater.label(release)} is available. "
                                       + updater.how_to_update(updater.install_kind()))
             self.update_page_btn.setVisible(True)
 
@@ -1344,7 +1343,7 @@ class MainWindow(QMainWindow):
             return
         cmd = updater.update_command(self._release["tag"])
         self.update_btn.setEnabled(False)
-        self.update_label.setText(f"Updating to {self._release['version']}… this can take a minute.")
+        self.update_label.setText(f"Updating to {updater.label(self._release)}… this can take a minute.")
         proc = self._update_proc = QProcess(self)
         proc.finished.connect(self._update_finished)
         proc.start(cmd[0], cmd[1:])
@@ -1354,8 +1353,8 @@ class MainWindow(QMainWindow):
         self.update_btn.setEnabled(True)
         if code == 0:
             self.update_btn.setVisible(False)
-            self.update_label.setText(f"Updated to {self._release['version']}. Close Sleeve and open it again to use "
-                                      "it.")
+            self.update_label.setText(f"Updated to {updater.label(self._release)}. Close Sleeve and open it again "
+                                      "to use it.")
         else:
             tail = bytes(proc.readAllStandardError()).decode("utf-8", "replace").strip().splitlines()[-1:]
             self.update_label.setText("The update did not finish and your current Sleeve is unchanged. "

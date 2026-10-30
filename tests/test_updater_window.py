@@ -10,7 +10,7 @@ from test_likes import make_window
 
 from sleeve import updater
 
-RELEASE = {"tag": "v9.0.0", "version": "9.0.0", "url": "https://github.com/jieke238y34/sleeve/releases/tag/v9.0.0"}
+RELEASE = {"tag": "v9.0.0", "version": "9.0.0", "build": 12, "url": "https://github.com/jieke238y34/sleeve/releases/tag/v9.0.0"}
 
 
 def check(win):
@@ -44,11 +44,12 @@ def test_a_newer_release_offers_update_now_only_for_our_own_environment(qapp, cf
         monkeypatch.setattr(updater, "latest_release", lambda *a, **k: RELEASE)
         monkeypatch.setattr(updater, "install_kind", lambda *a, **k: "venv")
         check(win)
-        assert not win.update_btn.isHidden() and win.update_page_btn.isHidden() and "9.0.0" in win.update_label.text()
+        assert not win.update_btn.isHidden() and win.update_page_btn.isHidden()
+        assert "9.0.0 · build 12" in win.update_label.text()
         monkeypatch.setattr(updater, "install_kind", lambda *a, **k: "system")
         check(win)
         assert win.update_btn.isHidden() and not win.update_page_btn.isHidden() and "dnf" in win.update_label.text()
-        monkeypatch.setattr(updater, "latest_release", lambda *a, **k: {**RELEASE, "tag": "v0.0.1", "version": "0.0.1"})
+        monkeypatch.setattr(updater, "latest_release", lambda *a, **k: {**RELEASE, "tag": "v0.0.1", "version": "0.0.1", "build": 0})
         check(win)
         assert "newest" in win.update_label.text() and win.update_btn.isHidden() and win.update_page_btn.isHidden()
         monkeypatch.setattr(updater, "latest_release", lambda *a, **k: None)

@@ -36,6 +36,9 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
   of the newest GitHub release into Sleeve's own environment; removing deletes that environment, the `sleeve` command,
   the launcher entry and the icon, and keeps your music, playlists and settings. A copy installed by a package manager
   is never touched: Sleeve says which `dnf`, `zypper` or `apt` command to use instead.
+- Updates follow the build number as well as the version: a release tagged `v0.2.0-build.99` is an update to a
+  copy that is `0.2.0 · build 98`. The release workflow stamps the build number into the package, so an updated
+  copy shows its new build. A newer build of the same version is reinstalled without touching Qt and the rest.
 - The setup banner on Downloads says **Add IDs** once the music folder is set and only the playlists are missing.
 - Discord status can show the album cover (own switch, asks first): the address comes from MusicBrainz and the Cover
   Art Archive, nothing is uploaded, and each album is looked up once.

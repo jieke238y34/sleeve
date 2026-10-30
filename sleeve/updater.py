@@ -20,36 +20,61 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from . import __version__
+from . import __version__, build_info
 
 REPO = "jieke238y34/sleeve"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 APP_ID = "io.github.jieke238y34.Sleeve"
 MAX_BYTES = 1_000_000
-_TAG = re.compile(r"v(\d{1,4})\.(\d{1,4})\.(\d{1,4})")
+_TAG = re.compile(r"v(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:-build\.(\d{1,7}))?")   # v0.2.0 or v0.2.0-build.99
+_TITLE_BUILD = re.compile(r"\(build (\d{1,7})\)")
 
 
 class UpdateError(Exception):
     "Something the user can read: no internet, no release yet, an install that is not ours to change."
 
 
+def _match(text):
+    return _TAG.fullmatch(text if text.startswith("v") else f"v{text}") if isinstance(text, str) else None
+
+
 def parse_version(text):
-    "(major, minor, patch) for '0.2.0' or 'v0.2.0'; None for anything else."
-    m = _TAG.fullmatch(text if text.startswith("v") else f"v{text}") if isinstance(text, str) else None
-    return tuple(int(n) for n in m.groups()) if m else None
+    "(major, minor, patch) for '0.2.0', 'v0.2.0' or 'v0.2.0-build.99'; None for anything else."
+    m = _match(text)
+    return tuple(int(n) for n in m.groups()[:3]) if m else None
 
 
-def is_newer(remote, local=__version__):
+def parse_build(text, title=""):
+    "The build number of a release: from `-build.N` in its tag, else '(build N)' in its title, else 0 (unknown)."
+    m = _match(text)
+    if m and m.group(4):
+        return int(m.group(4))
+    t = _TITLE_BUILD.search(title) if isinstance(title, str) else None
+    return int(t.group(1)) if t else 0
+
+
+def local_build():
+    "The build number of the running copy: stamped into the build, or counted from git in a checkout; 0 if neither."
+    info = build_info()
+    return info[0] if info else 0
+
+
+def is_newer(remote, remote_build=0, local=__version__, local_build_number=None):
+    "True when the release has a higher version, or the same version with a higher build number."
     r, v = parse_version(remote), parse_version(local)
-    return bool(r and v and r > v)
+    if not (r and v):
+        return False
+    mine = local_build() if local_build_number is None else local_build_number
+    return (r, remote_build) > (v, mine)
 
 
 def wheel_url(tag):
     "The wheel the release workflow attaches. Only a well-formed tag can make an address."
-    if parse_version(tag) is None or not tag.startswith("v"):
+    version = parse_version(tag) if isinstance(tag, str) and tag.startswith("v") else None
+    if version is None:
         raise ValueError("not a release tag")
-    return f"https://github.com/{REPO}/releases/download/{tag}/sleeve-{tag[1:]}-py3-none-any.whl"
+    return f"https://github.com/{REPO}/releases/download/{tag}/sleeve-{'.'.join(map(str, version))}-py3-none-any.whl"
 
 
 def latest_release(opener=urllib.request.urlopen):
@@ -68,12 +93,14 @@ def latest_release(opener=urllib.request.urlopen):
     if len(body) > MAX_BYTES:
         raise UpdateError("GitHub's answer was unexpectedly large.")
     try:
-        tag = json.loads(body.decode("utf-8")).get("tag_name", "")
+        data = json.loads(body.decode("utf-8"))
+        tag, title = data.get("tag_name", ""), data.get("name") or ""
     except (ValueError, AttributeError):
         raise UpdateError("GitHub's answer could not be read.") from None
     if parse_version(tag) is None or not str(tag).startswith("v"):
         raise UpdateError("The newest release has a name Sleeve does not understand.")
-    return {"tag": tag, "version": tag[1:], "url": f"{RELEASES_PAGE}/tag/{tag}"}
+    version = ".".join(map(str, parse_version(tag)))
+    return {"tag": tag, "version": version, "build": parse_build(tag, title), "url": f"{RELEASES_PAGE}/tag/{tag}"}
 
 
 def prefix_dir(env=None):
@@ -101,8 +128,16 @@ def how_to_update(kind):
 
 
 def update_command(tag, python=None):
-    "The pip command that puts a release into the running environment."
-    return [python or sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", wheel_url(tag)]
+    """The pip command that puts a release into the running environment. A newer build of the version already
+    installed has the same version number, so pip is told to reinstall it (without touching Qt and the rest)."""
+    same = parse_version(tag) == parse_version(__version__)
+    extra = ["--force-reinstall", "--no-deps"] if same else []
+    return [python or sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", *extra, wheel_url(tag)]
+
+
+def label(release):
+    "'0.2.0 · build 99' (or just '0.2.0' when the release does not say its build)."
+    return f"{release['version']} · build {release['build']}" if release.get("build") else release["version"]
 
 
 def removal_plan(env=None, home=None):
@@ -156,16 +191,16 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
     if release is None:
         out("No release has been published yet, so there is nothing to update to.")
         return 0
-    if not is_newer(release["version"]):
-        out(f"Sleeve {__version__} is the newest version.")
+    if not is_newer(release["version"], release["build"]):
+        out(f"Sleeve {__version__} (build {local_build()}) is the newest.")
         return 0
-    out(f"Updating Sleeve {__version__} to {release['version']} ...")
+    out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
     done = run(update_command(release["tag"]), check=False)  # noqa: S603  # nosec B603
     if done.returncode != 0:
         out("The update did not finish. Your current Sleeve is unchanged; try again, or see the releases page: "
             + RELEASES_PAGE)
         return 1
-    out(f"Updated to {release['version']}. Restart Sleeve to use it.")
+    out(f"Updated to {label(release)}. Restart Sleeve to use it.")
     return 0
 
 
