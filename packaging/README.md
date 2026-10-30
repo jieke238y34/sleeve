@@ -2,7 +2,13 @@
 
 Status of each distribution route. Nothing here is published yet.
 
-## Fedora (`dnf`)
+## Fedora (`dnf`) and openSUSE (`zypper`)
+
+One spec, `sleeve.spec`, builds on both: Fedora uses `pyproject-rpm-macros`, openSUSE the plain Python macros
+(`%if 0%{?suse_version}`). The Fedora build is the one that has been written against; the openSUSE branch has not been
+built yet, so expect to adjust it the first time (build it on the Open Build Service, which also gives a
+`zypper addrepo` repository).
+
 
 Files: `sleeve.spec`, `io.github.jieke238y34.Sleeve.desktop`, `io.github.jieke238y34.Sleeve.metainfo.xml`.
 
