@@ -385,6 +385,19 @@ class Player(QObject):
         self.queueChanged.emit()
         self.trackChanged.emit(-1, "")
 
+    def clear_queue(self):
+        "Empty the queue but keep the song that is playing (or paused): it carries on without a break."
+        loaded = self.playing or self._media.playbackState() == QMediaPlayer.PausedState   # the flag leads Qt's state
+        if not (0 <= self.index < len(self.queue) and loaded):
+            self.clear()
+            return
+        self.queue = [self.queue[self.index]]
+        self.index = 0
+        self._played = []
+        self._plan = None
+        self.queueChanged.emit()
+        self._plan_next()
+
     def _remember(self, new):
         "The song being left goes on the played list, so Previous comes back to what was really heard."
         if self._new_queue:
