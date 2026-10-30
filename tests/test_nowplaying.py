@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPoint, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import QWheelEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QListWidgetItem  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QListWidgetItem, QToolTip  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
@@ -97,7 +97,23 @@ def test_the_player_bar_right_side_is_a_bare_volume_slider(qapp, cfg, monkeypatc
         labels = [lab.text() for lab in win.findChildren(QLabel) if lab.parent() is not None]
         assert not any(text in ("Vol", "Volume") for text in labels)          # no label by the slider
         assert win.volume.valueChanged and win.volume.toolTip() == "Volume"   # the slider alone, named for a11y
-        win._volume_tip()                                                     # sliding shows the percentage
+        win.resize(790, 590)                                                  # inside the 800 px test screen
+        win.show()
+        QTest.qWaitForWindowExposed(win)                                      # a tip only shows over a shown window
+        win.activateWindow()
+        centres = []
+        for value in (5, 95):
+            QToolTip.hideText()
+            win.volume.setValue(value)
+            win._volume_tip()
+            QTest.qWait(60)
+            tip = next(w for w in QApplication.topLevelWidgets()
+                       if w.isVisible() and w.metaObject().className() == "QTipLabel")
+            top = win.volume.mapToGlobal(QPoint(0, 0)).y()
+            assert tip.text() == str(value)                                   # the number only: no "%", no words
+            assert tip.geometry().bottom() < top                              # above the bar, clear of it
+            centres.append(tip.geometry().center().x() - win.volume.mapToGlobal(QPoint(0, 0)).x())
+        assert centres[1] > centres[0] + win.volume.width() // 2              # and it follows the handle
     finally:
         win.close()
 
@@ -335,6 +351,25 @@ def test_matching_the_song_recolours_the_app_and_gives_the_colour_back(qapp, cfg
         assert win._accent_shown == chosen
         saved = settings.Settings(win.settings.file)
         assert saved.accent_from_cover is False
+    finally:
+        win.close()
+
+
+def test_the_sung_lyric_line_takes_the_new_accent_when_the_song_changes(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QListWidgetItem
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.match_box.setChecked(True)
+        win._show_cover(striped(["#1830c0"]), "Blue song", "Artist", "Album")
+        for text in ("one", "two"):
+            win.lyrics.addItem(QListWidgetItem(text))
+        win._mark_lyric(1)
+        win._show_cover(striped(["#c01830"]), "Red song", "Artist", "Album")      # no click, no other interaction
+        shown = win.lyrics.item(1).foreground().color()
+        assert QColor(shown).name() == QColor(win._accent_shown).name()
+        assert QColor(shown).hue() < 20 or QColor(shown).hue() > 340
     finally:
         win.close()
 

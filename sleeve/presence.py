@@ -53,7 +53,7 @@ def parse(buffer):
 def socket_paths(env=None):
     "Where a Discord client or arRPC may be listening, most likely first."
     env = os.environ if env is None else env
-    runtime = env.get("XDG_RUNTIME_DIR") or env.get("TMPDIR") or "/tmp"  # noqa: S108  # where Discord puts its socket
+    runtime = env.get("XDG_RUNTIME_DIR") or env.get("TMPDIR") or "/tmp"  # noqa: S108  # nosec B108  (only looked at, never written: where Discord puts its socket)
     folders = [Path(runtime), Path(runtime) / "app" / "com.discordapp.Discord", Path(runtime) / "snap.discord"]
     return [str(folder / f"discord-ipc-{n}") for folder in folders for n in range(10)]
 

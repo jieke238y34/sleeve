@@ -13,9 +13,9 @@ BG, TEXT, MUTED = "#15131d", "#ece9f6", "#a29cbd"
 LOOKS = {
     "spring": ("#131711", "#eef0e9", "#a3b5a1", "#9ccc6f"),
     "summer": ("#171317", "#f2ecef", "#b5a2a0", "#ffb944"),
-    "autumn": ("#181210", "#f1ebe2", "#b7a590", "#e08a3c"),
+    "autumn": ("#17140d", "#f1ebdc", "#b8a98a", "#d9a232"),     # harvest gold on olive-brown
     "winter": ("#10151a", "#e9eef3", "#9aabc0", "#a9c9ec"),
-    "halloween": ("#171015", "#f2e9e4", "#b79a92", "#ef7f2c"),
+    "halloween": ("#130d19", "#efe6f2", "#a48fb5", "#ff7a1a"),   # pumpkin on purple-black
     "christmas": ("#0f1611", "#eee9df", "#9db2a3", "#d65a5a"),
     "newyear": ("#0e0e13", "#ece9f4", "#9a95b1", "#dbb65c"),
 }

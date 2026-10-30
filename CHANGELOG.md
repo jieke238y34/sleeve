@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 First release. Alpha, Linux.
 
+### Fixed
+
+- Listening history now keeps adding to a play while you keep listening (each play used to stay at 30 seconds, so the
+  hours were far too low); it is saved when the song changes, every minute, and on close.
+- Discord cover art shows up sooner: the first lookup starts at once, the covers of the next songs are looked up ahead,
+  and a lookup MusicBrainz was too busy for is retried.
+- The volume tooltip is just the number, centred above the handle and following it.
+- Autumn (harvest gold on olive-brown) and Halloween (pumpkin on purple-black) no longer look alike; the season and
+  holiday pickers can be set while the look is switched off or on the other mode.
+- The Discord cover is on by default; turning Discord on asks before any online lookup.
+- Tests no longer crash Python at exit (exit code 139 failed the Python jobs on GitHub).
+- Lyrics now take a new accent colour at once when the song changes, instead of waiting for the next click.
+
 ### Changed
 
 - The user guide moved out of the app to `docs/guide/` on GitHub, so the app is smaller and the guide can be

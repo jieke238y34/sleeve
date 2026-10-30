@@ -80,11 +80,12 @@ def test_in_the_window_the_cover_is_looked_up_once_cached_and_shown(qapp, cfg, m
         win._current_path, win._is_playing = song.path, True
         monkeypatch.setattr(win, "_confirm_online", lambda: True)
         win.settings.set("discord_client_id", CLIENT_ID)
+        win.discord_art_box.setChecked(False)                                         # it is on by default: switch it off
         win.discord_box.setChecked(True)
         assert pump(2, lambda: win.presence.ready)
         pump(0.3)
         shown = [m[1] for m in fake.messages if m[1].get("cmd") == "SET_ACTIVITY"][-1]["args"]["activity"]
-        assert "assets" not in shown and calls == []                                  # the cover is off by default
+        assert "assets" not in shown and calls == []                                  # the cover switch is off: no cover, no lookup
         win.discord_art_box.setChecked(True)                                          # switched on (after consent)
         assert pump(5, lambda: calls and "assets" in
                     [m[1] for m in fake.messages if m[1].get("cmd") == "SET_ACTIVITY"][-1]["args"]["activity"])
@@ -104,8 +105,25 @@ def test_in_the_window_the_cover_is_looked_up_once_cached_and_shown(qapp, cfg, m
 def test_declining_the_consent_leaves_the_cover_off(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
+        assert win.settings.discord_art is True                                # the cover is on by default...
         monkeypatch.setattr(win, "_confirm_online", lambda: False)
-        win.discord_art_box.setChecked(True)
+        win.discord_box.setChecked(True)                                       # ...but turning Discord on asks first
         assert win.discord_art_box.isChecked() is False and win.settings.discord_art is False
+        win.discord_art_box.setChecked(True)                                   # and so does turning the cover back on
+        assert win.discord_art_box.isChecked() is False and win.settings.discord_art is False
+    finally:
+        win.close()
+
+
+def test_the_first_cover_lookup_starts_at_once_and_the_next_songs_are_looked_up_ahead(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        monkeypatch.setattr(win, "_start_art_lookup", lambda: None)             # no real lookup here
+        win._want_art("Album A", "Artist A")
+        assert win._art_timer.isActive() and win._art_timer.interval() <= 50    # no fixed wait before the first one
+        win._art_timer.stop()
+        win._want_art("Album B", "Artist B", first=False)                       # coming up: queued behind
+        win._want_art("Album C", "Artist C")                                    # playing now: goes to the front
+        assert win._art_wanted == [("Album C", "Artist C"), ("Album A", "Artist A"), ("Album B", "Artist B")]
     finally:
         win.close()

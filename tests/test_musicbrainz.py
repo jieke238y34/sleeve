@@ -75,7 +75,7 @@ def test_the_request_carries_a_real_user_agent_and_has_a_size_limit():
         return Resp(b'{"recordings": []}')
 
     assert mb.fetch_json(mb.search_url("x"), opener) == {"recordings": []}
-    urls_in_ua = [token for token in seen["ua"].split() if token.startswith(("http://", "https://"))]
+    urls_in_ua = [token.strip("()") for token in seen["ua"].split() if token.strip("()").startswith(("http://", "https://"))]
     hosts_in_ua = [urllib.parse.urlparse(token).hostname for token in urls_in_ua]
     assert seen["ua"].startswith("Sleeve/") and any(h == "github.com" for h in hosts_in_ua) and seen["timeout"] <= 20
     with pytest.raises(ValueError):
