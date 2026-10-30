@@ -104,7 +104,7 @@ cd sleeve
 
 Then start **Sleeve** from your application menu, or run `sleeve`. The first install downloads Qt (about 200 MB).
 
-To update, run `git pull` and `./install.sh` again. To remove it, run `./install.sh --uninstall`. Your music, playlists
+To update, press **Check for updates** in Settings (or run `sleeve --update`); `git pull` and `./install.sh` also work. To remove it, use **Uninstall Sleeve** in Settings, `sleeve --uninstall`, or `./install.sh --uninstall`. Your music, playlists
 and settings (`~/.config/sleeve`) are never touched.
 
 Prefer not to clone first? This does the same from the web (read the script before you run it, as with any script):

@@ -278,6 +278,9 @@ def _playlists_path(cfg):
     return Path(cfg.playlists_file) if cfg.playlists_file else Path(cfg.dl_path).with_name("playlists.txt")
 
 
+NO_PLAYLISTS = "no playlists to download are added"
+
+
 def needs_setup(cfg):
     "Reasons the first-run setup is needed (empty list = all good). cfg is a config.Config, or None."
     if cfg is None or cfg.dl_path is None:
@@ -288,7 +291,7 @@ def needs_setup(cfg):
     if not Path(cfg.music_dir).is_dir():
         why.append("the music folder does not exist")
     if not read_playlist_ids(_playlists_path(cfg)):
-        why.append("no playlists to download are added")
+        why.append(NO_PLAYLISTS)
     return why
 
 

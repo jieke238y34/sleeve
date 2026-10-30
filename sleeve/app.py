@@ -64,6 +64,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import (
+    __version__,
     activity,
     art,
     build_label,
@@ -89,6 +90,7 @@ from . import (
     sync,
     tags,
     theme,
+    updater,
 )
 from .albums import AlbumDetail, AlbumGrid
 from .boost import StreamBoost
@@ -859,11 +861,11 @@ class MainWindow(QMainWindow):
         self.setup_text = QLabel("")
         self.setup_text.setObjectName("muted")
         self.setup_text.setWordWrap(True)
-        sb_button = QPushButton("Set up…")
-        sb_button.setObjectName("primary")
-        sb_button.clicked.connect(self._open_setup)
+        self.setup_banner_btn = QPushButton("Set up…")
+        self.setup_banner_btn.setObjectName("primary")
+        self.setup_banner_btn.clicked.connect(self._open_setup)
         sb.addWidget(self.setup_text, 1)
-        sb.addWidget(sb_button)
+        sb.addWidget(self.setup_banner_btn)
         self.no_dl = QFrame()                                  # shown instead of the controls when there is no dl.py
         no_dl = QVBoxLayout(self.no_dl)
         no_dl_text = QLabel("Downloads use dl.py (playlist-sync), a separate, optional program. It was not found, so "
@@ -908,7 +910,14 @@ class MainWindow(QMainWindow):
         reasons = dlsetup.needs_setup(self.cfg) if self.cfg.has_dl else []
         self.setup_banner.setVisible(bool(reasons))
         self.setup_btn.setVisible(self.cfg.has_dl and not reasons)        # the banner has its own button
-        self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
+        only_ids = reasons == [dlsetup.NO_PLAYLISTS]          # the folder is chosen: all that is left is the playlists
+        self.setup_banner_btn.setText("Add IDs" if only_ids else "Set up…")
+        self.setup_banner_btn.setToolTip("Paste your Spotify playlist links or IDs" if only_ids
+                                         else "Choose the music folder and paste your Spotify playlist links")
+        if only_ids:
+            self.setup_text.setText("Your music folder is ready, but no playlists to download are added yet.")
+        else:
+            self.setup_text.setText("Before your first download: " + "; ".join(reasons) + "." if reasons else "")
 
     def _open_setup(self):
         dlg = self._setup_dialog = dlsetup.SetupDialog(self.cfg, self)
@@ -1189,7 +1198,6 @@ class MainWindow(QMainWindow):
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
 
-        section("Listening")
         section("Discord")
         self.discord_box = Switch("Show what I'm listening to on Discord")
         self.discord_box.setChecked(self.settings.discord_presence)
@@ -1260,10 +1268,115 @@ class MainWindow(QMainWindow):
         buttons.addWidget(rescan)
         buttons.addStretch(1)
         lay.addLayout(buttons)
+
+        section("Updates")
+        self.update_label = hint(f"You have Sleeve {build_label()}. Nothing is checked until you press the button.")
+        lay.addWidget(self.update_label)
+        row = QHBoxLayout()
+        self.update_check_btn = QPushButton("Check for updates")
+        self.update_check_btn.clicked.connect(self._check_update)
+        self.update_btn = QPushButton("Update now")
+        self.update_btn.setObjectName("primary")
+        self.update_btn.setVisible(False)
+        self.update_btn.clicked.connect(self._do_update)
+        self.update_page_btn = QPushButton("Open the releases page")
+        self.update_page_btn.setVisible(False)
+        self.update_page_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(updater.RELEASES_PAGE)))
+        self.uninstall_btn = QPushButton("Uninstall Sleeve…")
+        self.uninstall_btn.setToolTip("Remove Sleeve; your music, playlists and settings are kept")
+        self.uninstall_btn.clicked.connect(self._uninstall)
+        for b in (self.update_check_btn, self.update_btn, self.update_page_btn, self.uninstall_btn):
+            row.addWidget(b)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self._release, self._update_proc, self._update_worker = None, None, None
+
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._group_settings(lay)
         return page
+
+    def _check_update(self):
+        "Ask GitHub for the newest release, after asking the user once."
+        if self._update_worker is not None:
+            return
+        if not self.settings.update_check_ok:
+            ok = QMessageBox.question(
+                self, "Check for updates",
+                "Sleeve will ask github.com for the newest release. Only your Sleeve version is sent, as the name "
+                "of the program asking. Nothing else leaves your computer, and Sleeve never checks by itself.",
+                QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel) == QMessageBox.Ok
+            if not ok:
+                return
+            self._set_setting("update_check_ok", True)
+        self.update_check_btn.setEnabled(False)
+        self.update_label.setText("Checking…")
+        worker = self._update_worker = updater.UpdateCheck(parent=self)
+        worker.done.connect(self._update_checked)
+        worker.finished.connect(self._update_check_finished)
+        worker.start()
+
+    def _update_check_finished(self):
+        self._update_worker = None
+        self.update_check_btn.setEnabled(True)
+
+    def _update_checked(self, release, error):
+        self._release = release
+        self.update_btn.setVisible(False)
+        self.update_page_btn.setVisible(False)
+        if error:
+            self.update_label.setText(error)
+        elif release is None:
+            self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
+        elif not updater.is_newer(release["version"]):
+            self.update_label.setText(f"You have the newest version, Sleeve {__version__}.")
+        elif updater.install_kind() == "venv":
+            self.update_label.setText(f"Sleeve {release['version']} is available (you have {__version__}). "
+                                      "Updating replaces Sleeve's own program files only.")
+            self.update_btn.setVisible(True)
+        else:
+            self.update_label.setText(f"Sleeve {release['version']} is available. "
+                                      + updater.how_to_update(updater.install_kind()))
+            self.update_page_btn.setVisible(True)
+
+    def _do_update(self):
+        if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
+            return
+        cmd = updater.update_command(self._release["tag"])
+        self.update_btn.setEnabled(False)
+        self.update_label.setText(f"Updating to {self._release['version']}… this can take a minute.")
+        proc = self._update_proc = QProcess(self)
+        proc.finished.connect(self._update_finished)
+        proc.start(cmd[0], cmd[1:])
+
+    def _update_finished(self, code, _status):
+        proc, self._update_proc = self._update_proc, None
+        self.update_btn.setEnabled(True)
+        if code == 0:
+            self.update_btn.setVisible(False)
+            self.update_label.setText(f"Updated to {self._release['version']}. Close Sleeve and open it again to use "
+                                      "it.")
+        else:
+            tail = bytes(proc.readAllStandardError()).decode("utf-8", "replace").strip().splitlines()[-1:]
+            self.update_label.setText("The update did not finish and your current Sleeve is unchanged. "
+                                      + (tail[0][:160] if tail else "Try again in a moment."))
+        proc.deleteLater()
+
+    def _uninstall(self):
+        "Remove Sleeve after asking. The files go once Sleeve has closed; music, playlists and settings stay."
+        if updater.install_kind() != "venv":
+            QMessageBox.information(self, "Uninstall Sleeve",
+                                    "This copy was not installed with the Sleeve installer. If a package manager "
+                                    "installed it, remove it with `sudo dnf remove sleeve` (or zypper or apt).")
+            return
+        ask = QMessageBox.question(
+            self, "Uninstall Sleeve",
+            "Remove Sleeve from this computer?\n\nYour music, playlists, liked songs and settings are kept, so a "
+            "later install picks up where you left off.", QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        if ask != QMessageBox.Yes:
+            return
+        QProcess.startDetached("/bin/sh", ["-c", updater.removal_script()])
+        QApplication.quit()
 
     def _group_settings(self, lay):
         """Put each titled section of the Settings page in its own container, so the search box can hide whole sections
@@ -3209,12 +3322,25 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version=f"sleeve {full_version()}")
     ap.add_argument("--preview", action="store_true",
                     help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
+    mng = ap.add_argument_group("keep Sleeve up to date or remove it (for copies made by install.sh)")
+    mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
+    mng.add_argument("--uninstall", action="store_true",
+                     help="remove Sleeve; your music, playlists and settings are kept")
+    mng.add_argument("--yes", action="store_true", help="do not ask before --uninstall")
     ctl = ap.add_argument_group("control a running Sleeve (for shortcuts, launchers and scripts)")
     ctl.add_argument("--toggle", action="store_true", help="show Sleeve, or minimise it when it is in front")
     ctl.add_argument("--play-pause", dest="playpause", action="store_true", help="play or pause")
     ctl.add_argument("--next", action="store_true", help="next song")
     ctl.add_argument("--previous", action="store_true", help="previous song")
     args = ap.parse_args(argv)
+    if args.update:                                       # no window, no Qt: just do it and report
+        return updater.cli_update()
+    if args.uninstall:
+        question = "Remove Sleeve? Your music, playlists and settings are kept. [y/N] "
+        if not args.yes and input(question).strip().lower() != "y":
+            print("Nothing was removed.")
+            return 1
+        return updater.cli_uninstall()
     command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
     # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
     os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "

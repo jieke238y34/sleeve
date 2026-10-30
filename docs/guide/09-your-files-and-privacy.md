@@ -25,7 +25,10 @@ Deleting the cache is safe. It only makes the next start slower.
 The internet is only used when `dl.py` itself downloads music for you, and when you press **Find tags online** on the
 Health page. That sends the title and artist (or file name) of the chosen songs to musicbrainz.org, asks you first, and
 changes nothing in your files until you accept the results. The **Get dl.py for me** button downloads playlist-sync
-from GitHub with `git`, also only after you agree.
+from GitHub with `git`, also only after you agree. **Check for updates** in Settings asks github.com for the newest
+release only when you press it, after asking once; the request carries nothing but the Sleeve version. **Update now**
+downloads that release's wheel from GitHub and installs it into Sleeve's own folder, and **Uninstall Sleeve** deletes only
+that folder, the `sleeve` command, the launcher entry and the icon: your music, playlists and settings stay.
 
 ## Backups
 

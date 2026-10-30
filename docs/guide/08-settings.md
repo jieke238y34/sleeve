@@ -16,6 +16,8 @@ The search box at the top shows only the sections that mention what you type (tr
 | Match the colours of the song | The accent follows the cover of the song that is playing |
 | Show what I'm listening to on Discord | Off by default. Needs your own Discord Application ID, see [Playback and sound](06-playback-and-sound) |
 | Also show the album cover | Adds the cover to the Discord status, looked up on MusicBrainz and the Cover Art Archive |
+| Check for updates / Update now | Asks GitHub for the newest release when you press it (never by itself) and installs it into Sleeve's own folder |
+| Uninstall Sleeve | Removes Sleeve; your music, playlists and settings stay |
 | Remember what I listen to | Keeps which songs you play, on this computer only, for the Listening tab on the Identity page |
 | Clear listening history | Deletes that list |
 
