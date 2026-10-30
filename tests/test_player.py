@@ -291,3 +291,36 @@ def test_real_playback_hands_over_without_the_end_of_song_path(app, tmp_path):
         assert wait_for(app, lambda: p.position > 0.2 and p.duration > 1.0)   # and it is really playing
     finally:
         p.close()
+
+
+def test_previous_goes_back_through_the_songs_actually_played_even_with_shuffle(app, tmp_path):
+    names = [f"{c}.mp3" for c in "abcdef"]
+    p = Player()
+    p.set_queue(songs(tmp_path, *names), 0)
+    p.shuffle = True
+    heard = [p.queue[p.index]]
+    for _ in range(4):
+        p.next()
+        heard.append(p.queue[p.index])
+    for expected in reversed(heard[:-1]):                    # each Previous lands on the song heard just before
+        p.position = 0.0
+        p.prev()
+        assert p.queue[p.index] == expected
+    p.position = 0.0
+    p.prev()                                                 # nothing was played before the first: no crash
+    assert 0 <= p.index < len(p.queue)
+    p.close()
+
+
+def test_previous_history_starts_over_with_a_new_queue(app, tmp_path):
+    a, b, c, d = songs(tmp_path, "a.mp3", "b.mp3", "c.mp3", "d.mp3")
+    p = Player()
+    p.set_queue([a, b], 0)
+    p.next()
+    p.set_queue([c, d], 0)                                   # the old queue's songs are not part of this history
+    assert p._played == []
+    p.next()
+    p.position = 0.0
+    p.prev()
+    assert p.queue[p.index] == c
+    p.close()

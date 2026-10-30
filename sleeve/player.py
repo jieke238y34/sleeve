@@ -17,6 +17,7 @@ from .library import AUDIO_EXT
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
 LEAD_MS = 60          # the next song starts this long before the current one ends
 TAIL_MS = 250         # the finished player is kept this long so the last notes are not cut off
+PLAYED_KEEP = 200     # how many songs Previous can walk back through
 
 
 MAX_GAIN = 0.75       # full slider is 75% of the loudest the output can do: desktop Linux tends to be loud
@@ -83,6 +84,7 @@ class Player(QObject):
         super().__init__(parent)
         self.queue, self.index = [], -1
         self.shuffle, self.repeat = False, REPEAT_OFF
+        self._played, self._back, self._new_queue = [], False, False     # what was played, for Previous
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
@@ -318,6 +320,7 @@ class Player(QObject):
             return False
         self._switch_timer.stop()
         self._cur = 1 - self._cur
+        self._remember(n)
         self.index, self._errors, self._plan = n, 0, None
         idle.media.play()
         self.position = 0.0
@@ -358,6 +361,7 @@ class Player(QObject):
         if len(good) < len(paths):
             self.error.emit(f"skipped {len(paths) - len(good)} files that are not playable audio files")
         self.queue = good
+        self._played, self._new_queue = [], True          # a new queue starts a new history
         self.queueChanged.emit()
         if not good:
             self.clear()
@@ -376,13 +380,25 @@ class Player(QObject):
 
     def clear(self):
         self.queue = []
+        self._played, self._new_queue = [], False
         self._set_stopped()
         self.queueChanged.emit()
         self.trackChanged.emit(-1, "")
 
+    def _remember(self, new):
+        "The song being left goes on the played list, so Previous comes back to what was really heard."
+        if self._new_queue:
+            self._new_queue = False                       # the index still points into the old queue
+            return
+        if self._back or new == self.index or not 0 <= self.index < len(self.queue):
+            return
+        self._played.append(self.queue[self.index])
+        del self._played[:-PLAYED_KEEP]
+
     def play_index(self, i):
         if not 0 <= i < len(self.queue):
             return
+        self._remember(i)
         self.index = i
         self.position = self.duration = 0.0
         self.positionChanged.emit(0.0)
@@ -446,7 +462,16 @@ class Player(QObject):
         elif self.position > 3:
             self.seek(0)
         else:
-            self.play_index((self.index - 1) % len(self.queue))
+            while self._played:                           # back to the song that was really played before this one
+                path = self._played.pop()
+                if path in self.queue:
+                    self._back = True
+                    try:
+                        self.play_index(self.queue.index(path))
+                    finally:
+                        self._back = False
+                    return
+            self.play_index((self.index - 1) % len(self.queue))    # nothing came before: the song above in the queue
 
     def seek(self, seconds):
         self._media.setPosition(int(max(0.0, float(seconds)) * 1000))

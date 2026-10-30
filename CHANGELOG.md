@@ -10,6 +10,8 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Fixed
 
+- Previous goes back to the song you actually heard before, also with shuffle on (it used to play whatever sat above
+  the current song in the queue). The history starts over with a new queue.
 - Listening history now keeps adding to a play while you keep listening (each play used to stay at 30 seconds, so the
   hours were far too low); it is saved when the song changes, every minute, and on close.
 - Discord cover art shows up sooner: the first lookup starts at once, the covers of the next songs are looked up ahead,
