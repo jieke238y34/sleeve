@@ -38,6 +38,8 @@ when they ship.
       each one clearly named, none enabled by default.
 - [ ] **Themes and custom menu designs** for particular users or groups. Reference:
       [feishin](https://github.com/jeffvli/feishin) for its theme system.
+- [ ] **Navidrome Support** Add support for Navidrome. Reference:
+      [Navidrome](https://github.com/navidrome/navidrome) 
 
 ## Notes
 
