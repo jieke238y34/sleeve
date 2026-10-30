@@ -1,5 +1,6 @@
 """The Updates section in Settings: it asks first, shows each outcome, and removes only what was planned."""
 
+import os
 from types import SimpleNamespace
 
 from PySide6.QtCore import QProcess
@@ -95,12 +96,13 @@ def test_uninstall_asks_then_hands_a_planned_script_to_the_shell_and_quits(qapp,
         win._uninstall()
         assert shown and "dnf remove" in shown[0] and not ran and not quit_calls       # not ours: only told how
         monkeypatch.setattr(updater, "install_kind", lambda *a, **k: "venv")
-        monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Cancel))
+        monkeypatch.setattr(win, "_ask_uninstall", lambda: "cancel")
         win._uninstall()
         assert not ran and not quit_calls                                              # declined: nothing happens
-        monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+        monkeypatch.setattr(win, "_ask_uninstall", lambda: "program")
         win._uninstall()
-        assert ran and ran[0][0] == "/bin/sh" and ran[0][1][1] == updater.removal_script() and quit_calls
+        assert ran and ran[0][0] == "/bin/sh" and quit_calls
+        assert ran[0][1][1] == updater.removal_script(pid=os.getpid())                  # the program only
         assert "Music" not in ran[0][1][1] and ".config" not in ran[0][1][1]
     finally:
         win.close()

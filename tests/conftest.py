@@ -18,6 +18,14 @@ def private_history_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def private_playlist_style_file(tmp_path, monkeypatch):
+    "No test may read or write the real ~/.config/sleeve/playlist-style.json or its cover pictures."
+    from sleeve import plstyle
+
+    monkeypatch.setattr(plstyle, "STYLE_FILE", tmp_path / "config" / "playlist-style-for-tests.json")
+
+
+@pytest.fixture(autouse=True)
 def private_settings_file(tmp_path, monkeypatch):
     "No test may read or write the real ~/.config/sleeve/settings.json."
     from sleeve import settings

@@ -1,4 +1,4 @@
-"""Liked songs: the store, and the window's Liked Songs folder, heart button and 'Like all'."""
+"""Stashed songs: the store, and the window's Stashed Songs folder, diamond button and 'Stash all'."""
 import json
 import os
 import stat
@@ -53,13 +53,14 @@ def test_liked_folder_heart_and_button(qapp, cfg, monkeypatch, tmp_path):  # noq
         win.folders.setCurrentRow(0)
         first = win.model.songs[0]
         win._toggle_like([first.path])
-        assert win.model.data(win.model.index(0, 0)).startswith("♥ ")
+        assert win.model.data(win.model.index(0, 0)).startswith("◆ ")
         win.folders.setCurrentRow(1)
         assert [s.path for s in win.model.songs] == [first.path]
-        win._on_track(0, first.path)                       # the heart in the player bar follows the song
-        assert win.like_btn.text() == "♥" and win.like_btn.isEnabled()
-        win.like_btn.click()                               # unlike from the bar: leaves the Liked list
-        assert win.like_btn.text() == "♡" and win.model.rowCount() == 0
+        win._on_track(0, first.path)                       # the diamond in the player bar follows the song
+        assert win.like_btn.toolTip() == "Unstash this song" and win.like_btn.isEnabled()
+        assert not win.like_btn.icon().isNull()
+        win.like_btn.click()                               # unstash from the bar: leaves the Stashed list
+        assert win.like_btn.toolTip() == "Stash this song" and win.model.rowCount() == 0
         assert not likes.Likes(tmp_path / "liked.json").paths
         win._on_track(-1, "")
         assert not win.like_btn.isEnabled()
@@ -76,7 +77,7 @@ def test_like_all_in_playlist_and_save_failure(qapp, cfg, monkeypatch, tmp_path)
         win._like_playlist()
         assert set(present) <= win.likes.paths
         win._like_playlist()
-        assert "already liked" in win.status.currentMessage()
+        assert "already stashed" in win.status.currentMessage()
         monkeypatch.setattr(win.likes, "save", lambda: (_ for _ in ()).throw(OSError("disk full")))
         win._toggle_like(["/x/y.mp3"])                     # must show a message, not raise
         assert "disk full" in win.status.currentMessage()

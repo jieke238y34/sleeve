@@ -21,6 +21,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from . import __version__, build_info
+from .myplaylists import FOLDER_NAME
 
 REPO = "jieke238y34/sleeve"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -169,12 +170,92 @@ def remove_installation(env=None, home=None):
     return removed
 
 
-def removal_script(env=None, home=None):
-    "A shell script for a running Sleeve to hand to `sh -c`: wait a moment, then delete what the plan lists."
+PLAYLIST_EXT = (".m3u8", ".m3u")
+
+
+def data_plan(env=None, home=None, playlist_dir=None):
+    """What a full uninstall removes besides the program: Sleeve's own settings and cache folders, and the playlists
+    made in Sleeve (the files in `<playlist_dir>/My Playlists`). Audio files, and the playlists dl.py made one level
+    up, are not in it, and neither is anything else in the music folder."""
+    env = os.environ if env is None else env
+    home = Path(home) if home else Path.home()
+    folders = [Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "sleeve",
+               Path(env.get("XDG_CACHE_HOME") or home / ".cache") / "sleeve"]
+    folder = Path(playlist_dir) / FOLDER_NAME if playlist_dir else None
+    files = []
+    if folder is not None and folder.is_dir() and not folder.is_symlink():
+        files = sorted(f for f in folder.iterdir() if f.is_file() and not f.is_symlink()
+                       and f.suffix.lower() in PLAYLIST_EXT)
+    return {"folders": [f for f in folders if f.is_dir() and not f.is_symlink()], "playlists": files,
+            "playlist_folder": folder}
+
+
+def _count(file, key):
+    try:
+        data = json.loads(Path(file).read_text(encoding="utf-8"))
+        items = data.get(key, []) if isinstance(data, dict) else []
+        return len(items) if isinstance(items, list) else 0
+    except (OSError, ValueError):
+        return 0
+
+
+def describe_data(plan):
+    "The lines the user reads before agreeing to a full uninstall (plain text)."
+    config_dir = next((f for f in plan["folders"] if f.parent.name != ".cache" and f.parent.name != "cache"), None)
+    lines = []
+    n = len(plan["playlists"])
+    if n:
+        names = ", ".join(f.stem for f in plan["playlists"][:6]) + (" ..." if n > 6 else "")
+        lines.append(f"{n} playlist{'' if n == 1 else 's'} you made in Sleeve ({names}), "
+                     f"the files in {plan['playlist_folder']}")
+    if config_dir is not None:
+        liked, plays = _count(config_dir / "liked.json", "liked"), _count(config_dir / "history.json", "plays")
+        lines.append(f"your stashed songs ({liked}) and your listening history ({plays} plays)")
+        lines.append(f"your settings, playlist covers and title colours, in {config_dir}")
+    for f in plan["folders"]:
+        if f is not config_dir:
+            lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {f}")
+    return lines
+
+
+def remove_data(plan):
+    """Delete what data_plan lists: the two Sleeve folders, and the playlist files one by one (never a whole folder
+    of music). The playlist folder goes too, but only when nothing else is left in it. Returns what was removed."""
+    removed = []
+    for folder in plan["folders"]:
+        if folder.name == "sleeve" and folder.is_dir() and not folder.is_symlink():
+            shutil.rmtree(folder, ignore_errors=True)
+            removed.append(str(folder))
+    for f in plan["playlists"]:
+        if f.is_file() and not f.is_symlink() and f.suffix.lower() in PLAYLIST_EXT:
+            f.unlink(missing_ok=True)
+            removed.append(str(f))
+    folder = plan["playlist_folder"]
+    if folder is not None and plan["playlists"]:
+        try:
+            folder.rmdir()                              # only succeeds when it is empty
+        except OSError:
+            pass
+    return removed
+
+
+def removal_script(env=None, home=None, plan=None, pid=None):
+    """A shell script for a running Sleeve to hand to `sh -c`: wait until Sleeve has really quit (it saves its settings
+    on the way out, which would bring a deleted folder back), then delete what the plan lists. `plan` is a data_plan
+    for a full uninstall; without it the user's data stays."""
     dirs, files = removal_plan(env, home)
+    if plan:
+        dirs = dirs + [f for f in plan["folders"] if f.name == "sleeve"]
+        files = files + list(plan["playlists"])
     some = " ".join(shlex.quote(str(d)) for d in dirs)
     more = " ".join(shlex.quote(str(f)) for f in files)
-    return f"sleep 1; rm -rf {some}; rm -f {more}"
+    wait = "sleep 1; "
+    if pid:                                          # up to 20 seconds for Sleeve to finish saving and exit
+        wait = f"n=0; while kill -0 {int(pid)} 2>/dev/null && [ $n -lt 100 ]; do sleep 0.2; n=$((n+1)); done; "
+    script = f"{wait}rm -rf {some}; rm -f {more}"
+    if plan and plan["playlists"] and plan["playlist_folder"] is not None:
+        script += f"; rmdir {shlex.quote(str(plan['playlist_folder']))} 2>/dev/null || true"   # only if it is empty
+    return script
 
 
 def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env=None):
@@ -204,15 +285,20 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
     return 0
 
 
-def cli_uninstall(out=print, env=None, home=None):
-    "`sleeve --uninstall`: returns the exit code."
+def cli_uninstall(out=print, env=None, home=None, full=False, playlist_dir=None):
+    "`sleeve --uninstall` (the program only) or with `full` also the data: returns the exit code."
     kind = install_kind(env)
     if kind != "venv":
         out("This copy was not installed with install.sh. If a package manager installed it, remove it with "
             "`sudo dnf remove sleeve` (or zypper/apt).")
         return 1
+    plan = data_plan(env, home, playlist_dir) if full else None
     remove_installation(env, home)
-    out("Sleeve is uninstalled. Your music, playlists and settings (~/.config/sleeve) were not touched.")
+    if plan:
+        remove_data(plan)
+        out("Sleeve and its data are removed. Your audio files were not touched.")
+    else:
+        out("Sleeve is uninstalled. Your music, playlists and settings (~/.config/sleeve) were not touched.")
     return 0
 
 

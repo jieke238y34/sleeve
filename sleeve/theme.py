@@ -18,7 +18,19 @@ LOOKS = {
     "halloween": ("#130d19", "#efe6f2", "#a48fb5", "#ff7a1a"),   # pumpkin on purple-black
     "christmas": ("#0f1611", "#eee9df", "#9db2a3", "#d65a5a"),
     "newyear": ("#0e0e13", "#ece9f4", "#9a95b1", "#dbb65c"),
+    "dusk": ("#1b151b", "#ece9f6", "#a29cbd", "#f5bb87"),          # peach on warm brown and slate (measured)
 }
+
+# Themes the user picks by hand in Settings (a look above, by name), with the name shown there.
+CUSTOM_THEMES = {"dusk": "Dusk"}
+
+# A theme can fix the backdrop gradient (top left, middle, bottom right) instead of taking it from the cover.
+BACKDROPS = {"dusk": ("#8f745a", "#6c5756", "#5f697b")}
+
+
+def look_backdrop(name):
+    "The three fixed backdrop colours of a look, or None when the backdrop follows the cover."
+    return BACKDROPS.get(name)
 
 def look_palette(name):
     "(bg, text, muted) for a look by name, or the default palette (the None case)."
@@ -143,9 +155,9 @@ STYLE = build_style()
 
 
 def toggle_icon(kind, color, on, one=False, size=22):
-    """A painted icon for the shuffle and repeat buttons ("shuffle" or "repeat"): crisp at any scale, drawn in `color`.
-    Shuffle changes shape (straight arrows in order, crossed when shuffled); repeat gets a dot under it when on;
-    `one` puts a 1 inside the repeat arrows."""
+    """A painted icon for the shuffle, repeat and stash buttons ("shuffle", "repeat" or "stash"): crisp at any scale,
+    drawn in `color`. Shuffle changes shape (straight arrows in order, crossed when shuffled); repeat gets a dot under
+    it when on; `one` puts a 1 inside the repeat arrows. Stash is a diamond, filled when the song is stashed."""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
@@ -163,7 +175,14 @@ def toggle_icon(kind, color, on, one=False, size=22):
             path.lineTo(QPointF(*pt))
         p.drawPath(path)
 
-    if kind == "shuffle" and not on:           # in order: two straight arrows side by side
+    if kind == "stash":                        # a diamond: an outline when not stashed, filled when it is
+        gem = QPainterPath(QPointF(11, 2.6))
+        for point in ((18.4, 11), (11, 19.4), (3.6, 11)):
+            gem.lineTo(QPointF(*point))
+        gem.closeSubpath()
+        p.setBrush(QColor(color) if on else Qt.NoBrush)
+        p.drawPath(gem)
+    elif kind == "shuffle" and not on:         # in order: two straight arrows side by side
         for y in (6.5, 13.5):
             line((3, y), (17.5, y))
             line((14.6, y - 2.8), (17.8, y), (14.6, y + 2.8))
@@ -317,9 +336,21 @@ class Backdrop(QWidget):
         self._fade.setEndValue(1.0)
         self._fade.valueChanged.connect(self._fading)
         self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
+        self._pix, self._fixed = None, None                  # the cover now playing; fixed colours from a theme, if any
 
     def set_cover(self, pix):
-        colours = palette_from(pix) or [QColor(c) for c in NEUTRAL]
+        self._pix = pix
+        self._retarget()
+
+    def set_fixed(self, colours):
+        "Use these three colours whatever is playing (a theme's own backdrop); None goes back to the cover's colours."
+        colours = [QColor(c) for c in colours] if colours else None
+        if [c.rgb() for c in colours or ()] != [c.rgb() for c in self._fixed or ()]:
+            self._fixed = colours
+            self._retarget()
+
+    def _retarget(self):
+        colours = self._fixed or palette_from(self._pix) or [QColor(c) for c in NEUTRAL]
         self._from, self._to = list(self._now), colours
         self._fade.stop()
         self._fade.start()

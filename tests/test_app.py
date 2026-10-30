@@ -94,7 +94,7 @@ def test_window_scans_library_and_filters(qapp, cfg, monkeypatch, tmp_path):
         assert win.model.rowCount() == 2
         win.search.setText("")
         items = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert items == ["All songs", "♥ Liked Songs", "Pop", "Rock"]
+        assert items == ["All songs", "◆ Stashed Songs", "Pop", "Rock"]
         win.folders.setCurrentRow(3)
         assert win.model.rowCount() == 2
         # playlists page: the Spotify-made file is hidden until asked for

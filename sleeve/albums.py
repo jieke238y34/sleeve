@@ -69,10 +69,16 @@ class Album:
         return f"{n} song{'' if n == 1 else 's'} · {fmt_time(self.length)}"
 
 
+def track_order(song):
+    "The order of an album: by disc, then by the number on the disc; a song with no number goes last, by file name."
+    return (song.disc or 1, song.track or 100_000, Path(song.path).name.casefold(), song.path)
+
+
 def group_albums(songs):
     """Albums from songs. Grouped by album name (any case); the album artist is the artist when every song shares
     one, else "Various artists". Songs with no album go per artist into "<artist> - singles" (no artist either:
-    "Unknown"). Songs in an album are sorted by file name, albums by artist then name."""
+    "Unknown"). Songs in an album follow the disc and track numbers in their tags (file name when there are none),
+    albums are sorted by artist then name."""
     groups = {}
     for s in songs:
         name = (s.album or "").strip()
@@ -93,7 +99,7 @@ def group_albums(songs):
             name, artist = f"{first_artist} - singles", first_artist
         else:
             name, artist = UNKNOWN, ""
-        items.sort(key=lambda s: (Path(s.path).name.casefold(), s.path))
+        items.sort(key=track_order)
         albums.append(Album(name, artist, items))
     albums.sort(key=lambda a: (a.artist.casefold(), a.name.casefold()))
     return albums
@@ -165,7 +171,8 @@ class _TileDelegate(QStyledItemDelegate):
         fm = QFontMetrics(font)
         top = y + side + 6
         p.setFont(font)
-        p.setPen(QColor(theme.TEXT))
+        title = QColor(getattr(album, "colour", "") or theme.TEXT)       # a playlist can have a title colour of its own
+        p.setPen(title if title.isValid() else QColor(theme.TEXT))
         p.drawText(QRect(x, top, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
                    fm.elidedText(album.name, Qt.ElideRight, side))
         small = QFont(option.font)
