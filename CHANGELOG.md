@@ -20,7 +20,7 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 ### Changed
 
 - `install.sh` run from the web installs the newest published release (with the source as a fallback), so a normal
-  install is never ahead of `sleeve --update`. `SLEEVE_FROM=main` installs the newest source.
+  install is never ahead of `sleeve --update`.
 - The album art is bigger by default (up to 1400 px in Settings) and sits on the same line as the transport buttons.
 - `sleeve --update` on a copy newer than the newest release says it is a development copy and to pull the source and
   run `./install.sh` again.

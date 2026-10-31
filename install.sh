@@ -6,8 +6,7 @@
 #
 # Options:  --uninstall   remove what this script installed (your music, playlists and settings are left alone)
 #           --help
-# Environment: SLEEVE_PREFIX (default ~/.local/share/sleeve), SLEEVE_SOURCE (a folder or git URL to install from),
-#              SLEEVE_FROM=main (install the newest source, not the newest release)
+# Environment: SLEEVE_PREFIX (default ~/.local/share/sleeve), SLEEVE_SOURCE (a folder or git URL to install from)
 set -eu
 
 APP_ID="io.github.jieke238y34.Sleeve"
@@ -21,16 +20,38 @@ ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"
 say() { printf '%s\n' "$*"; }
 fail() { printf 'Sleeve install: %s\n' "$*" >&2; exit 1; }
 
-case "${1:-}" in
-    --help|-h) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    --uninstall)
+# Developer options, left out of --help: --sha256 HEX installs the release wheel (or the .whl in SLEEVE_SOURCE) only if
+# its SHA-256 is HEX (from the web: curl ... | sh -s -- --sha256 HEX); SLEEVE_FROM=main installs the newest source
+# instead of the newest release.
+SHA256=""
+UNINSTALL=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --uninstall) UNINSTALL=1 ;;
+        --sha256)
+            [ $# -ge 2 ] || fail "--sha256 needs the 64 hexadecimal digits of the wheel's SHA-256"
+            SHA256=$(printf '%s' "$2" | tr 'A-F' 'a-f'); shift ;;
+        --sha256=*) SHA256=$(printf '%s' "${1#--sha256=}" | tr 'A-F' 'a-f') ;;
+        *) fail "unknown option $1 (try --help)" ;;
+    esac
+    shift
+done
+if [ -n "$SHA256" ]; then
+    case "$SHA256" in
+        *[!0-9a-f]*) fail "--sha256 must be 64 hexadecimal digits" ;;
+    esac
+    [ "${#SHA256}" -eq 64 ] || fail "--sha256 must be 64 hexadecimal digits"
+    [ -z "$UNINSTALL" ] || fail "--sha256 goes with an install, not --uninstall"
+fi
+
+case "${UNINSTALL:-}" in
+    1)
         rm -rf "$VENV"
         rm -f "$BIN/sleeve" "$APPS/$APP_ID.desktop" "$ICONS/$APP_ID.svg"
         command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" >/dev/null 2>&1 || true
         say "Sleeve is uninstalled. Your music, playlists and settings (~/.config/sleeve) were not touched."
         exit 0 ;;
-    "") ;;
-    *) fail "unknown option $1 (try --help)" ;;
 esac
 
 # --- Python 3.10 or newer --------------------------------------------------------------------------------------------
@@ -46,6 +67,7 @@ done
 # --- where to install from: this checkout if there is one, else GitHub ---------------------------------------------------
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
 if [ -n "${SLEEVE_SOURCE:-}" ]; then SOURCE="$SLEEVE_SOURCE"
+elif [ -n "$SHA256" ]; then SOURCE="$REPO_URL"             # a hash is for a downloaded wheel, never a checkout
 elif [ -n "$HERE" ] && [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/sleeve" ]; then SOURCE="$HERE"
 else SOURCE="$REPO_URL"; fi
 
@@ -73,13 +95,33 @@ RELEASE=""
 if [ "$SOURCE" = "$REPO_URL" ] && [ "${SLEEVE_FROM:-release}" != "main" ]; then
     RELEASE=$(latest_wheel) || RELEASE=""
     if [ -n "$RELEASE" ]; then SOURCE="$RELEASE"
+    elif [ -n "$SHA256" ]; then fail "--sha256 needs a release wheel, and none could be fetched"
     else say "note: no published release could be fetched; installing the newest source instead"; fi
+fi
+
+WORK=""
+trap '[ -z "$WORK" ] || rm -rf "$WORK"' EXIT
+# --sha256: download the wheel, compare its SHA-256 with the one given and install that very file, or nothing at all.
+if [ -n "$SHA256" ]; then
+    case "$SOURCE" in
+        *.whl) ;;
+        *) fail "--sha256 checks a wheel: use it with the release (no SLEEVE_SOURCE) or SLEEVE_SOURCE=<a .whl file or address>" ;;
+    esac
+    WORK=$(mktemp -d)
+    case "$SOURCE" in
+        https://*) command -v curl >/dev/null 2>&1 || fail "curl is needed to download the wheel"
+                   curl -fsSL --max-time 300 -o "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE" ;;
+        *) [ -f "$SOURCE" ] || fail "no such file: $SOURCE"
+           cp "$SOURCE" "$WORK/${SOURCE##*/}" ;;
+    esac
+    GOT=$("$PY" -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$WORK/${SOURCE##*/}")
+    [ "$GOT" = "$SHA256" ] || fail "the wheel does not match the SHA-256 you gave, so nothing was installed (it is $GOT)"
+    say "The SHA-256 matches."
+    SOURCE="$WORK/${SOURCE##*/}"
 fi
 
 # Installing from the web: fetch the repository (history only, no old file contents) so the build number can be counted
 # and stamped, exactly as for a checkout. Without git the install still works, it just shows the version alone.
-WORK=""
-trap '[ -z "$WORK" ] || rm -rf "$WORK"' EXIT
 if [ "$SOURCE" = "$REPO_URL" ] && command -v git >/dev/null 2>&1; then
     WORK=$(mktemp -d)
     if git clone -q --filter=blob:none "${REPO_URL#git+}" "$WORK/sleeve" 2>/dev/null; then SOURCE="$WORK/sleeve"

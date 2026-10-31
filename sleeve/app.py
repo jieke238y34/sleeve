@@ -4155,6 +4155,8 @@ def main(argv=None):
                     help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     mng = ap.add_argument_group("keep Sleeve up to date or remove it (for copies made by install.sh)")
     mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
+    mng.add_argument("--sha256", metavar="HEX",
+                     help=argparse.SUPPRESS)                         # for developers: not in --help
     mng.add_argument("--uninstall", action="store_true",
                      help="remove Sleeve; your music, playlists and settings are kept")
     mng.add_argument("--full", action="store_true",
@@ -4167,8 +4169,10 @@ def main(argv=None):
     ctl.add_argument("--next", action="store_true", help="next song")
     ctl.add_argument("--previous", action="store_true", help="previous song")
     args = ap.parse_args(argv)
+    if args.sha256 and not args.update:
+        ap.error("--sha256 goes with --update")
     if args.update:                                       # no window, no Qt: just do it and report
-        return updater.cli_update()
+        return updater.cli_update(sha256=args.sha256)
     if args.uninstall:
         plan, playlist_dir = None, None
         if args.full:
