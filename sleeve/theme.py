@@ -238,6 +238,7 @@ QLabel#nowartist {{ font-size: 10pt; color: {muted}; }}
 QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {muted}; }}
 QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
+QLabel#subhead {{ font-size: 11pt; font-weight: 700; color: {accent}; }}
 """
 
 

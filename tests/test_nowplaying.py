@@ -393,7 +393,7 @@ def test_sidebar_order_width_and_memory(qapp, cfg, monkeypatch, tmp_path):  # no
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         names = [win.nav.item(i).text() for i in range(win.nav.count())]
-        assert names == ["Now Playing", "Playlists", "Library", "Navidrome", "Identity", "Downloads", "Health", "Settings"]
+        assert names == ["Now Playing", "Playlists", "Library", "Identity", "Downloads", "Navidrome", "Health", "Settings"]
         win.resize(1100, 700)
         win.show()
         settle(qapp, 0.1)

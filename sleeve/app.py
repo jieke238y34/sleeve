@@ -560,9 +560,9 @@ class MainWindow(QMainWindow):
         self.identity_page.set_tab(self.settings.identity_tab)
         self.identity_page.tabChanged.connect(lambda key: self._set_setting("identity_tab", key))
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
-                           ("Library", self._library_page()), ("Navidrome", self._navidrome_page()),
-                           ("Identity", self.identity_page),
-                           ("Downloads", self._downloads_page()), ("Health", self._health_page()),
+                           ("Library", self._library_page()), ("Identity", self.identity_page),
+                           ("Downloads", self._downloads_page()), ("Navidrome", self._navidrome_page()),
+                           ("Health", self._health_page()),
                            ("Settings", self._settings_page())):
             self.nav.addItem(name)
             self.stack.addWidget(scrollable(page) if name in SCROLLED_PAGES else page)
@@ -1345,6 +1345,13 @@ class MainWindow(QMainWindow):
             lay.addSpacing(10)
             lay.addWidget(lab)
 
+        def subsection(text):
+            lab = QLabel(text)
+            lab.setObjectName("subhead")
+            lab.setAccessibleName(text)
+            lay.addSpacing(8)
+            lay.addWidget(lab)
+
         def hint(text):
             lab = QLabel(text)
             lab.setObjectName("muted")
@@ -1546,7 +1553,24 @@ class MainWindow(QMainWindow):
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
 
-        section("Discord")
+        section("APIs")
+        lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
+                           "here runs until you switch it on. Below the list, each service has its own switch and its "
+                           "keys, secrets and passwords; none of them is ever shown in the list."))
+        self.api_holder = QWidget()                          # one widget, so the page's sections can adopt it whole
+        self.api_box = QVBoxLayout(self.api_holder)
+        self.api_box.setContentsMargins(0, 0, 0, 0)
+        self.api_box.setSpacing(8)
+        lay.addWidget(self.api_holder)
+        copy_btn = QPushButton("Copy this list")
+        copy_btn.setToolTip("Put the list of connections on the clipboard as plain text")
+        copy_btn.clicked.connect(self._copy_apis)
+        row = FlowLayout()
+        row.addWidget(copy_btn)
+        lay.addLayout(row)
+        self._refresh_apis()
+
+        subsection("Discord")
         self.discord_box = Switch("Show what I'm listening to on Discord")
         self.discord_box.setChecked(self.settings.discord_presence)
         self.discord_box.toggled.connect(self._discord_toggled)
@@ -1576,7 +1600,7 @@ class MainWindow(QMainWindow):
                            "name is what people see after 'Listening to'. The song title and artist are shared with "
                            "Discord while this is on, and cleared when you pause, switch it off or quit."))
 
-        section("Last.fm")
+        subsection("Last.fm")
         self.lastfm_box = Switch("Scrobble to Last.fm")
         self.lastfm_box.setChecked(self.settings.lastfm_on)
         self.lastfm_box.toggled.connect(self._lastfm_toggled)
@@ -1610,33 +1634,7 @@ class MainWindow(QMainWindow):
         self.scrobbler.changed.connect(self._lastfm_refresh)
         self._lastfm_refresh()
 
-        section("Startup")
-        self.session_box = Switch("Remember what was playing")
-        self.session_box.setChecked(self.settings.remember_session)
-        self.session_box.toggled.connect(self._remember_session_toggled)
-        lay.addWidget(self.session_box)
-        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
-                           "spot; press play to carry on. Kept in a file on this computer only."))
-
-        section("Listening")
-        self.listening_box = Switch("Remember what I listen to")
-        self.listening_box.setChecked(self.settings.track_listening)
-        self.listening_box.toggled.connect(self._track_listening_toggled)
-        lay.addWidget(self.listening_box)
-        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
-                           "the top songs on the Identity page and is never sent anywhere."))
-        clear = QPushButton("Clear listening history")
-        clear.clicked.connect(self._clear_listening)
-
-        art_clear = QPushButton("Clear cached artwork")
-        art_clear.setToolTip("Forget the cover addresses Sleeve looked up online. Covers inside your own files stay.")
-        art_clear.clicked.connect(self._clear_art_cache)
-        row = FlowLayout()                                  # side by side, and one under the other when narrow
-        row.addWidget(clear)
-        row.addWidget(art_clear)
-        lay.addLayout(row)
-
-        section("Navidrome")
+        subsection("Navidrome")
         lay.addWidget(hint("Play your own library from a Navidrome server (or any server that speaks the Subsonic "
                            "API). Your password is turned into a login token on this computer and is not kept."))
         self.nd_url = QLineEdit((self.settings.navidrome or {}).get("url", ""))
@@ -1671,21 +1669,31 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Covers from the "
                            "server are not shown yet."))
 
-        section("APIs")
-        lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
-                           "here runs until you switch it on; no passwords or keys are shown."))
-        self.api_holder = QWidget()                          # one widget, so the page's sections can adopt it whole
-        self.api_box = QVBoxLayout(self.api_holder)
-        self.api_box.setContentsMargins(0, 0, 0, 0)
-        self.api_box.setSpacing(8)
-        lay.addWidget(self.api_holder)
-        copy_btn = QPushButton("Copy this list")
-        copy_btn.setToolTip("Put the list of connections on the clipboard as plain text")
-        copy_btn.clicked.connect(self._copy_apis)
-        row = FlowLayout()
-        row.addWidget(copy_btn)
+        section("Startup")
+        self.session_box = Switch("Remember what was playing")
+        self.session_box.setChecked(self.settings.remember_session)
+        self.session_box.toggled.connect(self._remember_session_toggled)
+        lay.addWidget(self.session_box)
+        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
+                           "spot; press play to carry on. Kept in a file on this computer only."))
+
+        section("Listening")
+        self.listening_box = Switch("Remember what I listen to")
+        self.listening_box.setChecked(self.settings.track_listening)
+        self.listening_box.toggled.connect(self._track_listening_toggled)
+        lay.addWidget(self.listening_box)
+        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
+                           "the top songs on the Identity page and is never sent anywhere."))
+        clear = QPushButton("Clear listening history")
+        clear.clicked.connect(self._clear_listening)
+
+        art_clear = QPushButton("Clear cached artwork")
+        art_clear.setToolTip("Forget the cover addresses Sleeve looked up online. Covers inside your own files stay.")
+        art_clear.clicked.connect(self._clear_art_cache)
+        row = FlowLayout()                                  # side by side, and one under the other when narrow
+        row.addWidget(clear)
+        row.addWidget(art_clear)
         lay.addLayout(row)
-        self._refresh_apis()
 
         section("Backup")
         lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
