@@ -209,6 +209,19 @@ class GlassDelegate(_TileDelegate):
             p.setPen(QPen(QColor(theme.LAVENDER if selected else QColor(255, 255, 255, 90)), 2))
             p.setBrush(Qt.NoBrush)
             p.drawRoundedRect(QRectF(x + 1, y + 1, side - 2, side - 2), max(8, side // 14), max(8, side // 14))
+        if (hovered or selected) and not tile.new and tile.songs:
+            r = play_rect(x, y, side)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(theme.LAVENDER))
+            p.drawEllipse(r)
+            p.setBrush(QColor(21, 19, 29))                      # a triangle, nudged right so it looks centred
+            cx, cy, h = r.center().x() + r.width() * 0.04, r.center().y(), r.width() * 0.17
+            tri = QPainterPath()
+            tri.moveTo(cx - h * 0.8, cy - h)
+            tri.lineTo(cx + h * 1.1, cy)
+            tri.lineTo(cx - h * 0.8, cy + h)
+            tri.closeSubpath()
+            p.drawPath(tri)
         if hovered and not tile.new:                          # the name and count are part of the tile picture
             small = QFont(option.font)
             small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
@@ -222,6 +235,12 @@ class GlassDelegate(_TileDelegate):
         p.restore()
 
 
+def play_rect(x, y, side):
+    "Where the round play button sits on a tile whose cover starts at (x, y): on the glass, bottom right."
+    d = max(34, side // 5)
+    return QRect(x + side - d - 10, y + side - d - 10, d, d)
+
+
 def edit_rect(x, y, side):
     "Where the Edit pill sits on a tile whose cover starts at (x, y): the top right corner."
     return QRect(x + side - 62, y + 10, 52, 24)
@@ -230,6 +249,7 @@ def edit_rect(x, y, side):
 class PlaylistGrid(AlbumGrid):
     "The album grid with playlists in it. A single click opens one (openAlbum), a double click plays it."
 
+    playRequested = Signal(object)              # the tile whose play button was pressed
     editRequested = Signal(object, QPoint)      # the tile whose Edit pill was pressed, and where to open the menu
     text_h = 6                                  # the name sits on the glass over the cover, not under it
 
@@ -244,6 +264,10 @@ class PlaylistGrid(AlbumGrid):
         tile = item.data(Qt.UserRole) if item is not None else None
         if tile is not None and not tile.new and e.button() == Qt.LeftButton:
             rect = self.visualRect(self.indexFromItem(item))
+            if play_rect(rect.x() + GAP // 2, rect.y() + GAP // 2, self.tile).contains(e.position().toPoint()):
+                self.playRequested.emit(tile)
+                e.accept()
+                return
             if edit_rect(rect.x() + GAP // 2, rect.y() + GAP // 2, self.tile).contains(e.position().toPoint()):
                 self.editRequested.emit(tile, e.globalPosition().toPoint())
                 e.accept()

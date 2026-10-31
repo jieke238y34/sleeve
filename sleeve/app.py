@@ -688,8 +688,30 @@ class MainWindow(QMainWindow):
         self.pl_look_btn.setToolTip("Change this playlist's cover picture and title colour")
         self.pl_look_btn.clicked.connect(self._edit_current_playlist)
         info_row.addWidget(self.pl_look_btn)
-        info_row.addWidget(self.pl_info, 1)
+        info_row.addStretch(1)
         info_row.addWidget(self.pl_like_all)
+        self.pl_title = QLabel("")
+        self.pl_title.setObjectName("title")
+        self.pl_title.setTextFormat(Qt.PlainText)
+        self.pl_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.pl_play_btn = QPushButton("▶  Play")
+        self.pl_play_btn.setObjectName("primary")
+        self.pl_play_btn.setToolTip("Play this playlist from the top")
+        self.pl_play_btn.clicked.connect(lambda: self._play_current_playlist())
+        self.pl_shuffle_play_btn = QPushButton("Shuffle")
+        self.pl_shuffle_play_btn.setToolTip("Play this playlist in a random order")
+        self.pl_shuffle_play_btn.clicked.connect(lambda: self._play_current_playlist(shuffle=True))
+        self.pl_queue_btn = QPushButton("Add to queue")
+        self.pl_queue_btn.setToolTip("Put this playlist after what is playing now")
+        self.pl_queue_btn.clicked.connect(self._queue_current_playlist)
+        hero = QHBoxLayout()
+        words = QVBoxLayout()
+        words.setSpacing(2)
+        words.addWidget(self.pl_title)
+        words.addWidget(self.pl_info)
+        hero.addLayout(words, 1)
+        for b in (self.pl_play_btn, self.pl_shuffle_play_btn, self.pl_queue_btn):
+            hero.addWidget(b)
         self.pl_empty = QLabel("You have no playlists yet.\n\nDrag playlist files (.m3u8) onto this page to import "
                                "them,\npress “＋ New playlist”, or right-click songs and choose Add to playlist.")
         self.pl_empty.setAlignment(Qt.AlignCenter)
@@ -722,6 +744,7 @@ class MainWindow(QMainWindow):
 
         right = QVBoxLayout()
         right.addLayout(info_row)
+        right.addLayout(hero)
         right.addWidget(self.pl_empty, 1)
         right.addWidget(self.pl_table, 1)
         right.addLayout(edit_row)
@@ -2627,6 +2650,7 @@ class MainWindow(QMainWindow):
         self.pl_grid = plgrid.PlaylistGrid(parent=page)
         self.pl_grid.openAlbum.connect(self._open_playlist_tile)
         self.pl_grid.playAlbum.connect(self._play_tile_paths)
+        self.pl_grid.playRequested.connect(self._play_tile)
         self.pl_grid.editRequested.connect(self._playlist_edit_menu)
         self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
@@ -2839,7 +2863,11 @@ class MainWindow(QMainWindow):
             return
         self._playlist_entries = entries
         have = sum(1 for e in entries if e.exists)
-        self.pl_info.setText(f"{len(entries)} songs, {have} in the library, {len(entries) - have} missing")
+        self.pl_title.setText(name)
+        missing = len(entries) - have
+        self.pl_info.setText(f"{len(entries)} songs" + (f" · {missing} missing from your library" if missing else ""))
+        for b in (self.pl_play_btn, self.pl_shuffle_play_btn, self.pl_queue_btn):
+            b.setEnabled(have > 0)
         self.pl_table.clearSelection()
         self.pl_table.setRowCount(len(entries))
         for r, e in enumerate(entries):
@@ -3104,6 +3132,25 @@ class MainWindow(QMainWindow):
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
+    def _current_playlist_paths(self):
+        return [e.path for e in self._playlist_entries if e.exists]
+
+    def _play_current_playlist(self, shuffle=False):
+        "The Play and Shuffle buttons of the open playlist."
+        paths = self._current_playlist_paths()
+        if not paths:
+            self.status.showMessage("Nothing in this playlist is in the library", 5000)
+            return
+        if self.shuffle_btn.isChecked() != shuffle:
+            self.shuffle_btn.setChecked(shuffle)             # the bar's button follows, and the player with it
+        self._play_queue(paths, 0, self._playlist_source())
+
+    def _queue_current_playlist(self):
+        paths = self._current_playlist_paths()
+        if paths:
+            self.player.enqueue(paths)
+            self.status.showMessage(f"Added {len(paths)} songs to the queue", 4000)
+
     def _play_playlist_from(self, row, _col):
         if not 0 <= row < len(self._playlist_entries) or not self._playlist_entries[row].exists:
             return
@@ -3130,6 +3177,13 @@ class MainWindow(QMainWindow):
 
     def _playlist_source(self):
         return self._pl_current[0] if self._pl_current else "Playlist"
+
+    def _play_tile(self, tile):
+        "The play button on a playlist cover: one click and it plays."
+        if tile.songs:
+            self._play_queue(tile.paths, 0, tile.name)
+        else:
+            self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
     def _play_tile_paths(self, paths):
         tile = self.pl_grid.current_album()
