@@ -1,14 +1,16 @@
-# Liked songs and Health
+# Stashed songs and Health
 
-## Liked songs
+## Stashed songs
 
-Click the heart on the Now Playing page, or right-click songs and choose Like. Click the heart again, or choose
-Unlike, to take a like back.
+Stash is Sleeve's name for keeping a song you love. Click the diamond on the Now Playing page (it is filled when the
+song is stashed), or right-click songs and choose Stash. Click the diamond again, or choose Unstash, to take it back.
 
-Every liked song appears in the Liked Songs folder at the top of the Library. Double-click that folder to play them.
+Every stashed song appears in the Stashed Songs folder at the top of the Library, marked with a diamond. Double-click
+that folder to play them.
 
-Likes are kept in Sleeve's own file (`~/.config/sleeve/liked.json`). They are not written into your music files or
-your playlists, so another player will not see them. On the Playlists page, Like all likes a whole playlist at once.
+Stashed songs are kept in Sleeve's own file (`~/.config/sleeve/liked.json`; the file kept its old name). They are not
+written into your music files or your playlists, so another player will not see them. On the Playlists page, Stash all
+stashes a whole playlist at once.
 
 ## Health
 

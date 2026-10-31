@@ -13,15 +13,22 @@ To make one:
 
 A name that is already taken gets a number, like "Road trip (2)".
 
+## The cover grid
+
+The Playlists tab shows a grid of cover tiles, with a New playlist tile first. A playlist's cover is, in this order: the picture
+you chose, a mosaic of the album covers of its songs, or a generated cover with the first letter of its name. Right-click
+a tile for Open, Play, Add to queue, Choose a cover picture, Use the generated cover, Title colour, Normal title colour,
+Rename and Delete. A picture you choose is copied into Sleeve's own folder, so it keeps working if the original moves.
+Covers and colours are kept in `~/.config/sleeve`, not in the playlist file.
+
 ## Changing a playlist
 
-Select one of your playlists to see its songs. Then you can:
+Open one of your playlists to see its songs. Then you can:
 
 - Rename or Delete it. Deleting a playlist keeps the songs in your library.
 - Remove song takes the highlighted songs out of it.
 - The up and down arrow buttons move the highlighted song.
 
-Playlists of your own are marked with a star in the list.
 
 ## Spotify playlists
 
@@ -32,9 +39,9 @@ Copy to my playlists to make a playlist of your own from one.
 A song listed in a playlist but not in your library is shown as missing. Playlists whose lines are written relative to
 your music folder, or with Windows-style backslashes, are understood too.
 
-## Like all
+## Stash all
 
-Like all adds every song of the playlist you are looking at to your liked songs.
+Stash all adds every song of the playlist you are looking at to your stashed songs.
 
 ## Importing a playlist
 

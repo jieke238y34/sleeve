@@ -4,7 +4,7 @@ The Library page has your folders on the left and a song table on the right.
 
 ## Folders
 
-The first two entries are special: All songs, and Liked Songs. Under them come your genre folders, one for each
+The first two entries are special: All songs, and Stashed Songs. Under them come your genre folders, one for each
 folder in your music folder. Click one to see its songs. Double-click a folder to play everything it shows, from
 the top.
 
@@ -19,7 +19,7 @@ Click a column heading to sort by it. Double-click a song to play it.
 Right-click one or more songs for the menu:
 
 - Play now, Play next, Add to queue
-- Like or Unlike
+- Stash or Unstash
 - Add to playlist (see [Playlists](03-playlists))
 - Edit tags
 - Show in file manager
@@ -40,7 +40,7 @@ Rescan (also on the [Settings](08-settings) page).
 
 Press Albums next to the search box to see your library as a grid of covers (Songs goes back to the table). Open an
 album to see all its tracks together, with the cover, and play or queue the whole album at once. Right-click an album to
-play it, play it next or add it to the queue. Songs without an album are grouped under their artist. Sleeve remembers
+play it, play it next or add it to the queue. Tracks are listed in disc and track-number order; a song with no number goes last, by file name. Songs without an album are grouped under their artist. Sleeve remembers
 which view you used.
 
 ## Search everything
@@ -58,11 +58,11 @@ The Identity tab is your library in words and numbers, built only from your own 
 "The Explorer" or "The Devotee", chosen from how your library behaves, with a short description underneath. Below it
 are seven trait meters from 0 to 100: Discovery (artists with just one song), Loyalty (the share held by your ten
 biggest artists), Range (how evenly your genres are spread), Fidelity (lossless or 256 kbps and up), Tidiness (songs
-with both a genre and an album), Languages (non-Latin writing systems) and Heart (songs you liked).
+with both a genre and an album), Languages (non-Latin writing systems) and Stash (songs you stashed).
 
 Further down are the big numbers (songs, artists, albums, listening time), bar charts of your genres and most
-collected artists, the sound quality of your files, how much you have liked, and your longest and shortest songs.
+collected artists, the sound quality of your files, how much you have stashed, and your longest and shortest songs.
 Languages and scripts such as Japanese, Korean or Cyrillic appear as small chips, and so do moods found in your
 playlist names (summer, late nights, workout and so on); each only shows when something was found. A closing note
 says when many songs have no real genre, and reminds you that this is a snapshot of your tags, not of everything you
-like. It sits in the sidebar between Library and Downloads and updates after every scan and every like.
+love. It sits in the sidebar between Library and Downloads and updates after every scan and every stash.

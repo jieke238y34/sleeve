@@ -33,6 +33,16 @@ of the window. The [Health](05-liked-and-health) page lists files `dl.py` parked
 
 They use your desktop's media controls (MPRIS), so you need a desktop that supports them, such as KDE Plasma or GNOME.
 
+## Discord status does not show
+
+Sleeve looks for Discord's local socket, including those of Flatpak clients such as Vesktop. If yours is not found,
+start the client first, then switch the status off and on in Settings.
+
+## Update or uninstall says it cannot
+
+They work only for a copy that `install.sh` made. A copy from a package manager is updated with `sudo dnf upgrade sleeve`
+(or zypper, apt) and removed with `sudo dnf remove sleeve`.
+
 ## Starting over with settings
 
 Settings are saved as you go. To reset them, close Sleeve and delete `~/.config/sleeve/settings.json`.

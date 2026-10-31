@@ -3,12 +3,13 @@
 ## The player bar
 
 The bar at the bottom controls playback: previous, play or pause, next, shuffle, repeat, the seek bar and the
-volume. Click anywhere on a slider to jump there.
+volume. Click anywhere on a slider to jump there. Previous goes back to the song you actually played before the
+current one, also with shuffle on; a new queue starts that history over.
 
 ## The queue
 
 The Now Playing page shows what is coming. Use Play next or Add to queue from the Library menu to shape it.
-Clear empties it, and Save turns it into a playlist (see [Playlists](03-playlists)).
+Clear empties it but keeps the song that is playing, and Save turns it into a playlist (see [Playlists](03-playlists)).
 
 ## Album art
 
@@ -87,6 +88,7 @@ until you switch it on in Settings under Discord, and it needs two things:
 
 **Album cover.** Discord can only show a cover from a web address, so there is a separate switch, **Also show the album cover**. When it is on, Sleeve asks [MusicBrainz](https://musicbrainz.org) which release the album is and gives Discord the public cover address from the [Cover Art Archive](https://coverartarchive.org). Only the album name and artist are sent to MusicBrainz, once per album (one request a second), and nothing is uploaded. Albums MusicBrainz is not sure about show no cover. The answers are remembered in `~/.cache/sleeve/cover-urls.json`. Discord (or arRPC) then fetches the image itself from coverartarchive.org.
 
-Sleeve talks only to a local socket on your computer (`discord-ipc-0` in your runtime folder); your Discord client
+Sleeve talks only to a local socket on your computer (`discord-ipc-0` in your runtime folder, or in the folder of a
+Flatpak client such as Vesktop under `app/<application id>`); your Discord client
 decides what to publish. The song title and artist are shared while it is on and cleared when you pause, switch it off
 or quit.

@@ -4,10 +4,11 @@
 
 | File | What is in it |
 |---|---|
-| `~/.config/sleeve/liked.json` | Your liked songs |
+| `~/.config/sleeve/liked.json` | Your stashed songs (the file keeps its old name) |
 | `~/.config/sleeve/settings.json` | Your settings |
 | `~/.config/sleeve/history.json` | What you listened to, for the top songs on the Identity page |
 | `~/.config/sleeve/trusted_dl.json` | Which `dl.py` you have said you trust |
+| `~/.config/sleeve/playlist-style.json` and `playlist-covers/` | Your cover pictures and title colours for playlists |
 | `~/.cache/sleeve` | Remembered tags and loudness measurements |
 | `Playlists/My Playlists` | Your playlists, as `.m3u8` files |
 
@@ -28,7 +29,13 @@ changes nothing in your files until you accept the results. The **Get dl.py for 
 from GitHub with `git`, also only after you agree. **Check for updates** in Settings asks github.com for the newest
 release only when you press it, after asking once; the request carries nothing but the Sleeve version. **Update now**
 downloads that release's wheel from GitHub and installs it into Sleeve's own folder, and **Uninstall Sleeve** deletes only
-that folder, the `sleeve` command, the launcher entry and the icon: your music, playlists and settings stay.
+that folder, the `sleeve` command, the launcher entry and the icon: your music, playlists and settings stay (unless you choose the full uninstall).
+
+## Removing everything
+
+`sleeve --uninstall --full`, or **Uninstall Sleeve** in Settings and then "Remove Sleeve and all my data", deletes
+`~/.config/sleeve`, `~/.cache/sleeve` and the `.m3u8` files in `My Playlists`. It never deletes audio files or the
+playlists `dl.py` made. Plain `--uninstall` keeps all of your data.
 
 ## Backups
 
