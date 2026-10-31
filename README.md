@@ -53,6 +53,7 @@ The screenshots show a small made-up demo library with generated covers.
   playlist names.
 - Listening panel on the Identity page: your top songs this week or this month, from a history Sleeve keeps in one
   file on your computer. It is opt in, shows real listening time, and can be switched off or cleared in Settings.
+- Albums list their tracks in disc and track-number order; songs without a number come last, by file name.
 - Seasons and holidays: seven dark looks (spring, summer, autumn, winter, Halloween, Christmas, New Year) that follow
   the calendar or can be pinned by hand in Settings, with a switch to turn them off. Accent colours can still follow
   the album cover.
@@ -72,9 +73,13 @@ The screenshots show a small made-up demo library with generated covers.
 
 **Playlists**
 
-- Liked songs, kept in Sleeve's own file.
+- Stash: keep the songs you love. The diamond button marks a song, and the **Stashed Songs** folder at the top of the
+  Library lists them. They are kept in Sleeve's own file, not in your music files.
+- The Playlists tab is a grid of cover tiles. Each playlist can have its own cover picture and title colour (right-click
+  a tile); otherwise it gets a mosaic of its album covers.
 - Playlists of your own, stored as plain `.m3u8` files in `Playlists/My Playlists`: create, rename, reorder, add songs
-  from the Library, add the playing song with the player-bar button, and save the queue.
+  from the Library, add the playing song with the player-bar button, and save the queue. **Clear** in the queue empties it but keeps
+  the playing song. **Previous** goes back to the song you actually played, also with shuffle on.
 - Import `.m3u8` files by dragging them onto the Playlists page. Songs are matched by path, then by file name.
 - Playlists that `dl.py` made from Spotify are hidden until you ask for them, and can be copied into playlists of
   your own.
@@ -89,6 +94,8 @@ The screenshots show a small made-up demo library with generated covers.
 
 - Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. Switches for
   settings, a resizable sidebar, smooth scrolling.
+- Settings > Theme: **Dusk** (peach on warm brown and slate, with a background that does not change with the cover).
+  Picking a theme replaces your own colour choice and the seasonal looks until you go back to Sleeve's own.
 
 ## Install
 
@@ -104,8 +111,10 @@ cd sleeve
 
 Then start **Sleeve** from your application menu, or run `sleeve`. The first install downloads Qt (about 200 MB).
 
-To update, press **Check for updates** in Settings (or run `sleeve --update`); `git pull` and `./install.sh` also work. To remove it, use **Uninstall Sleeve** in Settings, `sleeve --uninstall`, or `./install.sh --uninstall`. Your music, playlists
-and settings (`~/.config/sleeve`) are never touched.
+To update, press **Check for updates** in Settings (or run `sleeve --update`); pulling and running `./install.sh`
+again also works. To remove it, use **Uninstall Sleeve** in Settings, `sleeve --uninstall` or
+`./install.sh --uninstall`: your music, playlists and settings are kept. To delete Sleeve's own data as well, see
+[Updating and removing](#updating-and-removing).
 
 Prefer not to clone first? This does the same from the web (read the script before you run it, as with any script):
 
@@ -167,7 +176,7 @@ progress.
   (or file name) of the chosen songs to [MusicBrainz](https://musicbrainz.org), one song a second, after you agree.
   Nothing is written to your files until you review the results. **Get dl.py for me** downloads playlist-sync from
   GitHub, also only after you agree.
-- It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, likes, the `dl.py`
+- It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, stashed songs, listening history, playlist covers, the `dl.py`
   trust record) and `~/.cache/sleeve` (tag cache and loudness results). Playlists you make are `.m3u8` files in
   `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME` is set, those folders are used instead.
 - Only validated audio files are handed to the player. Playlists, lyrics and tags are treated as untrusted data.
@@ -190,6 +199,28 @@ When a text box, list or button has focus, Space and the arrows keep their norma
 **From a terminal, a shortcut or a launcher:** `sleeve --play-pause`, `sleeve --next`, `sleeve --previous` and
 `sleeve --toggle` control the Sleeve that is already open. Right-clicking Sleeve in the menu offers the same.
 
+## Updating and removing
+
+These work for a copy that `install.sh` made:
+
+```sh
+sleeve --version              # the version and build number
+sleeve --update               # install the newest GitHub release, then exit
+sleeve --uninstall            # remove Sleeve; keeps your music, playlists and settings
+sleeve --uninstall --full     # also delete Sleeve's own data (below); --yes skips the question
+```
+
+Settings > Updates has **Check for updates**, **Update now** and **Uninstall Sleeve**. Nothing is checked until you
+press the button. Updates follow the version and the build number: a newer build of the same version is an update
+(releases are tagged `v0.2.0` or `v0.2.0-build.N`, see [docs/RELEASING.md](docs/RELEASING.md)).
+
+A full uninstall deletes `~/.config/sleeve` (settings, stashed songs, listening history, playlist covers and title
+colours), `~/.cache/sleeve`, and the playlists you made in Sleeve (the `.m3u8` files in `My Playlists` inside the
+playlist folder). It never deletes audio files or the playlists `dl.py` made, and it lists what it will delete before
+it asks.
+
+A copy installed by a package manager, or run from a checkout, is not touched: Sleeve says which command to use.
+
 ## Works with
 
 - **KDE Connect:** pair your phone and turn on its "Multimedia control" plugin. Sleeve appears in the phone's media
@@ -199,7 +230,7 @@ When a text box, list or button has focus, Space and the arrows keep their norma
 - **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** if installed, Settings gets earbuds buttons, and Sleeve
   follows the sound when the earbuds switch.
 - **Discord and [arRPC](https://arrpc.openasar.dev/):** optional "Listening to" status for Discord, Vesktop and other
-  clients. Off until you switch it on in Settings and add your own Discord Application ID. It can show the album cover too
+  clients, including Flatpak ones. Off until you switch it on in Settings and add your own Discord Application ID. It can show the album cover too
   (a separate switch: the cover address comes from MusicBrainz and the Cover Art Archive).
 - **PipeWire:** Sleeve follows your desktop's output, and Settings can pick a specific one.
 
@@ -243,6 +274,7 @@ No dates are promised.
 ## Documentation
 
 - [Installing](docs/INSTALL.md) and the [user guide](docs/USER_GUIDE.md)
+- [Wiki pages](docs/wiki/README.md): home, install, features, updating and uninstalling, FAQ
 - [Architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md) and [releasing](docs/RELEASING.md)
 - [Changelog](CHANGELOG.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md)
 - [Packaging status](packaging/README.md)

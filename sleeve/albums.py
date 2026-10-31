@@ -35,6 +35,7 @@ GAP = 14                                          # space around a tile
 TEXT_H = 40                                       # two lines of text under the cover
 SOURCE_SIDE = TILE_MAX * 2                        # covers are kept at this size (sharp on a 2x screen)
 COVER_TRIES = 6                                   # songs of one album whose tag is tried before giving up
+KEEP_SOURCES, KEEP_TILES = 160, 320                # covers and tiles kept in memory at once (the oldest go first)
 PER_TICK = 2                                      # covers loaded per 20 ms tick, like the queue thumbnails
 
 
@@ -69,10 +70,16 @@ class Album:
         return f"{n} song{'' if n == 1 else 's'} · {fmt_time(self.length)}"
 
 
+def track_order(song):
+    "The order of an album: by disc, then by the number on the disc; a song with no number goes last, by file name."
+    return (song.disc or 1, song.track or 100_000, Path(song.path).name.casefold(), song.path)
+
+
 def group_albums(songs):
     """Albums from songs. Grouped by album name (any case); the album artist is the artist when every song shares
     one, else "Various artists". Songs with no album go per artist into "<artist> - singles" (no artist either:
-    "Unknown"). Songs in an album are sorted by file name, albums by artist then name."""
+    "Unknown"). Songs in an album follow the disc and track numbers in their tags (file name when there are none),
+    albums are sorted by artist then name."""
     groups = {}
     for s in songs:
         name = (s.album or "").strip()
@@ -93,7 +100,7 @@ def group_albums(songs):
             name, artist = f"{first_artist} - singles", first_artist
         else:
             name, artist = UNKNOWN, ""
-        items.sort(key=lambda s: (Path(s.path).name.casefold(), s.path))
+        items.sort(key=track_order)
         albums.append(Album(name, artist, items))
     albums.sort(key=lambda a: (a.artist.casefold(), a.name.casefold()))
     return albums
@@ -165,7 +172,8 @@ class _TileDelegate(QStyledItemDelegate):
         fm = QFontMetrics(font)
         top = y + side + 6
         p.setFont(font)
-        p.setPen(QColor(theme.TEXT))
+        wanted = getattr(album, "colour", "")                            # a playlist can have a title colour of its own
+        p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor(theme.TEXT))
         p.drawText(QRect(x, top, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
                    fm.elidedText(album.name, Qt.ElideRight, side))
         small = QFont(option.font)
@@ -284,7 +292,14 @@ class AlbumGrid(QListWidget):
                 src = placeholder_pixmap(album.name, SOURCE_SIDE)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
             self._tiles[album.key] = pix
+            self._trim()
         return pix
+
+    def _trim(self):
+        "Forget the oldest covers beyond the limit; one that is still wanted is simply loaded again when it is drawn."
+        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES)):
+            while len(cache) > limit:
+                cache.pop(next(iter(cache)))
 
     def _apply_size(self, width):
         cols = max(1, width // (TILE_WANT + GAP))
@@ -318,6 +333,7 @@ class AlbumGrid(QListWidget):
         self.loads += 1
         self._sources[album.key] = load_cover(album, self.cover_loader)
         self._tiles.pop(album.key, None)
+        self._trim()
 
     def _visible_unloaded(self, limit):
         "Up to `limit` albums on screen (or just below it) whose cover was not asked for yet."

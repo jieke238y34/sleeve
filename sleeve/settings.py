@@ -27,6 +27,7 @@ DEFAULTS = {
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
     "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
+    "theme": "default",        # "default" (accent colour and seasons) or a theme from theme.CUSTOM_THEMES
     "seasonal": "off",         # "off", "seasons", "holidays" or "both": which looks follow the calendar
     "season_choice": "auto",   # "auto" or "spring"/"summer"/"autumn"/"winter": pin a season by hand
     "holiday_choice": "auto",  # "auto", "christmas", "halloween" or "newyear": pin a holiday by hand
@@ -71,6 +72,8 @@ def _valid(key, value):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
+    if key == "theme":
+        return value in ("default", "dusk")
     if key == "seasonal":
         return value in ("off", "seasons", "holidays", "both")
     if key == "season_choice":

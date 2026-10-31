@@ -203,7 +203,7 @@ def _traits(p, songs, artist_counts, genre_counts):
         Trait("languages", "Languages", pct(min(langs, 5) / 5),
               f"{langs} non-Latin writing system{'s' if langs != 1 else ''} found." if langs
               else "Only Latin letters."),
-        Trait("heart", "Heart", pct(p.liked_share), f"{p.liked_share:.0%} of songs are liked."),
+        Trait("heart", "Stash", pct(p.liked_share), f"{p.liked_share:.0%} of songs are stashed."),
     ]
 
 
@@ -217,7 +217,7 @@ def _persona(p):
     if p.songs >= 1000 and t["fidelity"] >= 70:
         return Persona("The Archivist", "A big library, kept in high quality and built to last.")
     if t["heart"] >= 35:
-        return Persona("The Romantic", "You hold on to what you love: a large part of it is liked.")
+        return Persona("The Romantic", "You hold on to what you love: a large part of it is stashed.")
     if t["loyalty"] >= 40:
         return Persona("The Devotee", "A few artists have your heart, and you follow them deeply.")
     if t["discovery"] >= 70 and t["loyalty"] <= 25:
@@ -253,7 +253,7 @@ def _words(p):
 
 
 def compute(songs, liked_paths=(), playlist_names=()):
-    "The Identity of a list of Songs; liked_paths is the set of liked paths, playlist_names the user's playlists."
+    "The Identity of a list of Songs; liked_paths is the set of stashed paths, playlist_names the user's playlists."
     songs = list(songs)
     n = len(songs)
     p = Identity(songs=n)
@@ -574,7 +574,7 @@ class TabCard(QAbstractButton):
         self.key, self.label, self.value, self.note, self.accent = key, label, "", "", LAVENDER
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.TabFocus)                    # the ring is for the keyboard, not for a mouse click
         self.setFixedHeight(self.H)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setToolTip(tip)
@@ -892,7 +892,7 @@ class IdentityPage(QWidget):
         card.box.addWidget(self.quality_note)
         card.box.addStretch(1)
         row.addWidget(card, 3)
-        card = Card("Liked")
+        card = Card("Stashed")
         inner = QHBoxLayout()
         inner.setSpacing(18)
         self.ring = Ring()
@@ -998,7 +998,7 @@ class IdentityPage(QWidget):
             f"{known / p.songs:.0%} of songs have a readable bitrate. High is 256 kbps and up, ok is 128 and up."
             if p.songs else "Nothing to measure yet.")
         self.ring.set_share(p.liked_share, a)
-        self.liked_text.setText(f"{_plural(p.liked, 'song')} liked, out of {p.songs:,}." if p.songs
+        self.liked_text.setText(f"{_plural(p.liked, 'song')} stashed, out of {p.songs:,}." if p.songs
                                 else "No songs yet.")
         self.long_line.setText(self._track_line("Longest", p.longest))
         self.short_line.setText(self._track_line("Shortest", p.shortest))

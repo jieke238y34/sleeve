@@ -50,12 +50,23 @@ def parse(buffer):
     return out, bytes(buffer[pos:])
 
 
+# Flatpak keeps a client's socket in its own folder under the runtime directory (not in the runtime directory itself).
+FLATPAK_CLIENTS = ("com.discordapp.Discord", "dev.vencord.Vesktop", "com.discordapp.DiscordCanary",
+                   "app.legcord.Legcord", "io.github.equicord.equibop", "xyz.armcord.ArmCord")
+
+
 def socket_paths(env=None):
     "Where a Discord client or arRPC may be listening, most likely first."
     env = os.environ if env is None else env
     runtime = env.get("XDG_RUNTIME_DIR") or env.get("TMPDIR") or "/tmp"  # noqa: S108  # nosec B108  (only looked at, never written: where Discord puts its socket)
-    folders = [Path(runtime), Path(runtime) / "app" / "com.discordapp.Discord", Path(runtime) / "snap.discord"]
-    return [str(folder / f"discord-ipc-{n}") for folder in folders for n in range(10)]
+    apps = Path(runtime) / "app"
+    folders = [Path(runtime), *(apps / app_id for app_id in FLATPAK_CLIENTS), Path(runtime) / "snap.discord"]
+    found = [str(folder / f"discord-ipc-{n}") for folder in folders for n in range(10)]
+    try:                                                    # any other Flatpak client that keeps a socket of its own
+        extra = sorted(str(p) for p in apps.glob("*/discord-ipc-[0-9]") if str(p) not in found)
+    except OSError:
+        extra = []
+    return found + extra
 
 
 def _clip(text):

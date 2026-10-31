@@ -324,3 +324,17 @@ def test_previous_history_starts_over_with_a_new_queue(app, tmp_path):
     p.prev()
     assert p.queue[p.index] == c
     p.close()
+
+
+def test_clearing_the_queue_keeps_the_song_that_is_playing(app, tmp_path):
+    files = [silent_wav(tmp_path / f"{c}.wav", seconds=3.0) for c in "abc"]
+    p = Player()
+    p.set_queue(files, 1)
+    assert wait_for(app, lambda: p.playing)
+    p.clear_queue()
+    assert p.queue == [files[1]] and p.index == 0 and p.playing          # b carries on, a and c are gone
+    p.clear()                                                            # the old behaviour is still there: everything
+    assert p.queue == [] and not p.playing
+    p.clear_queue()                                                      # nothing to keep: no crash
+    assert p.queue == []
+    p.close()

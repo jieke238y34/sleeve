@@ -12,8 +12,8 @@ Linux. Back up your music before using the tag editor.
   `.txt` lyrics).
 - **Playback:** gapless, same-volume levelling (ReplayGain tags, or measured with `ffmpeg`), a volume ceiling, and media
   keys through MPRIS.
-- **Playlists:** liked songs, playlists of your own stored as `.m3u8` files, drag-and-drop import, and a button in the
-  player bar to add the playing song. Playlists made from Spotify by `dl.py` are hidden until you ask for them.
+- **Playlists:** a grid of cover tiles with your own cover picture and title colour, stashed songs, playlists of your
+  own stored as `.m3u8` files, drag-and-drop import, and a button in the player bar to add the playing song. Playlists made from Spotify by `dl.py` are hidden until you ask for them.
 - **Identity:** a persona, trait meters, charts, languages and moods drawn from your own tags.
 - **Downloads (optional):** a front end for [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`)
   with a plain-English activity feed. Sleeve asks you to trust `dl.py` before running it.
@@ -21,6 +21,9 @@ Linux. Back up your music before using the tag editor.
   calendar or can be pinned by hand.
 - **Listening:** an opt-in local history with your top songs this week or month on the Identity page.
 - **Discord (optional):** shows what is playing, with the album cover, through Discord or arRPC.
+- **Theme:** Dusk, a fixed warm look, in Settings > Theme.
+- **Updates:** Settings > Updates and `sleeve --update`, `sleeve --uninstall` and `--uninstall --full` for copies made by
+  `install.sh`. A full uninstall deletes Sleeve's data and the playlists made in Sleeve, never audio files.
 - **Settings:** sixteen accent colours and a custom one, and switches. The user guide is in `docs/guide/`.
 
 No accounts and no telemetry. Sleeve uses the internet only when you ask: the optional tag lookup on MusicBrainz and `dl.py` downloads.
@@ -40,9 +43,7 @@ The wheel and sdist carry build provenance attestations:
 
 ## Known limits
 
-- Sleeve still looks for a `dl.py` file at start-up to find your music folder (see the install guide). Pass
-  `--dl /path/to/dl.py` or set `SLEEVE_DL`.
 - Linux only. There is no Windows build and no Fedora package yet.
-- Not in this release: first-run download setup, quick search (Ctrl+K), album view and volume above 100%.
+- Updates work only for copies installed with `install.sh`.
 
 Full list of changes: [CHANGELOG.md](https://github.com/jieke238y34/sleeve/blob/main/CHANGELOG.md).

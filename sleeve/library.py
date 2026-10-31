@@ -19,6 +19,8 @@ class Song:
     length: float = 0.0
     bitrate: int = 0
     folder: str = LOOSE            # top-level folder under the music dir = the genre folder
+    track: int = 0                 # the number on the album (0 = the file does not say)
+    disc: int = 0                  # the disc of a multi-disc album (0 = does not say)
 
     @property
     def name(self):
@@ -36,6 +38,12 @@ _FIELD_NAMES = {f.name for f in fields(Song)}
 def _first(tags, key):
     v = tags.get(key) if tags else None
     return str(v[0]).strip() if v else ""
+
+
+def _number(text):
+    "The leading number of a tag such as '3', '03' or '3/12' (the part after the slash is the total), else 0."
+    head = str(text).split("/", 1)[0].strip()
+    return int(head) if head.isascii() and head.isdecimal() and len(head) < 6 else 0
 
 
 def folder_of(path, music_dir):
@@ -60,6 +68,7 @@ def read_song(path, music_dir, mutagen_file=None):
         tags = audio.tags or {}
         s.title, s.artist = _first(tags, "title"), _first(tags, "artist") or _first(tags, "albumartist")
         s.album, s.genre = _first(tags, "album"), _first(tags, "genre")
+        s.track, s.disc = _number(_first(tags, "tracknumber")), _number(_first(tags, "discnumber"))
         info = getattr(audio, "info", None)
         s.length = float(getattr(info, "length", 0) or 0)
         s.bitrate = int(getattr(info, "bitrate", 0) or 0) // 1000
@@ -97,12 +106,13 @@ def _cached_song(hit, key, stat_key, music_dir):
         if not isinstance(hit, dict) or hit["k"] != stat_key:
             return None
         data = hit["s"]
-        if not isinstance(data, dict) or data.get("path") != key:
-            return None
+        if not isinstance(data, dict) or data.get("path") != key or "track" not in data:
+            return None                                       # no track number in it: read before they were kept
         song = Song(**{k: v for k, v in data.items() if k in _FIELD_NAMES})
         if not all(isinstance(getattr(song, k), str) for k in ("path", "title", "artist", "album", "genre")):
             return None
         song.length, song.bitrate = float(song.length), int(song.bitrate)
+        song.track, song.disc = int(song.track), int(song.disc)
         song.folder = folder_of(key, music_dir)             # always from the current music folder
         return song
     except (KeyError, TypeError, ValueError):

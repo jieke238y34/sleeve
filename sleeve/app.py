@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSplitter,
     QStackedWidget,
@@ -76,6 +77,7 @@ from . import (
     getdl,
     health,
     identity,
+    labels,
     library,
     likes,
     loudness,
@@ -83,6 +85,8 @@ from . import (
     musicbrainz,
     myplaylists,
     playlists,
+    plgrid,
+    plstyle,
     seasons,
     settings,
     singleton,
@@ -143,7 +147,7 @@ ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the Mu
 ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
-LIKED = "♥ Liked Songs"
+LIKED = f"{labels.MARK} {labels.SONGS}"
 
 
 def fmt_time(seconds):
@@ -203,6 +207,10 @@ class VolumeBubble(QLabel):
 class ClickSlider(QSlider):
     "A slider whose track jumps to where you click (a stock one only steps by a page), and can still be dragged."
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.TabFocus)             # no frame after a mouse click; Tab and the keys still reach it
+
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             opt = QStyleOptionSlider()
@@ -226,7 +234,7 @@ class SongModel(QAbstractTableModel):
     def __init__(self, songs=()):
         super().__init__()
         self.songs = list(songs)
-        self.liked = set()                    # the window's liked paths; shown as a heart before the title
+        self.liked = set()                    # the window's stashed paths; shown with a mark before the title
         self._sort = None                     # (column, order) the header shows; kept when the list changes
 
     def set_songs(self, songs):
@@ -251,7 +259,7 @@ class SongModel(QAbstractTableModel):
             return None
         s, col = self.songs[index.row()], index.column()
         if role == Qt.DisplayRole:
-            heart = "♥ " if s.path in self.liked else ""
+            heart = f"{labels.MARK} " if s.path in self.liked else ""
             genre = s.genre or ("" if s.folder == library.LOOSE else s.folder)
             return (heart + s.name, s.artist, s.album, genre, fmt_time(s.length))[col]
         if role == Qt.TextAlignmentRole and col == 4:
@@ -318,6 +326,8 @@ class MainWindow(QMainWindow):
         self.cfg = cfg
         self.likes = likes.Likes(likes_file)
         self.history = History()
+        self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
+        self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
@@ -362,12 +372,12 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
-        self._look = seasons.resolve(self.settings.seasonal, self.settings.season_choice,   # the seasonal look
-                                     self.settings.holiday_choice)                          # in use, if any
+        self._look = self._look_name()                      # the theme picked by hand, else the seasonal look, if any
         self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
         Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
+        root.set_fixed(theme.look_backdrop(self._look))
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -549,11 +559,11 @@ class MainWindow(QMainWindow):
         t.setShowGrid(False)
 
     def _playlists_page(self):
-        page = QWidget()
-        lay = QHBoxLayout(page)
+        detail = QWidget()
+        lay = QHBoxLayout(detail)
         lay.setContentsMargins(12, 12, 12, 12)
         self.pl_list = QListWidget()
-        self.pl_list.setMaximumWidth(260)
+        self.pl_list.setMaximumWidth(210)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
         self.pl_list.itemDoubleClicked.connect(self._play_playlist)
         new_btn = QPushButton("＋  New playlist")
@@ -574,7 +584,7 @@ class MainWindow(QMainWindow):
         left.addWidget(self.pl_list, 1)
         left.addWidget(self.pl_spotify_btn)
         side = QWidget()
-        side.setMaximumWidth(260)
+        side.setMaximumWidth(210)
         side.setLayout(left)
         left.setContentsMargins(0, 0, 0, 0)
 
@@ -586,10 +596,15 @@ class MainWindow(QMainWindow):
         self.pl_table.customContextMenuRequested.connect(self._playlist_song_menu)
         self.pl_info = QLabel("")
         self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
-        self.pl_like_all = QPushButton("♥ Like all")
-        self.pl_like_all.setToolTip("Add every song of this playlist to your liked songs")
+        self.pl_info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # a long line never widens the window
+        self.pl_like_all = QPushButton(f"{labels.MARK} {labels.VERB} all")
+        self.pl_like_all.setToolTip(f"Add every song of this playlist to your {labels.SONGS.lower()}")
         self.pl_like_all.clicked.connect(self._like_playlist)
         info_row = QHBoxLayout()
+        back = QPushButton("‹  All playlists")
+        back.setToolTip("Back to the covers")
+        back.clicked.connect(self._show_playlist_grid)
+        info_row.addWidget(back)
         info_row.addWidget(self.pl_info, 1)
         info_row.addWidget(self.pl_like_all)
         self.pl_empty = QLabel("You have no playlists yet.\n\nDrag playlist files (.m3u8) onto this page to import "
@@ -598,7 +613,7 @@ class MainWindow(QMainWindow):
         self.pl_empty.setObjectName("muted")
         self.pl_empty.setWordWrap(True)
 
-        edit_row = QHBoxLayout()
+        edit_row = FlowLayout()                            # the edit buttons wrap in a narrow window
         self.pl_edit_buttons = []
         for text, tip, slot in (("Rename", "Rename this playlist", self._rename_playlist),
                                 ("Delete", "Delete this playlist (the songs stay in your library)",
@@ -616,26 +631,34 @@ class MainWindow(QMainWindow):
         self.pl_copy_btn.setToolTip("Make a playlist of your own from this one, which you can then change")
         self.pl_copy_btn.clicked.connect(self._copy_to_mine)
         edit_row.addWidget(self.pl_copy_btn)
-        edit_row.addStretch(1)
         self.pl_edit_note = QLabel("")
         self.pl_edit_note.setObjectName("muted")
         self.pl_edit_note.setTextFormat(Qt.PlainText)
-        edit_row.addWidget(self.pl_edit_note)
+        self.pl_edit_note.setWordWrap(True)
+        self.pl_edit_note.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         right = QVBoxLayout()
         right.addLayout(info_row)
         right.addWidget(self.pl_empty, 1)
         right.addWidget(self.pl_table, 1)
         right.addLayout(edit_row)
+        right.addWidget(self.pl_edit_note)
         self.pl_edit_row = edit_row
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._playlist_entries = []
         self._playlist_files = []
         self._pl_current = None                           # (name, path, is one of mine)
+        page = QWidget()                                  # covers first; one click opens a playlist's songs
         page.setObjectName("playlistspage")
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.pl_stack = QStackedWidget()
+        self.pl_stack.addWidget(self._playlist_grid_page())
+        self.pl_stack.addWidget(detail)
+        outer.addWidget(self.pl_stack)
         self._playlist_drop = filedrop.FileDrop((".m3u8", ".m3u"), self)      # drag playlist files in from anywhere
-        for widget in (page, self.pl_list, self.pl_table):
+        for widget in (page, self.pl_grid, self.pl_list, self.pl_table):
             self._playlist_drop.install(widget)
         self._playlist_drop.dropped.connect(self._import_playlists)
         return page
@@ -659,7 +682,8 @@ class MainWindow(QMainWindow):
         save_pl.setToolTip("Save this queue as a playlist")
         save_pl.clicked.connect(self._save_queue_as_playlist)
         clear = QPushButton("Clear")
-        clear.clicked.connect(self.player.clear)
+        clear.setToolTip("Empty the queue; the song that is playing keeps playing")
+        clear.clicked.connect(self.player.clear_queue)
         head.addLayout(titles, 1)
         head.addWidget(save_pl)
         head.addWidget(clear)
@@ -1133,6 +1157,22 @@ class MainWindow(QMainWindow):
         self.earbuds_frame.setVisible(earbuds.find_script() is not None)
         lay.addWidget(self.earbuds_frame)
 
+        section("Theme")
+        row = QHBoxLayout()
+        self.theme_box = QComboBox()
+        self.theme_box.addItem("Sleeve (your own colours and the seasons)", "default")
+        for name, label in theme.CUSTOM_THEMES.items():
+            self.theme_box.addItem(label, name)
+        self.theme_box.setCurrentIndex(max(self.theme_box.findData(self.settings.theme), 0))
+        self.theme_box.currentIndexChanged.connect(self._theme_changed)
+        row.addWidget(QLabel("Theme"))
+        row.addWidget(self.theme_box)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. "
+                           "Picking a theme replaces your own colour choice and the seasonal looks below until you "
+                           "go back to Sleeve."))
+
         section("Look")
         row = QHBoxLayout()
         self.cover_slider = ClickSlider(Qt.Horizontal)
@@ -1245,7 +1285,7 @@ class MainWindow(QMainWindow):
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
                                             ("dl.py", self.cfg.dl_path or "not found (optional)"),
-                                            ("Liked songs", self.likes.file), ("Settings", self.settings.file))):
+                                            (labels.SONGS, self.likes.file), ("Settings", self.settings.file))):
             value_label = QLabel(str(value))
             value_label.setTextFormat(Qt.PlainText)
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -1271,7 +1311,7 @@ class MainWindow(QMainWindow):
         section("Updates")
         self.update_label = hint(f"You have Sleeve {build_label()}. Nothing is checked until you press the button.")
         lay.addWidget(self.update_label)
-        row = QHBoxLayout()
+        row = FlowLayout()                                    # wraps when the window is narrow
         self.update_check_btn = QPushButton("Check for updates")
         self.update_check_btn.clicked.connect(self._check_update)
         self.update_btn = QPushButton("Update now")
@@ -1286,7 +1326,6 @@ class MainWindow(QMainWindow):
         self.uninstall_btn.clicked.connect(self._uninstall)
         for b in (self.update_check_btn, self.update_btn, self.update_page_btn, self.uninstall_btn):
             row.addWidget(b)
-        row.addStretch(1)
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
 
@@ -1361,20 +1400,50 @@ class MainWindow(QMainWindow):
                                       + (tail[0][:160] if tail else "Try again in a moment."))
         proc.deleteLater()
 
+    def _ask_uninstall(self):
+        "What to remove: 'cancel', 'program' (keep the user's data) or 'all' (the data too)."
+        box = QMessageBox(self)
+        box.setWindowTitle("Uninstall Sleeve")
+        box.setIcon(QMessageBox.Question)
+        box.setText("Remove Sleeve from this computer?")
+        box.setInformativeText("Remove Sleeve only, or Sleeve together with everything it saved: your stashed songs, "
+                               "listening history, settings and the playlists you made in Sleeve. Your audio files are "
+                               "never touched.")
+        keep = box.addButton("Remove Sleeve, keep my data", QMessageBox.AcceptRole)
+        wipe = box.addButton("Remove Sleeve and all my data…", QMessageBox.DestructiveRole)
+        cancel = box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        return "program" if clicked is keep else "all" if clicked is wipe else "cancel"
+
+    def _confirm_full_uninstall(self, plan):
+        "Say exactly what will be deleted, and what will not, and ask again."
+        lines = "\n".join(f"  •  {line}" for line in updater.describe_data(plan)) or "  •  nothing but the program"
+        ask = QMessageBox.warning(
+            self, "Delete everything?",
+            "This deletes, for good:\n\n" + lines + "\n\nYour audio files (mp3, flac and the rest) are NOT deleted, "
+            "and neither are the playlists dl.py made from Spotify. A playlist you made in Sleeve is only a small "
+            "list of song names, so its songs stay in your library, but the list itself cannot be brought back.\n\n"
+            "This cannot be undone.", QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        return ask == QMessageBox.Yes
+
     def _uninstall(self):
-        "Remove Sleeve after asking. The files go once Sleeve has closed; music, playlists and settings stay."
+        "Remove Sleeve after asking. The files go once Sleeve has closed; audio files are never touched."
         if updater.install_kind() != "venv":
             QMessageBox.information(self, "Uninstall Sleeve",
                                     "This copy was not installed with the Sleeve installer. If a package manager "
                                     "installed it, remove it with `sudo dnf remove sleeve` (or zypper or apt).")
             return
-        ask = QMessageBox.question(
-            self, "Uninstall Sleeve",
-            "Remove Sleeve from this computer?\n\nYour music, playlists, liked songs and settings are kept, so a "
-            "later install picks up where you left off.", QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
-        if ask != QMessageBox.Yes:
+        choice = self._ask_uninstall()
+        if choice == "cancel":
             return
-        QProcess.startDetached("/bin/sh", ["-c", updater.removal_script()])
+        plan = None
+        if choice == "all":
+            plan = updater.data_plan(playlist_dir=self.my_playlists.folder.parent)
+            if not self._confirm_full_uninstall(plan):
+                return
+        QProcess.startDetached("/bin/sh", ["-c", updater.removal_script(plan=plan, pid=os.getpid())])
         QApplication.quit()
 
     def _group_settings(self, lay):
@@ -1537,8 +1606,17 @@ class MainWindow(QMainWindow):
         return self.settings.accent_color
 
     def _look_name(self):
-        "The seasonal or holiday look for today from the settings, or None."
+        "The look to wear: the theme picked by hand, else the seasonal or holiday look for today, else None."
+        if self.settings.theme in theme.CUSTOM_THEMES:
+            return self.settings.theme
         return seasons.resolve(self.settings.seasonal, self.settings.season_choice, self.settings.holiday_choice)
+
+    def _theme_changed(self):
+        "The user picked a theme in Settings: save it and repaint everything."
+        self.settings.set("theme", self.theme_box.currentData())
+        self._save_settings()
+        self._look = self._look_name()
+        self._apply_accent(force=True)
 
     def _seasonal_changed(self):
         "The user changed a seasons and holidays control in Settings: save it and repaint."
@@ -1557,6 +1635,7 @@ class MainWindow(QMainWindow):
             return                                                  # nothing changed since the last repaint
         self._look = look
         self._accent_shown = colour
+        self.backdrop.set_fixed(theme.look_backdrop(look))
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
@@ -1663,7 +1742,7 @@ class MainWindow(QMainWindow):
         self.prev_btn = button("⏮", "Previous", self.player.prev)
         self.play_btn = button("▶", "Play / pause", self.player.toggle, "play")
         self.next_btn = button("⏭", "Next", self.player.next)
-        self.like_btn = button("♡", "Like this song", self._like_current)
+        self.like_btn = button("", f"{labels.VERB} this song", self._like_current)
         self.like_btn.setObjectName("round")
         self.like_btn.setEnabled(False)
         self.repeat_btn = button("", "Repeat: off", self._cycle_repeat, checkable=True)
@@ -1931,7 +2010,7 @@ class MainWindow(QMainWindow):
         m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
         all_liked = all(s.path in self.likes for s in sel)
-        m.addAction("Unlike" if all_liked else "Like", lambda: self._toggle_like([s.path for s in sel]))
+        m.addAction(labels.UNDO if all_liked else labels.VERB, lambda: self._toggle_like([s.path for s in sel]))
         self._add_to_playlist_menu(m, sel)
         m.addSeparator()
         m.addAction("Edit tags…", lambda: self._edit_tags(sel[0]))
@@ -2155,9 +2234,9 @@ class MainWindow(QMainWindow):
         on = self._current_path in self.likes
         self.like_btn.setEnabled(bool(self._current_path))
         self.add_pl_btn.setEnabled(self._current_path in self.by_path)
-        self.like_btn.setText("♥" if on else "♡")
-        self.like_btn.setStyleSheet("color: #ff8fb1;" if on else "")
-        self.like_btn.setToolTip("Unlike this song" if on else "Like this song")
+        accent = getattr(self, "_accent_shown", theme.LAVENDER)        # the diamond follows the accent colour
+        self.like_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
+        self.like_btn.setToolTip(f"{labels.UNDO} this song" if on else f"{labels.VERB} this song")
 
     def _like_playlist(self):
         paths = [e.path for e in self._playlist_entries if e.exists]
@@ -2167,10 +2246,10 @@ class MainWindow(QMainWindow):
         try:
             new = self.likes.add(paths)
         except OSError as e:
-            self.status.showMessage(f"Could not save your liked songs: {e}", 8000)
+            self.status.showMessage(f"Could not save your {labels.SONGS.lower()}: {e}", 8000)
             return
         self._likes_changed()
-        self.status.showMessage(f"Liked {new} new songs ({len(paths) - new} were already liked)", 8000)
+        self.status.showMessage(f"{labels.DONE} {new} new songs ({len(paths) - new} were already {labels.PAST})", 8000)
 
     def _edit_tags(self, song):
         dlg = TagDialog(song, self)
@@ -2209,6 +2288,148 @@ class MainWindow(QMainWindow):
             return False
 
     # --- playlists ----------------------------------------------------------
+    def _playlist_grid_page(self):
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
+        bar = QHBoxLayout()
+        import_btn = QPushButton("Import…")
+        import_btn.setToolTip("Add playlist files (.m3u8). You can also drag them onto this page.")
+        import_btn.clicked.connect(self._import_dialog)
+        self.pl_grid_spotify_btn = QPushButton("Show Spotify playlists")
+        self.pl_grid_spotify_btn.setToolTip("The playlist files dl.py made from your Spotify playlists")
+        self.pl_grid_spotify_btn.clicked.connect(lambda: self.pl_spotify_btn.click())
+        bar.addWidget(import_btn)
+        bar.addWidget(self.pl_grid_spotify_btn)
+        bar.addStretch(1)
+        lay.addLayout(bar)
+        self.pl_grid = plgrid.PlaylistGrid(parent=page)
+        self.pl_grid.openAlbum.connect(self._open_playlist_tile)
+        self.pl_grid.playAlbum.connect(lambda paths: self.player.set_queue(paths) if paths else None)
+        self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
+        lay.addWidget(self.pl_grid, 1)
+        self.pl_grid_hint = QLabel("You have no playlists yet. Press the ＋ tile to make one, drag playlist files "
+                                   "(.m3u8) onto this page, or right-click songs and choose Add to playlist.")
+        self.pl_grid_hint.setObjectName("muted")
+        self.pl_grid_hint.setWordWrap(True)
+        lay.addWidget(self.pl_grid_hint)
+        return page
+
+    def _refresh_playlist_grid(self):
+        "The covers: one tile per playlist, with its look, and the make-a-playlist tile first."
+        tiles = []
+        for name, path, mine in self._playlist_files:
+            key = str(path)
+            count, songs, stamp = self._playlist_songs(path)
+            tiles.append(plgrid.PlaylistTile(name, key, count, songs, self.pl_styles.colour(key),
+                                             self.pl_styles.image(key), mine=mine, stamp=stamp))
+        self.pl_grid.set_playlists(tiles)
+        self.pl_grid_hint.setVisible(not self._playlist_files)
+
+    def _playlist_songs(self, path):
+        """(songs in the file, those that are in the library, when the file changed). Read again only when the file or
+        the library changed: with hundreds of playlists, reading them all on every refresh took seconds."""
+        try:
+            st = Path(path).stat()
+        except OSError:
+            return 0, [], 0
+        stamp = (st.st_mtime_ns, st.st_size, len(self.by_path))
+        hit = self._pl_cache.get(str(path))
+        if hit and hit[0] == stamp:
+            return hit[1], hit[2], st.st_mtime_ns
+        try:
+            entries = playlists.read_m3u8(path, self.cfg.music_dir)
+        except OSError:
+            entries = []
+        songs = [self.by_path[e.path] for e in entries if e.exists and e.path in self.by_path]
+        self._pl_cache[str(path)] = (stamp, len(entries), songs)
+        return len(entries), songs, st.st_mtime_ns
+
+    def _show_playlist_grid(self):
+        self.pl_stack.setCurrentIndex(0)
+        self._refresh_playlist_grid()
+
+    def _select_playlist_path(self, path):
+        "Make the playlist with this file the current one (the detail view reads from it). False if it is gone."
+        row = next((i for i, f in enumerate(self._playlist_files) if str(f[1]) == path), -1)
+        if row < 0:
+            return False
+        self.pl_list.setCurrentRow(row)
+        self._playlist_selected(row)
+        return True
+
+    def _open_playlist_tile(self, tile):
+        if tile.new:
+            if self._new_playlist():
+                self.pl_stack.setCurrentIndex(1)
+        elif self._select_playlist_path(tile.path):
+            self.pl_stack.setCurrentIndex(1)
+
+    def _playlist_tile_menu(self, pos):
+        tile = self.pl_grid.album_at(pos)
+        if tile is None or tile.new:
+            return
+        menu = QMenu(self)
+        menu.addAction("Open", lambda: self._open_playlist_tile(tile))
+        if tile.songs:
+            menu.addAction("Play", lambda: self.player.set_queue(tile.paths))
+            menu.addAction("Add to queue", lambda: self.player.enqueue(tile.paths))
+        menu.addSeparator()
+        menu.addAction("Choose a cover picture…", lambda: self._choose_playlist_cover(tile))
+        if tile.image:
+            menu.addAction("Use the generated cover", lambda: self._set_playlist_look(tile, image=""))
+        menu.addAction("Title colour…", lambda: self._choose_playlist_colour(tile))
+        if tile.colour:
+            menu.addAction("Normal title colour", lambda: self._set_playlist_look(tile, colour=""))
+        if tile.mine:
+            menu.addSeparator()
+            menu.addAction("Rename…", lambda: self._playlist_tile_do(tile, self._rename_playlist))
+            menu.addAction("Delete…", lambda: self._playlist_tile_do(tile, self._delete_playlist))
+        menu.exec(self.pl_grid.viewport().mapToGlobal(pos))
+
+    def _playlist_tile_do(self, tile, action):
+        "Rename or delete use the current playlist, so make this tile's playlist the current one first."
+        if self._select_playlist_path(tile.path):
+            action()
+            self._refresh_playlist_grid()
+
+    def _save_styles(self):
+        try:
+            self.pl_styles.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save how your playlists look: {e}", 8000)
+
+    def _set_playlist_look(self, tile, **changes):
+        if "image" in changes:
+            self.pl_styles.set_image(tile.path, changes["image"])
+        if "colour" in changes:
+            self.pl_styles.set_colour(tile.path, changes["colour"])
+        self._save_styles()
+        self._refresh_playlist_grid()
+
+    def _choose_playlist_cover(self, tile):
+        file, _ = QFileDialog.getOpenFileName(self, f"Cover picture for {tile.name}", str(Path.home()),
+                                              "Pictures (*.png *.jpg *.jpeg *.webp *.bmp *.gif)")
+        if not file:
+            return
+        try:
+            stored = self.pl_styles.import_image(tile.path, file)
+        except (ValueError, OSError) as e:
+            QMessageBox.warning(self, "Cover picture", str(e))
+            return
+        self._set_playlist_look(tile, image=stored)
+
+    def _choose_playlist_colour(self, tile):
+        start = QColor(tile.colour) if tile.colour else QColor(theme.TEXT)
+        chosen = QColorDialog.getColor(start, self, f"Title colour for {tile.name}")
+        if not chosen.isValid():
+            return
+        if not theme.readable(chosen.name()):
+            self.status.showMessage("That colour is too dark to read on Sleeve's background. Pick a lighter one.", 8000)
+            return
+        self._set_playlist_look(tile, colour=chosen.name())
+
     def _load_playlists(self, select=None):
         "Fill the list: the playlists made in Sleeve first (marked with a star), then the ones dl.py wrote."
         keep = select or (self._pl_current[0] if self._pl_current else None)
@@ -2221,6 +2442,8 @@ class MainWindow(QMainWindow):
         self.pl_spotify_btn.setText("Hide Spotify playlists" if show else f"Show Spotify playlists ({len(spotify)})")
         self.pl_spotify_btn.setVisible(bool(spotify))
         self.pl_spotify_btn.blockSignals(False)
+        self.pl_grid_spotify_btn.setText(self.pl_spotify_btn.text())
+        self.pl_grid_spotify_btn.setVisible(bool(spotify))
         self.pl_list.setVisible(bool(self._playlist_files))
         self.pl_list.blockSignals(True)
         self.pl_list.clear()
@@ -2237,6 +2460,7 @@ class MainWindow(QMainWindow):
             self.pl_table.setRowCount(0)
             self.pl_info.setText("")
             self._set_edit_buttons(False, anything=False)
+        self._refresh_playlist_grid()
 
     def _set_edit_buttons(self, on, anything=True):
         "Enable the edit buttons for one of your playlists; with no playlist at all, show the empty state instead."
@@ -2424,7 +2648,7 @@ class MainWindow(QMainWindow):
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
         m = QMenu(self)
         if songs:
-            m.addAction("Unlike" if songs[0].path in self.likes else "Like",
+            m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
                         lambda: self._toggle_like([songs[0].path]))
             self._add_to_playlist_menu(m, songs)
         m.addAction("Save the whole queue as a playlist…", self._save_queue_as_playlist)
@@ -2438,7 +2662,7 @@ class MainWindow(QMainWindow):
         m = QMenu(self)
         m.addAction("Play now", lambda: self.player.set_queue([s.path for s in songs]))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
-        m.addAction("Unlike" if all(s.path in self.likes for s in songs) else "Like",
+        m.addAction(labels.UNDO if all(s.path in self.likes for s in songs) else labels.VERB,
                     lambda: self._toggle_like([s.path for s in songs]))
         self._add_to_playlist_menu(m, songs)
         m.exec(self.pl_table.viewport().mapToGlobal(pos))
@@ -2452,11 +2676,14 @@ class MainWindow(QMainWindow):
         new = old and self._ask_name("Rename playlist", old)
         if not new:
             return
+        old_key = str(self.my_playlists.path_for(old))
         try:
             used = self.my_playlists.rename(old, new)
         except (OSError, ValueError) as e:
             self._playlist_error(e)
             return
+        self.pl_styles.move(old_key, str(self.my_playlists.path_for(used)))
+        self._save_styles()
         self._load_playlists(select=used)
 
     def _delete_playlist(self):
@@ -2467,11 +2694,14 @@ class MainWindow(QMainWindow):
                                    "library.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if ask != QMessageBox.Yes:
             return
+        key = str(self.my_playlists.path_for(name))
         try:
             self.my_playlists.delete(name)
         except (OSError, ValueError) as e:
             self._playlist_error(e)
             return
+        self.pl_styles.forget(key)
+        self._save_styles()
         self._pl_current = None
         self._load_playlists()
 
@@ -2509,7 +2739,7 @@ class MainWindow(QMainWindow):
         self._load_playlists(select=name)
         self._playlist_selected(self.pl_list.currentRow(), select_rows=[target])
     def _play_folder(self, item):
-        "Double-click on a folder (Liked Songs, a genre...) plays what it shows, from the top."
+        "Double-click on a folder (Stashed Songs, a genre...) plays what it shows, from the top."
         if self.folder != item.text():
             self._folder_changed(item.text())
         paths = [s.path for s in self.model.songs]
@@ -3075,6 +3305,8 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setIcon(QIcon(theme.toggle_icon("repeat", accent if mode else theme.MUTED, mode != 0,
                                                         one=mode == REPEAT_ONE)))
         self.repeat_btn.setToolTip("Repeat: " + {0: "off", REPEAT_ALL: "all songs", REPEAT_ONE: "this song"}[mode])
+        if hasattr(self, "like_btn"):
+            self._update_like_button()
 
     def _seek_released(self):
         self._dragging = False
@@ -3325,6 +3557,9 @@ def main(argv=None):
     mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
     mng.add_argument("--uninstall", action="store_true",
                      help="remove Sleeve; your music, playlists and settings are kept")
+    mng.add_argument("--full", action="store_true",
+                     help="with --uninstall: also delete Sleeve's settings, stashed songs, listening history and the "
+                          "playlists made in Sleeve (never audio files)")
     mng.add_argument("--yes", action="store_true", help="do not ask before --uninstall")
     ctl = ap.add_argument_group("control a running Sleeve (for shortcuts, launchers and scripts)")
     ctl.add_argument("--toggle", action="store_true", help="show Sleeve, or minimise it when it is in front")
@@ -3335,11 +3570,22 @@ def main(argv=None):
     if args.update:                                       # no window, no Qt: just do it and report
         return updater.cli_update()
     if args.uninstall:
-        question = "Remove Sleeve? Your music, playlists and settings are kept. [y/N] "
+        plan, playlist_dir = None, None
+        if args.full:
+            prefs = settings.Settings()
+            playlist_dir = config.load(prefs.dl_path or None, prefs.music_dir or None).playlist_dir
+            plan = updater.data_plan(playlist_dir=playlist_dir)
+            print("A full uninstall deletes, for good:")
+            for line in updater.describe_data(plan) or ["nothing but the program"]:
+                print(f"  - {line}")
+            print("Your audio files are NOT deleted, nor are the playlists dl.py made from Spotify.")
+            question = "Delete all of that and remove Sleeve? [y/N] "
+        else:
+            question = "Remove Sleeve? Your music, playlists and settings are kept. [y/N] "
         if not args.yes and input(question).strip().lower() != "y":
             print("Nothing was removed.")
             return 1
-        return updater.cli_uninstall()
+        return updater.cli_uninstall(full=args.full, playlist_dir=playlist_dir)
     command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
     # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
     os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "

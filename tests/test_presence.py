@@ -225,3 +225,16 @@ def test_in_the_window_nothing_is_sent_until_it_is_switched_on_with_a_good_id(qa
     finally:
         win.close()
         fake.close()
+
+
+def test_flatpak_clients_such_as_vesktop_are_found_by_their_own_folders(tmp_path):
+    run = tmp_path / "run"
+    (run / "app" / "dev.vencord.Vesktop").mkdir(parents=True)
+    (run / "app" / "some.other.Client").mkdir(parents=True)
+    (run / "app" / "dev.vencord.Vesktop" / "discord-ipc-0").touch()
+    (run / "app" / "some.other.Client" / "discord-ipc-1").touch()
+    paths = presence.socket_paths({"XDG_RUNTIME_DIR": str(run)})
+    assert str(run / "app" / "dev.vencord.Vesktop" / "discord-ipc-0") in paths      # the named Vesktop Flatpak
+    assert str(run / "app" / "some.other.Client" / "discord-ipc-1") in paths        # and one nobody listed
+    assert paths[0] == str(run / "discord-ipc-0")                                   # the plain runtime folder stays first
+    assert len(paths) == len(set(paths))

@@ -10,7 +10,7 @@ topic. The topic files are the source of truth and live in
 | [Library](guide/02-library.md) | Genre folders, search, the song menu, editing tags, rescanning, the Identity page |
 | [Playlists](guide/03-playlists.md) | Playlists of your own, Spotify playlists, importing `.m3u8` files |
 | [Downloads](guide/04-downloads.md) | The buttons, the activity feed, trusting `dl.py` |
-| [Liked songs and Health](guide/05-liked-and-health.md) | Likes, and the list of songs that need attention |
+| [Stashed songs and Health](guide/05-liked-and-health.md) | Stashed songs, and the list of songs that need attention |
 | [Playback and sound](guide/06-playback-and-sound.md) | Queue, cover and lyrics, gapless, same volume, volume ceiling, media keys |
 | [Keyboard shortcuts](guide/07-shortcuts.md) | Keys and mouse tips |
 | [Settings](guide/08-settings.md) | Every setting and the paths it shows |
@@ -20,14 +20,14 @@ topic. The topic files are the source of truth and live in
 ## In short
 
 **Library.** Pick a genre folder or search, double-click a song to play it. Right-click for Play next, Add to queue,
-Like, Add to playlist, Edit tags and Show in file manager. Edit tags is the only way Sleeve changes your music files,
+Stash, Add to playlist, Edit tags and Show in file manager. Edit tags is the only way Sleeve changes your music files,
 and only when you press Save.
 
 **Now Playing.** The cover, a background drawn from its colours, the queue and a lyrics tab (synced `.lrc` lyrics that
 you can click to seek, or plain `.txt` lyrics). Expand the cover, or use fullscreen album art (Esc or a click to
 leave). The small cover in the player bar opens this page.
 
-**Playlists.** Yours are plain `.m3u8` files in `Playlists/My Playlists`. Drag `.m3u8` files onto the page to import
+**Playlists.** A grid of cover tiles, each with an optional cover picture and title colour. Yours are plain `.m3u8` files in `Playlists/My Playlists`. Drag `.m3u8` files onto the page to import
 them. Playlists that `dl.py` made from Spotify are hidden until you press Show Spotify playlists.
 
 **Downloads.** One button gets new music; the Tidy up buttons sort, repair genres, find duplicates, rebuild playlist
@@ -35,9 +35,12 @@ files, fetch lyrics and check progress. The activity feed explains what is happe
 you run an action Sleeve asks you to trust `dl.py`.
 
 **Health and Identity.** Health lists problem songs and never deletes anything. Identity describes your library from
-its tags: a persona, seven trait meters (Discovery, Loyalty, Range, Fidelity, Tidiness, Languages, Heart), charts,
+its tags: a persona, seven trait meters (Discovery, Loyalty, Range, Fidelity, Tidiness, Languages, Stash), charts,
 languages and moods. The Identity page also has a Listening panel with your top songs this week or this month, taken
 from a local history of what you actually played; it can be switched off or cleared in Settings.
+
+**Updates and theme.** Settings > Updates checks for a new release, updates and uninstalls (`sleeve --update`,
+`sleeve --uninstall`, `--uninstall --full`). Settings > Theme offers Dusk, and Settings has seasons and holiday looks.
 
 **Sound.** Gapless playback, same volume (ReplayGain tags, or measured with `ffmpeg`), and a loudest-volume setting.
 
