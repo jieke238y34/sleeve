@@ -4176,6 +4176,8 @@ class MainWindow(QMainWindow):
         self.np_artist.setText(artist)
         self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
         self.np_album.setToolTip(detail)
+        self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
+        QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
         if self._cover_screen is not None:
             self._cover_screen.set_song(self._np_pix, title, artist)
 
