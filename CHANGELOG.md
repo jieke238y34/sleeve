@@ -43,6 +43,9 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - The album art of the song playing now sits in the empty space under the sidebar's page list (as big as fits, up to
   260 px), and the player bar's left block is all the song: more room for its name, in bold, with the artist under it in
   the quiet colour.
+- Settings: every service's keys, secrets and passwords are now under **APIs**, below the list of connections:
+  Discord (Application ID), Last.fm (API key and shared secret) and Navidrome (server, user, password). The Navidrome
+  page moved to just below Downloads in the sidebar.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on

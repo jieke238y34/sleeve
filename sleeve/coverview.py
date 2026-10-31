@@ -28,6 +28,7 @@ class CoverView(QWidget):
         self._pix = None
         self._cache = None                    # ((cache key, side), the rounded, scaled picture)
         self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
+        self._side = 0                        # the square's side, set whenever the words are placed
         self.top_inset = 0                    # the art never starts above this many pixels from the top
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
         self.setMinimumSize(120, 120)
@@ -50,7 +51,7 @@ class CoverView(QWidget):
     def set_max_side(self, side):
         "A new cap for the drawn square (the cover never asks the window for room, so this only repaints)."
         self.max_side = side
-        self.update()
+        self._place_info()                               # the square changes, so the words under it move with it
 
     def set_shift(self, shift):
         """Shift the whole group sideways (left when positive) so its center sits over the page, not just over this
@@ -83,7 +84,7 @@ class CoverView(QWidget):
         info, wid, hei = self._info_height(), self.width(), self.height()
         span = max(0, wid - 2 * abs(self.x_shift))          # the width the panel leaves on both sides when balanced
         room = max(0, hei - self.top_inset)                 # the height below the line the art may not cross
-        side = max(0, min(span, room - info, self.max_side))
+        side = self._side = max(0, min(span, room - info, self.max_side))     # drawn and placed under with this one
         cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
         # beside a panel the art starts level with the top of its list; with no panel it is centered in the page
         self._art_y = self.top_inset if self.top_inset > 0 else max(0, (room - side - info) // 2)
@@ -103,9 +104,12 @@ class CoverView(QWidget):
         self.update()
 
     def side(self):
-        "The length of the square that is drawn now."
-        span = self.width() - 2 * abs(self.x_shift)
-        return max(0, min(span, self.height() - self.top_inset - self._info_height(), self.max_side))
+        "The length of the square that is drawn now: the one the words were placed under (see _place_info)."
+        return self._side
+
+    def refresh(self):
+        "The words changed (a new song, a longer line): work out the square and place the words again."
+        self._place_info()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
