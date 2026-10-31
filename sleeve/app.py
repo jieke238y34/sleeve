@@ -122,6 +122,7 @@ from .session import Session
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
+from .themedialog import ThemeDialog
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -168,7 +169,7 @@ def fmt_time(seconds):
 
 
 class ElidedLabel(QLabel):
-    "A one-line label that ends in … when its text does not fit, and shows all of it as a tooltip."
+    "A label whose lines each end in … when they do not fit, and shows all of it as a tooltip."
 
     def __init__(self, text="", parent=None):
         super().__init__(parent)
@@ -183,7 +184,8 @@ class ElidedLabel(QLabel):
         self._fit()
 
     def _fit(self):
-        shown = self.fontMetrics().elidedText(self._full, Qt.ElideRight, max(20, self.width()))
+        fm, room = self.fontMetrics(), max(20, self.width())
+        shown = "\n".join(fm.elidedText(line, Qt.ElideRight, room) for line in self._full.split("\n"))   # per line
         super().setText(shown)
         self.setToolTip(self._full if shown != self._full else "")
 
@@ -242,6 +244,13 @@ class VolumeBubble(QLabel):
         x = max(screen.left(), min(above.x() - self.width() // 2, screen.right() - self.width()))
         self.move(x, max(screen.top(), above.y() - self.height() - 8))
         self.show()
+
+
+class QuietCombo(QComboBox):
+    "A drop-down the mouse wheel does not change: scrolling over it moves the page, as people expect in Settings."
+
+    def wheelEvent(self, e):
+        e.ignore()                                        # the page behind gets it
 
 
 class ClickSlider(QSlider):
@@ -435,6 +444,7 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
+        theme.set_custom(self.settings.custom_theme)         # the user's own theme, if they made one
         self._look = self._look_name()                      # the theme picked by hand, else the seasonal look, if any
         self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
@@ -572,7 +582,10 @@ class MainWindow(QMainWindow):
         self.model.modelReset.connect(self._lib_thumb_timer.start)       # a new order shows new rows: their covers
         self.table.verticalScrollBar().valueChanged.connect(lambda _=0: self._lib_thumb_timer.start())
         SmoothScroll.attach(self.table)
+        self.table.setWordWrap(False)                         # a long title ends in … instead of a second line
+        self.table.setTextElideMode(Qt.ElideRight)
         head = self.table.horizontalHeader()
+        head.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         head.setStretchLastSection(False)
         head.setSectionResizeMode(0, QHeaderView.Stretch)
         for col, width in ((1, 160), (2, 180), (3, 105)):
@@ -1266,7 +1279,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.same_volume_hint)
 
         row = QHBoxLayout()
-        self.output_box = QComboBox()
+        self.output_box = QuietCombo()
         self.output_box.setMinimumContentsLength(24)
         self._devices = QMediaDevices(self)                 # outputs come and go (earbuds, HDMI): keep the list current
         self._devices.audioOutputsChanged.connect(self._fill_outputs)
@@ -1294,14 +1307,16 @@ class MainWindow(QMainWindow):
 
         section("Theme")
         row = QHBoxLayout()
-        self.theme_box = QComboBox()
-        self.theme_box.addItem("Sleeve (your own colours and the seasons)", "default")
-        for name, label in theme.CUSTOM_THEMES.items():
-            self.theme_box.addItem(label, name)
-        self.theme_box.setCurrentIndex(max(self.theme_box.findData(self.settings.theme), 0))
+        self.theme_box = QuietCombo()
+        self._fill_theme_box()
         self.theme_box.currentIndexChanged.connect(self._theme_changed)
+        self.theme_make_btn = QPushButton("")
+        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a theme")
+        self.theme_make_btn.clicked.connect(self._make_theme)
+        self._theme_button_text()
         row.addWidget(QLabel("Theme"))
         row.addWidget(self.theme_box)
+        row.addWidget(self.theme_make_btn)
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(hint("Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. "
@@ -1341,7 +1356,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         lay.addWidget(hint("How far one turn of the mouse wheel moves a list. Higher is faster."))
         row = QHBoxLayout()
-        self.accent_box = QComboBox()
+        self.accent_box = QuietCombo()
         for name, colour in settings.ACCENTS.items():
             self.accent_box.addItem(QIcon(theme.swatch(colour)), name)
         self.accent_box.addItem(QIcon(theme.swatch(self.settings.accent_custom)), CUSTOM_LABEL)
@@ -1358,7 +1373,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
                            "is used when nothing is playing."))
         row = QHBoxLayout()
-        self.seasonal_box = QComboBox()
+        self.seasonal_box = QuietCombo()
         for label, value in (("Off", "off"), ("Seasons", "seasons"), ("Holidays", "holidays"), ("Both", "both")):
             self.seasonal_box.addItem(label, value)
         self.seasonal_box.setCurrentIndex(max(self.seasonal_box.findData(self.settings.seasonal), 0))
@@ -1369,7 +1384,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("A look changes the colours of the window for the time of year. Holidays follow their "
                            "dates; seasons follow today's date. Nothing is sent anywhere."))
         row = QHBoxLayout()
-        self.season_choice_box = QComboBox()
+        self.season_choice_box = QuietCombo()
         for label, value in (("Follow the calendar", "auto"), ("Spring", "spring"), ("Summer", "summer"),
                              ("Autumn", "autumn"), ("Winter", "winter")):
             self.season_choice_box.addItem(label, value)
@@ -1377,7 +1392,7 @@ class MainWindow(QMainWindow):
         self.season_choice_box.currentIndexChanged.connect(self._seasonal_changed)
         row.addWidget(QLabel("Season"))
         row.addWidget(self.season_choice_box)
-        self.holiday_choice_box = QComboBox()
+        self.holiday_choice_box = QuietCombo()
         for label, value in (("Follow the calendar", "auto"), ("Christmas", "christmas"), ("Halloween", "halloween"),
                              ("New Year", "newyear")):
             self.holiday_choice_box.addItem(label, value)
@@ -1828,6 +1843,42 @@ class MainWindow(QMainWindow):
             return self.settings.theme
         return seasons.resolve(self.settings.seasonal, self.settings.season_choice, self.settings.holiday_choice)
 
+    def _fill_theme_box(self):
+        box = self.theme_box
+        box.blockSignals(True)
+        box.clear()
+        box.addItem("Sleeve (your own colours and the seasons)", "default")
+        for name, label in theme.CUSTOM_THEMES.items():
+            box.addItem(label, name)
+        box.setCurrentIndex(max(box.findData(self.settings.theme), 0))
+        box.blockSignals(False)
+
+    def _theme_button_text(self):
+        self.theme_make_btn.setText("Edit my theme…" if self.settings.custom_theme else "Create your own…")
+
+    def _make_theme(self):
+        "Open the colour picker for the user's own theme; keep what comes out and wear it."
+        start = self.settings.custom_theme
+        if not start:
+            bg, text, muted = theme.look_palette(self._look)
+            start = {"bg": bg, "text": text, "muted": muted, "accent": self._accent_shown, "name": "", "backdrop": None}
+        dlg = ThemeDialog(self, start, can_remove=bool(self.settings.custom_theme))
+        if dlg.exec() != QDialog.Accepted:
+            return
+        if dlg.removed:
+            self.settings.set("custom_theme", None)
+            if self.settings.theme == "custom":
+                self.settings.set("theme", "default")
+        else:
+            self.settings.set("custom_theme", dlg.result_theme())
+            self.settings.set("theme", "custom")
+        theme.set_custom(self.settings.custom_theme)
+        self._save_settings()
+        self._fill_theme_box()
+        self._theme_button_text()
+        self._look = self._look_name()
+        self._apply_accent(force=True)
+
     def _theme_changed(self):
         "The user picked a theme in Settings: save it and repaint everything."
         self.settings.set("theme", self.theme_box.currentData())
@@ -2030,8 +2081,7 @@ class MainWindow(QMainWindow):
         self._cover_click_timer.timeout.connect(lambda: self.show_page("Now Playing"))
         self.cover.clicked.connect(self._cover_click_timer.start)
         self.cover.doubleClicked.connect(self._cover_double_clicked)
-        self.now = QLabel("Nothing playing")
-        self.now.setTextFormat(Qt.PlainText)
+        self.now = ElidedLabel("Nothing playing")          # ends in … instead of being cut; the tooltip has it all
         self.now.setMinimumWidth(100)
         self.now.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # takes what its side block gives it
 
@@ -3304,9 +3354,13 @@ class MainWindow(QMainWindow):
 
     NP_PANEL, NP_PANEL_MIN, NP_COVER_MIN = 360, 280, 340  # widest and narrowest side panel; least for the art
 
+    def _np_width(self):
+        "The width Now Playing has or will have: a page that is not on show does not follow the window by itself."
+        return self.np_page.width() if self.np_page.isVisible() else self.stack.width()
+
     def _np_room_for_both(self):
         "Whether the page is wide enough for the playlist, the art and the lyrics side by side."
-        return self.np_page.width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
+        return self._np_width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
 
     def _np_panel_toggled(self, which, on):
         "The playlist or lyrics panel was shown or hidden. On a narrow page asking for one puts the other away."
@@ -3329,7 +3383,7 @@ class MainWindow(QMainWindow):
             self.tab_lyrics.blockSignals(False)
         shown = int(queue) + int(lyrics)
         if shown:                                            # equal panels, so the art sits in the middle of the page
-            spare = self.np_page.width() - 24 - 20 * shown - self.NP_COVER_MIN
+            spare = self._np_width() - 24 - 20 * shown - self.NP_COVER_MIN
             width = max(self.NP_PANEL_MIN, min(self.NP_PANEL, spare // shown))
             self.np_side.setFixedWidth(width)
             self.np_lyrics_side.setFixedWidth(width)

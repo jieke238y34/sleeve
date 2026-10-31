@@ -30,6 +30,33 @@ CUSTOM_THEMES = {"dusk": "Dusk"}
 BACKDROPS = {"dusk": ("#8f745a", "#6c5756", "#5f697b")}
 
 
+def set_custom(custom):
+    "Make the user's own theme (a dict from Settings, or None) one of the looks. It is called 'custom'."
+    if not custom:
+        LOOKS.pop("custom", None)
+        BACKDROPS.pop("custom", None)
+        CUSTOM_THEMES.pop("custom", None)
+        return
+    LOOKS["custom"] = (custom["bg"], custom["text"], custom["muted"], custom["accent"])
+    CUSTOM_THEMES["custom"] = custom.get("name") or "My theme"
+    if custom.get("backdrop"):
+        BACKDROPS["custom"] = tuple(custom["backdrop"])
+    else:
+        BACKDROPS.pop("custom", None)
+
+
+def problems(bg, text, muted, accent):
+    "Plain-English reasons a colour choice would be hard to read, or an empty list."
+    found = []
+    if not readable(text, bg, 4.5):
+        found.append("The text is hard to read on the background. Make one lighter and the other darker.")
+    if not readable(muted, bg, 3.0):
+        found.append("The quiet text is too faint on the background.")
+    if not readable(bg, accent, 3.0):
+        found.append("Text on buttons in the accent colour would be hard to read. Make the accent lighter.")
+    return found
+
+
 def _luminance(colour):
     c = QColor(colour)
     parts = [v / 255 for v in (c.red(), c.green(), c.blue())]
