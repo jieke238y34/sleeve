@@ -114,3 +114,15 @@ def test_the_art_starts_level_with_the_top_of_the_panel_beside_it(qapp, cfg, mon
         assert cover.top_inset == 0 and cover._art_y >= 0                              # no panel: centered as before
     finally:
         win.close()
+
+
+def test_one_loud_spike_does_not_flatten_the_rest_of_the_song():
+    body = [4000, -4000] * 1000 * 100                                  # a steady body of 100 buckets' worth of samples
+    spike = [32000, -32000]
+    quiet = [600, -600] * 1000 * 20
+    samples = quiet + body + spike + body + quiet
+    peaks = waveform.peaks_from_pcm(pcm(samples), buckets=240)
+    assert len(peaks) == 240 and max(peaks) == 1.0
+    loud_part = sorted(peaks)[len(peaks) // 2]                            # the typical bar
+    assert loud_part > 0.5, loud_part                                     # visible, not a row of dots
+    assert min(peaks) < loud_part                                         # and the quiet ends still look quieter
