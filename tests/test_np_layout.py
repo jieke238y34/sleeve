@@ -50,11 +50,11 @@ def test_the_art_never_starts_above_the_top_of_the_playlist(qapp, cfg, monkeypat
         win.close()
 
 
-def test_the_art_is_centered_over_the_whole_page_whichever_panels_are_open(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_art_is_centered_over_the_window_whichever_panels_are_open(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         open_page(qapp, win, (1800, 800))
-        page_centre = win.np_page.mapToGlobal(QPoint(0, 0)).x() + win.np_page.width() / 2
+        page_centre = win.mapToGlobal(QPoint(0, 0)).x() + win.width() / 2          # where the transport buttons are
         for queue, lyrics in ((True, True), (True, False), (False, True), (False, False)):
             win.tab_queue.setChecked(queue)
             win.tab_lyrics.setChecked(lyrics)

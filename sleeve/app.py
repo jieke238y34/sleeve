@@ -1248,6 +1248,7 @@ class MainWindow(QMainWindow):
         self.ceiling_slider = ClickSlider(Qt.Horizontal)
         self.ceiling_slider.setRange(30, 150)
         self.ceiling_slider.setValue(self.settings.max_volume)
+        self.ceiling_slider.setMinimumWidth(220)
         self.ceiling_slider.setMaximumWidth(280)
         self.ceiling_label = QLabel(f"{self.settings.max_volume}%")
         self.ceiling_label.setMinimumWidth(56)
@@ -1329,6 +1330,7 @@ class MainWindow(QMainWindow):
         self.cover_slider.setRange(240, 1400)
         self.cover_slider.setSingleStep(40)
         self.cover_slider.setValue(self.settings.cover_size)
+        self.cover_slider.setMinimumWidth(220)
         self.cover_slider.setMaximumWidth(280)
         self.cover_label = QLabel(f"{self.settings.cover_size} px")
         self.cover_label.setMinimumWidth(56)
@@ -1345,6 +1347,7 @@ class MainWindow(QMainWindow):
         self.scroll_slider.setSingleStep(10)
         self.scroll_slider.setPageStep(50)
         self.scroll_slider.setValue(self.settings.scroll_speed)
+        self.scroll_slider.setMinimumWidth(220)
         self.scroll_slider.setMaximumWidth(280)
         self.scroll_label = QLabel(f"{self.settings.scroll_speed}%")
         self.scroll_label.setMinimumWidth(56)
@@ -3389,6 +3392,9 @@ class MainWindow(QMainWindow):
             self.np_lyrics_side.setFixedWidth(width)
         self.np_side.setVisible(queue)
         self.np_lyrics_side.setVisible(lyrics)
+        if not self.np_page.isVisible() and self.centralWidget() is not None:     # a page that is not on show cannot
+            for holder in (self.np_page, self.stack, self.centralWidget()):          # tell the window its size changed
+                holder.layout().invalidate()
         if queue:
             QTimer.singleShot(0, self._queue_catch_up)
         if lyrics:
@@ -3515,14 +3521,17 @@ class MainWindow(QMainWindow):
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
 
     def _np_balance(self):
-        "Keep the cover centered over the whole page: while the queue panel shows, the square and its words avert to"
-        " the page center by mirroring half of the panel's width (spacing and margins included); nothing when hidden."
+        "Keep the cover centered over the whole window, in line with the transport buttons: while a panel shows, the"
+        " square and its words avert to that line by mirroring half of the panel's width (spacing and margins"
+        " included); nothing when hidden."
         " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
         gap = 20
         left = 0 if self.np_side.isHidden() else self.np_side.width() + gap
         right = 0 if self.np_lyrics_side.isHidden() else self.np_lyrics_side.width() + gap
         limit = max(0, (self.np_cover.width() - 360) // 2)
-        self.np_cover.set_shift(max(-limit, min(limit, (left - right) // 2)))
+        sidebar = self.nav.width() + self.splitter.handleWidth()
+        wanted = (left - right) // 2 + sidebar // 2        # over the window's middle, where the transport buttons are
+        self.np_cover.set_shift(max(-limit, min(limit, wanted)))
         inset = 0                                            # the art never starts above the top of the list beside it
         for panel, view in ((self.np_side, self.queue_list), (self.np_lyrics_side, self.lyrics)):
             if not panel.isHidden() and view.isVisible():

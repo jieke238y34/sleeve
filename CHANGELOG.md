@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format follows
 
 Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 104 (27c3882)`.
 
+### Added
+
+- Lyrics have a window of their own (Downloads → Get lyrics…) with their own `dl.py` process, so songs can download
+  while lyrics are fetched.
+- Make your own theme (Settings → Theme → Create your own…): pick the colours, see a preview, and Sleeve refuses
+  combinations that are hard to read. It can be edited or removed later.
+- Every playlist cover has a play button, and an open playlist has Play, Shuffle and Add to queue.
+- A proper box for naming a new playlist, and a new design for the New playlist tile.
+
+### Changed
+
+- The album art is bigger by default (up to 1400 px in Settings) and sits on the same line as the transport buttons.
+- `sleeve --update` on a copy newer than the newest release says it is a development copy and to pull the source and
+  run `./install.sh` again.
+- Settings drop-downs no longer change when the page is scrolled over them.
+
 ### Fixed
 
 - The play buttons in the player bar were off the middle of the window (about 100 px at 2560 wide) because the song on
