@@ -10,6 +10,10 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Fixed
 
+- The play buttons in the player bar were off the middle of the window (about 100 px at 2560 wide) because the song on
+  the left and the volume on the right were different widths; both sides now have equal limits, so the buttons are at
+  the window's center at every size. A test checks it from 800 to 2560 wide.
+
 - Grids of covers (Playlists, Library albums) lost a whole column at some window widths: Qt keeps the scrollbar's room
   reserved inside a viewport that is already narrower, and the tile size did not allow for it. A sweep test over window
   widths guards it.
@@ -61,6 +65,10 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
   read before installing. The Docs page is gone from the sidebar.
 
 ### Added
+
+- The window has fixed size limits: never smaller than 800 x 600 (the smallest size every page is checked at) and never
+  bigger than the monitor it is on; the limit is applied again when it is dragged to another monitor. A saved size
+  outside the limits is ignored.
 
 - Now Playing has the playlist on the left, the art in the middle and the lyrics on the right, each with a Hide button;
   the round ☰ and ♪ buttons under the art bring them back (remembered). A narrow window shows one panel at a time.
