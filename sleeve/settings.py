@@ -36,6 +36,7 @@ DEFAULTS = {
     "last_page": "Library",            # the page that was open
     "nav_width": 190,                  # width of the sidebar, which can be dragged
     "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
+    "scroll_speed": 150,               # percent: how far one wheel notch scrolls (100 is the old speed)
     "cover_size": 520,                 # the biggest the cover gets on the Now Playing page, in pixels
     "track_listening": True,           # remember what was played (stays on this computer); feeds the Identity panel
     "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
@@ -87,6 +88,8 @@ def _valid(key, value):
                 and all(isinstance(n, int) and not isinstance(n, bool) and 500 <= n <= 10000 for n in value))
     if key == "library_view":
         return value in ("songs", "albums")
+    if key == "scroll_speed":
+        return isinstance(value, int) and not isinstance(value, bool) and 50 <= value <= 500
     if key == "cover_size":
         return isinstance(value, int) and not isinstance(value, bool) and 240 <= value <= 900
     if key == "discord_client_id":

@@ -48,7 +48,7 @@ def test_the_stamp_tool_writes_the_file(tmp_path, monkeypatch):
 
 
 def test_the_stamp_tool_takes_a_build_number_by_hand(tmp_path, monkeypatch):
-    "The release workflow stamps the number from a tag such as v0.2.0-build.99, not the commit count."
+    "The release workflow stamps the number from a tag such as v0.2.0+build.99, not the commit count."
     path = Path(sleeve.__file__).parent.parent / "tools" / "stamp_build.py"
     spec = importlib.util.spec_from_file_location("stamp_build", path)
     tool = importlib.util.module_from_spec(spec)

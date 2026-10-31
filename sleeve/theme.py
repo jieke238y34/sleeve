@@ -65,7 +65,7 @@ QWidget {{ color: {text}; font-size: 10pt; }}QStackedWidget, QSplitter, QLabel, 
 QToolTip {{ background: #24202f; color: {text}; border: 1px solid #3a3450; padding: 4px; }}
 
 QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
-    background: rgba(10, 8, 16, 120); border: none; border-radius: 12px; outline: 0;
+    background: rgba(10, 8, 16, 120); border: 1px solid rgba(255, 255, 255, 22); border-radius: 12px; outline: 0;
     padding: 3px;
     alternate-background-color: rgba(255, 255, 255, 10);
     selection-background-color: rgba({rgb}, 80); selection-color: #ffffff;
@@ -75,7 +75,8 @@ QListWidget::item:selected {{ background: rgba({rgb}, 80); }}
 QListWidget::item, QListWidget::item:focus, QListWidget::item:selected:!active {{ border: none; outline: none; }}
 QListWidget::item:selected:!active {{ background: rgba({rgb}, 80); }}
 QListWidget#nav:focus {{ border: none; }}
-QListWidget#nav {{ background: rgba(10, 8, 16, 170); border-radius: 0; padding: 10px 8px; font-size: 11pt; }}
+QListWidget#nav {{ background: rgba(10, 8, 16, 170); border: none; border-radius: 0; padding: 10px 8px;
+                    font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {muted}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {text}; }}
 QListWidget#nav::item:selected {{ background: {accent}; color: {bg}; font-weight: 600; }}
@@ -97,7 +98,6 @@ QPushButton:focus {{ border: 2px solid {accent}; padding: 4px 14px; }}
 QPushButton#round:focus, QPushButton#play:focus {{ padding: 0; }}
 QPushButton#primary:focus {{ padding: 10px 28px; border-color: {CREAM}; }}
 QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
-QListWidget:focus, QTableView:focus, QTableWidget:focus {{ border: 1px solid rgba({rgb}, 160); }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}

@@ -1,5 +1,20 @@
 # Releasing
 
+## Version numbers
+
+Sleeve follows [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.
+
+- **PATCH** (0.2.1): bug fixes that change nothing a person relies on.
+- **MINOR** (0.3.0): new features that keep everything that worked working.
+- **MAJOR** (1.0.0): something that worked stops working the same way: a command-line option, a settings or data file
+  format, the way playlists are stored. While MAJOR is 0 the program is in initial development and the rules are looser,
+  but the habit is the same. The first stable release will be 1.0.0.
+
+The build number is *build metadata*, written after a plus sign: `0.2.0+build.99`. SemVer ignores it when comparing
+versions, so a tag is never a pre-release by accident (`0.2.0-build.99` would be one, and would rank *below* 0.2.0).
+Sleeve's updater adds one rule on top: of two releases with the same version, the higher build number is the newer.
+The version lives in `pyproject.toml` and `sleeve/__init__.py` and must match.
+
 This describes how to cut a release such as v0.2.0. The release workflow is `.github/workflows/release.yml`.
 
 ## What the workflow does
@@ -7,7 +22,7 @@ This describes how to cut a release such as v0.2.0. The release workflow is `.gi
 It runs when a tag matching `v*` is pushed. On Ubuntu with Python 3.12 it:
 
 1. checks the tag and works out the **build number**: the tag must be `v` plus the version in `pyproject.toml`
-   (`v0.2.0`, build = the number of commits) or that with `-build.N` (`v0.2.0-build.99`, build = 99), else it fails
+   (`v0.2.0`, build = the number of commits) or that with `+build.N` (`v0.2.0+build.99`, build = 99), else it fails
 2. stamps the build number into the package (`tools/stamp_build.py --build N`), so the app shows `0.2.0 · build 99`
 3. builds the sdist and wheel with `python -m build` into `dist/`
 4. creates a build provenance attestation for every file in `dist/` (`actions/attest-build-provenance`)
@@ -16,7 +31,7 @@ It runs when a tag matching `v*` is pushed. On Ubuntu with Python 3.12 it:
 
 **Updates.** Sleeve's *Check for updates* and `sleeve --update` read the newest release: a higher version is an
 update, and so is the same version with a higher build number. So to ship a new build of 0.2.0, tag it
-`v0.2.0-build.N` with N higher than the last one.
+`v0.2.0+build.N` with N higher than the last one.
 
 It does not run the tests, publish to PyPI, or attach a checksum file.
 

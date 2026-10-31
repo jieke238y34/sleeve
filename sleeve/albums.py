@@ -193,6 +193,7 @@ class AlbumGrid(QListWidget):
     enqueueAlbum = Signal(list)       # song paths: add to the end of the queue
     playNextAlbum = Signal(list)      # song paths: play right after the current song
     openAlbum = Signal(object)        # the Album: a single click
+    text_h = TEXT_H                   # room under the cover for the name; a subclass that draws on the cover needs less
 
     def __init__(self, cover_loader=None, parent=None):
         super().__init__(parent)
@@ -306,7 +307,7 @@ class AlbumGrid(QListWidget):
         side = max(TILE_MIN, min(TILE_MAX, width // cols - GAP))
         changed = side != self.tile
         self.tile = side
-        self.setGridSize(QSize(side + GAP, side + GAP + TEXT_H))
+        self.setGridSize(QSize(side + GAP, side + GAP + self.text_h))
         if changed:
             self._tiles.clear()
             size = self.gridSize()

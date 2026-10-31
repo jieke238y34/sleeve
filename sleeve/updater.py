@@ -1,4 +1,8 @@
-"""Updating and removing Sleeve when it was installed with install.sh (its own Python environment under
+"""Versions follow Semantic Versioning (semver.org): MAJOR.MINOR.PATCH, and the build number is *build metadata*
+(`v0.2.0+build.99`), which SemVer ignores when ordering releases. Sleeve adds one rule of its own for updates: of two
+releases with the same version, the higher build number is the newer one.
+
+Updating and removing Sleeve when it was installed with install.sh (its own Python environment under
 ~/.local/share/sleeve). Nothing here runs by itself: a check happens only when the user asks, and talks to one fixed
 GitHub address. A copy installed by a package manager (dnf, zypper, apt) or run from a checkout is never touched; the
 user is told which command to use instead.
@@ -15,6 +19,7 @@ import shutil
 import subprocess  # nosec B404 (the command line update/removal runs pip and nothing else)
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -28,7 +33,8 @@ API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 APP_ID = "io.github.jieke238y34.Sleeve"
 MAX_BYTES = 1_000_000
-_TAG = re.compile(r"v(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:-build\.(\d{1,7}))?")   # v0.2.0 or v0.2.0-build.99
+_NUM = r"(0|[1-9]\d{0,3})"                                          # SemVer: no leading zeros
+_TAG = re.compile(rf"v{_NUM}\.{_NUM}\.{_NUM}(?:\+build\.(\d{{1,7}}))?")   # v0.2.0 or v0.2.0+build.99
 _TITLE_BUILD = re.compile(r"\(build (\d{1,7})\)")
 
 
@@ -41,13 +47,13 @@ def _match(text):
 
 
 def parse_version(text):
-    "(major, minor, patch) for '0.2.0', 'v0.2.0' or 'v0.2.0-build.99'; None for anything else."
+    "(major, minor, patch) for '0.2.0', 'v0.2.0' or 'v0.2.0+build.99'; None for anything else."
     m = _match(text)
     return tuple(int(n) for n in m.groups()[:3]) if m else None
 
 
 def parse_build(text, title=""):
-    "The build number of a release: from `-build.N` in its tag, else '(build N)' in its title, else 0 (unknown)."
+    "The build number of a release: from `+build.N` in its tag, else '(build N)' in its title, else 0 (unknown)."
     m = _match(text)
     if m and m.group(4):
         return int(m.group(4))
@@ -75,7 +81,8 @@ def wheel_url(tag):
     version = parse_version(tag) if isinstance(tag, str) and tag.startswith("v") else None
     if version is None:
         raise ValueError("not a release tag")
-    return f"https://github.com/{REPO}/releases/download/{tag}/sleeve-{'.'.join(map(str, version))}-py3-none-any.whl"
+    shown = urllib.parse.quote(tag, safe="")                      # the + of v0.2.0+build.9 is %2B in a web address
+    return f"https://github.com/{REPO}/releases/download/{shown}/sleeve-{'.'.join(map(str, version))}-py3-none-any.whl"
 
 
 def latest_release(opener=urllib.request.urlopen):

@@ -4,12 +4,12 @@ a generated cover with the first letter of its name. The title can have its own 
 
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QRect, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QListWidgetItem
+from PySide6.QtCore import QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import QListWidgetItem, QStyle
 
 from . import theme
-from .albums import SOURCE_SIDE, AlbumGrid, placeholder_pixmap
+from .albums import GAP, SOURCE_SIDE, AlbumGrid, _TileDelegate, placeholder_pixmap
 
 MOSAIC_LOOK = 24             # songs of a playlist looked at to find up to four different album covers
 NEW_KEY = "\0new"
@@ -119,8 +119,107 @@ def load_cover(tile, loader):
     return mosaic(found, SOURCE_SIDE) if found else None
 
 
+def band_height(side):
+    "How tall the frosted band at the bottom of a tile is."
+    return max(46, int(side * 0.30))
+
+
+def glass(pix, band):
+    """The tile with a frosted-glass band over its lower part: the cover under it blurred and tinted, darker towards the
+    bottom so white text reads, and a thin light line along its top edge. The blur is a shrink and a stretch, which is
+    quick and, drawn once per tile, costs nothing while scrolling."""
+    w, h = pix.width(), pix.height()
+    out = QPixmap(pix)
+    p = QPainter(out)
+    p.setRenderHint(QPainter.Antialiasing)
+    clip = QPainterPath()
+    clip.addRoundedRect(QRectF(0, 0, w, h), max(8, w // 14), max(8, w // 14))
+    p.setClipPath(clip)
+    strip = pix.copy(0, h - band, w, band)
+    small = strip.scaled(max(1, w // 12), max(1, band // 12), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    p.drawPixmap(0, h - band, small.scaled(w, band, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+    p.fillRect(0, h - band, w, band, QColor(255, 255, 255, 38))
+    shade = QLinearGradient(0, h - band, 0, h)
+    shade.setColorAt(0, QColor(10, 8, 16, 30))
+    shade.setColorAt(1, QColor(10, 8, 16, 150))
+    p.fillRect(QRectF(0, h - band, w, band), shade)
+    p.setPen(QPen(QColor(255, 255, 255, 120), 1))
+    p.drawLine(0, h - band, w, h - band)
+    p.end()
+    return out
+
+
+class GlassDelegate(_TileDelegate):
+    "Paints a playlist tile: the cover with its glass band, the name and count on the glass, and Edit when hovered."
+
+    def paint(self, p, option, index):
+        grid, tile = self.parent(), index.data(Qt.UserRole)
+        if tile is None:
+            return
+        side = grid.tile
+        x, y = option.rect.x() + GAP // 2, option.rect.y() + GAP // 2
+        selected = bool(option.state & QStyle.State_Selected)
+        hovered = bool(option.state & QStyle.State_MouseOver)
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing)
+        p.drawPixmap(x, y, grid.tile_pixmap(tile))
+        if selected or hovered:
+            p.setPen(QPen(QColor(theme.LAVENDER if selected else QColor(255, 255, 255, 90)), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(QRectF(x + 1, y + 1, side - 2, side - 2), max(8, side // 14), max(8, side // 14))
+        band = band_height(side)
+        font = QFont(option.font)
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        wanted = tile.colour
+        p.setFont(font)
+        p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor("#ffffff"))
+        p.drawText(QRect(x + 12, y + side - band + 7, side - 24, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
+                   fm.elidedText(tile.name, Qt.ElideRight, side - 24))
+        small = QFont(option.font)
+        small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
+        fm2 = QFontMetrics(small)
+        p.setFont(small)
+        p.setPen(QColor(255, 255, 255, 200))
+        p.drawText(QRect(x + 12, y + side - band + 7 + fm.height(), side - 24, fm2.height()),
+                   Qt.AlignLeft | Qt.AlignVCenter, fm2.elidedText(tile.artist, Qt.ElideRight, side - 24))
+        if hovered and not tile.new:
+            r = edit_rect(x, y, side)
+            p.setPen(QPen(QColor(255, 255, 255, 130), 1))
+            p.setBrush(QColor(20, 17, 28, 190))
+            p.drawRoundedRect(QRectF(r), r.height() / 2, r.height() / 2)
+            p.setPen(QColor("#ffffff"))
+            p.setFont(small)
+            p.drawText(r, Qt.AlignCenter, "Edit")
+        p.restore()
+
+
+def edit_rect(x, y, side):
+    "Where the Edit pill sits on a tile whose cover starts at (x, y): the top right corner."
+    return QRect(x + side - 62, y + 10, 52, 24)
+
+
 class PlaylistGrid(AlbumGrid):
     "The album grid with playlists in it. A single click opens one (openAlbum), a double click plays it."
+
+    editRequested = Signal(object, QPoint)      # the tile whose Edit pill was pressed, and where to open the menu
+    text_h = 6                                  # the name sits on the glass over the cover, not under it
+
+    def __init__(self, cover_loader=None, parent=None):
+        super().__init__(cover_loader, parent)
+        self.setItemDelegate(GlassDelegate(self))
+
+    def mousePressEvent(self, e):
+        "A press on a tile's Edit pill asks for the edit menu instead of opening the playlist."
+        item = self.itemAt(e.position().toPoint())
+        tile = item.data(Qt.UserRole) if item is not None else None
+        if tile is not None and not tile.new and e.button() == Qt.LeftButton:
+            rect = self.visualRect(self.indexFromItem(item))
+            if edit_rect(rect.x() + GAP // 2, rect.y() + GAP // 2, self.tile).contains(e.position().toPoint()):
+                self.editRequested.emit(tile, e.globalPosition().toPoint())
+                e.accept()
+                return
+        super().mousePressEvent(e)
 
     def set_playlists(self, tiles):
         "Show these tiles (the new-playlist tile is made here, first). Covers load as they scroll into view."
@@ -166,7 +265,8 @@ class PlaylistGrid(AlbumGrid):
             if src is None:
                 src = placeholder_pixmap(tile.name, SOURCE_SIDE)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
-            self._tiles[tile.key] = pix
+            self._tiles[tile.key] = glass(pix, band_height(side)) if not tile.new else pix
+            pix = self._tiles[tile.key]
             self._trim()
         return pix
 

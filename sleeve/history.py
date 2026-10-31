@@ -5,6 +5,7 @@ A song counts as played once you have listened to it for 30 seconds, or half of 
 cleared in Settings.
 """
 
+import datetime as dt
 import json
 import os
 import time
@@ -86,6 +87,36 @@ class History:
     def seconds(self, days, now=None):
         "Total time listened in the last `days` days."
         return sum(e[2] for e in self._within(days, now))
+
+    def insights(self, days, now=None):
+        """What the last `days` days looked like: plays, songs, time, how many songs were new to the history, the time
+        listened per day (or per week for a month), the busiest weekday, the usual hour, and the same numbers for the
+        `days` before, to compare with."""
+        now = time.time() if now is None else now
+        since = now - days * DAY
+        mine = [e for e in self.events if e[1] >= since]
+        before = [e for e in self.events if since - days * DAY <= e[1] < since]
+        earlier = {e[0] for e in self.events if e[1] < since}
+        today = dt.date.fromtimestamp(now)
+        per_day, weekday, hour = Counter(), Counter(), Counter()
+        for _path, when, secs in mine:
+            local = time.localtime(when)
+            per_day[dt.date(local.tm_year, local.tm_mon, local.tm_mday)] += secs
+            weekday[local.tm_wday] += secs
+            hour[local.tm_hour] += 1
+        chunk = 1 if days <= 7 else 7
+        first = today - dt.timedelta(days=days - 1)
+        buckets = []
+        for start in range(0, days, chunk):
+            span = [first + dt.timedelta(days=start + i) for i in range(min(chunk, days - start))]
+            label = span[0].strftime("%a %d") if chunk == 1 else f"{span[0]:%d %b} - {span[-1]:%d %b}"
+            buckets.append((label, sum(per_day.get(d, 0) for d in span)))
+        songs = {e[0] for e in mine}
+        return {"plays": len(mine), "seconds": sum(e[2] for e in mine), "songs": len(songs),
+                "new_songs": len(songs - earlier), "buckets": buckets,
+                "busiest_weekday": max(weekday, key=weekday.get) if weekday else None,
+                "peak_hour": max(hour, key=hour.get) if hour else None,
+                "before_plays": len(before), "before_seconds": sum(e[2] for e in before)}
 
     def clear(self):
         self.events = []

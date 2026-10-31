@@ -12,6 +12,8 @@ GLIDE_MS = 170
 class SmoothScroll(QObject):
     "Attach to a list or table with SmoothScroll.attach(view); then view._smooth.center_on(row) glides to a row."
 
+    speed = 1.5                    # how many times the base distance one wheel notch moves (Settings > Look)
+
     def __init__(self, view):
         super().__init__(view)
         self.view = view
@@ -49,8 +51,8 @@ class SmoothScroll(QObject):
         if model is not None and model.rowCount() > 0 and hasattr(view, "sizeHintForRow"):
             row = view.sizeHintForRow(0)
             if row > 0:
-                return ROWS_PER_NOTCH * min(max(row, 22), 120)
-        return FALLBACK_PIXELS
+                return self.speed * ROWS_PER_NOTCH * min(max(row, 22), 120)
+        return self.speed * FALLBACK_PIXELS
 
     def scroll_to(self, y, animate=True):
         y = max(self.bar.minimum(), min(self.bar.maximum(), int(y)))

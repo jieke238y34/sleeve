@@ -34,18 +34,30 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Changed
 
+- Build numbers are written as SemVer build metadata (`v0.2.0+build.99`), not as a pre-release (`-build.99`, which
+  would rank below 0.2.0). Version numbers follow Semantic Versioning; the rules are in docs/RELEASING.md.
+- Lists and tables lose their stripes and the hard focus ring, and get a soft glass edge.
 - The user guide moved out of the app to `docs/guide/` on GitHub, so the app is smaller and the guide can be
   read before installing. The Docs page is gone from the sidebar.
 
 ### Added
 
+- Playlist tiles are frosted glass: the cover blurs and darkens under a band with the name and song count, and an
+  **Edit** pill appears when you point at a tile (and **Cover & colour…** in the playlist) for the cover picture and
+  title colour. Inside a playlist, and in the Library, songs are a clean list with a cover, title and artist.
+- Now Playing names what is playing (the playlist, album, folder or search) instead of "Playlist". Playing All songs
+  or Stashed Songs starts in a fresh random order each time.
+- The Listening panel says more: plays, songs, artists and time as tiles, minutes per day (per week for a month), your
+  top artists, your busiest weekday and usual hour, the change on the week or month before, and how many songs were new.
+- **Scroll speed** in Settings > Look (the default is faster than before).
+- Playlists made in Sleeve are marked with ◈ in the list (it was a star).
 - Updating and removing Sleeve from the program itself. Settings > Updates has **Check for updates**, **Update now**
   and **Uninstall Sleeve**, and the command line has `sleeve --update` and `sleeve --uninstall`. A check happens only
   when you press the button, asks first, and sends GitHub nothing but the Sleeve version. Updating installs the wheel
   of the newest GitHub release into Sleeve's own environment; removing deletes that environment, the `sleeve` command,
   the launcher entry and the icon, and keeps your music, playlists and settings. A copy installed by a package manager
   is never touched: Sleeve says which `dnf`, `zypper` or `apt` command to use instead.
-- Updates follow the build number as well as the version: a release tagged `v0.2.0-build.99` is an update to a
+- Updates follow the build number as well as the version: a release tagged `v0.2.0+build.99` is an update to a
   copy that is `0.2.0 · build 98`. The release workflow stamps the build number into the package, so an updated
   copy shows its new build. A newer build of the same version is reinstalled without touching Qt and the rest.
 - The setup banner on Downloads says **Add IDs** once the music folder is set and only the playlists are missing.

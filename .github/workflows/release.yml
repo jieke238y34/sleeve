@@ -32,8 +32,8 @@ jobs:
           )
           case "${GITHUB_REF_NAME}" in
             "v$v") build=$(git rev-list --count HEAD) ;;
-            "v$v-build."*) build="${GITHUB_REF_NAME##*-build.}" ;;
-            *) echo "tag ${GITHUB_REF_NAME} does not match version $v (use v$v or v$v-build.N)"; exit 1 ;;
+            "v$v+build."*) build="${GITHUB_REF_NAME##*+build.}" ;;
+            *) echo "tag ${GITHUB_REF_NAME} does not match version $v (use v$v or v$v+build.N)"; exit 1 ;;
           esac
           case "$build" in ''|*[!0-9]*) echo "the build number is not a number: $build"; exit 1 ;; esac
           echo "version=$v" >> "$GITHUB_OUTPUT"

@@ -660,6 +660,8 @@ class ListeningCard(Card):
     periodChanged = Signal(str)
     summaryChanged = Signal(str, str)           # headline and note for the Listening tab
     NAMES = {"week": "this week", "month": "this month"}
+    BEFORE = {"week": "the week before", "month": "the month before"}
+    WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     ROWS, MAX_ROWS = 10, 25                     # shown at first, and after pressing Show more
 
     def __init__(self):
@@ -685,11 +687,21 @@ class ListeningCard(Card):
         self.week_btn.setChecked(True)
         pick.addStretch(1)
         self.box.addLayout(pick)
+        self.stats_box = QWidget()                      # the numbers of the period, big
+        grid = QGridLayout(self.stats_box)
+        grid.setContentsMargins(0, 6, 0, 6)
+        self.stat_values = {}
+        for col, (key, title) in enumerate((("plays", "Plays"), ("songs", "Songs"), ("artists", "Artists"),
+                                            ("time", "Listened"))):
+            self.stat_values[key] = _label("", 20, bold=True)
+            grid.addWidget(self.stat_values[key], 0, col)
+            grid.addWidget(_label(title.upper(), 8, MUTED, bold=True), 1, col)
+        self.box.addWidget(self.stats_box)
         self.rows = QVBoxLayout()
         self.rows.setSpacing(6)
         self.box.addLayout(self.rows)
         self.expanded = False
-        self._data = ([], 0, True)
+        self._data = ([], 0, True, None)
         self.more_btn = QPushButton("Show more")
         self.more_btn.setFocusPolicy(Qt.TabFocus)
         self.more_btn.setCursor(Qt.PointingHandCursor)
@@ -700,6 +712,16 @@ class ListeningCard(Card):
         self.box.addLayout(more_row)
         self.total = _label("", 10, MUTED, wrap=True)
         self.box.addWidget(self.total)
+        self.insight_text = _label("", 10.5, wrap=True)           # what the numbers say, in sentences
+        self.bucket_title = _label("MINUTES LISTENED", 8.5, MUTED, bold=True)
+        self.bucket_bars = Bars()
+        self.artist_title = _label("TOP ARTISTS (PLAYS)", 8.5, MUTED, bold=True)
+        self.artist_bars = Bars()
+        self._insight_widgets = (self.stats_box, self.insight_text, self.bucket_title, self.bucket_bars,
+                                 self.artist_title, self.artist_bars)
+        for w in self._insight_widgets[1:]:
+            self.box.addWidget(w)
+        self._show_insights(None, 0)
 
     def _toggle_more(self):
         self.expanded = not self.expanded
@@ -723,16 +745,47 @@ class ListeningCard(Card):
         self._summarise()
 
     def _summarise(self):
-        _, seconds, enabled = self._data
+        _, seconds, enabled = self._data[:3]
         self.summaryChanged.emit(_span(seconds) if enabled and seconds > 0 else "Nothing yet",
                                  "history is off" if not enabled else self.NAMES[self.period])
 
     def set_accent(self, accent):
         self.accent = accent
 
-    def set_data(self, rows, seconds, enabled=True):
+    def _show_insights(self, ins, seconds):
+        "The tiles, the sentences and the two bar charts for the period, or nothing when there is nothing to say."
+        show = bool(ins and ins.get("plays"))
+        for w in self._insight_widgets:
+            w.setVisible(show)
+        if not show:
+            return
+        self.stat_values["plays"].setText(f"{ins['plays']:,}")
+        self.stat_values["songs"].setText(f"{ins['songs']:,}")
+        self.stat_values["artists"].setText(f"{ins.get('artists', 0):,}")
+        self.stat_values["time"].setText(_span(seconds))
+        out = []
+        if ins.get("busiest_weekday") is not None:
+            out.append(f"You listen most on {self.WEEKDAYS[ins['busiest_weekday']]}s.")
+        if ins.get("peak_hour") is not None:
+            out.append(f"Most plays start around {ins['peak_hour']:02d}:00.")
+        before = ins.get("before_seconds", 0)
+        if before > 0:
+            pct = round((seconds - before) / before * 100)
+            out.append(f"{abs(pct)}% {'more' if pct > 0 else 'less'} listening than {self.BEFORE[self.period]}."
+                       if pct else f"About the same listening as {self.BEFORE[self.period]}.")
+        if ins.get("new_songs"):
+            out.append(f"{_plural(ins['new_songs'], 'song')} of the {ins['songs']:,} were new to your history.")
+        self.insight_text.setText("  ".join(out))
+        self.insight_text.setVisible(bool(out))
+        self.bucket_bars.set_rows([(label, round(secs / 60)) for label, secs in ins.get("buckets", [])], self.accent)
+        top = ins.get("top_artists", [])
+        self.artist_bars.set_rows(top, self.accent)
+        self.artist_title.setVisible(bool(top))
+        self.artist_bars.setVisible(bool(top))
+
+    def set_data(self, rows, seconds, enabled=True, insights=None):
         "rows: [(title, artist, plays)], most played first; seconds: listened in the period; enabled: history is on."
-        self._data = (rows, seconds, enabled)
+        self._data = (rows, seconds, enabled, insights)
         self._summarise()
         name = self.NAMES[self.period]
         shown = self.MAX_ROWS if self.expanded else self.ROWS
@@ -745,6 +798,8 @@ class ListeningCard(Card):
                 old.hide()                          # gone from the screen now, not when the event loop gets to it
                 old.setParent(None)
                 old.deleteLater()
+        if not enabled or not rows:
+            self._show_insights(None, 0)
         if not enabled:
             self._set_heading("Listening history is off")
             self.total.setText("Turn on 'Remember what I listen to' in Settings and your top songs will appear here. "
@@ -769,6 +824,7 @@ class ListeningCard(Card):
             lay.addWidget(_label(_plural(plays, "play"), 10, MUTED))
             self.rows.addWidget(line)
         self.total.setText(f"You listened for {_span(seconds)} {name}.")
+        self._show_insights(insights, seconds)
 
 
 class IdentityPage(QWidget):

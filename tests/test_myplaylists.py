@@ -88,12 +88,12 @@ def test_spotify_playlists_are_hidden_until_asked_for(qapp, cfg, monkeypatch, tm
         assert win.pl_list.count() == 0 and not win.pl_empty.isHidden() and win.pl_table.isHidden()
         assert not win.pl_spotify_btn.isHidden() and "(1)" in win.pl_spotify_btn.text()
         win.pl_spotify_btn.click()
-        assert win.pl_list.count() == 1 and not win.pl_list.item(0).text().startswith("★")
+        assert win.pl_list.count() == 1 and not win.pl_list.item(0).text().startswith("◈")
         assert win.pl_empty.isHidden() and not win.pl_table.isHidden()
         assert not any(b.isEnabled() for b in win.pl_edit_buttons)       # read-only
         assert not win.pl_copy_btn.isHidden()
         win.pl_copy_btn.click()                                           # make one of mine from it
-        assert win.pl_list.item(0).text() == "★  mix" and win._pl_current[2] is True
+        assert win.pl_list.item(0).text() == "◈  mix" and win._pl_current[2] is True
         assert all(b.isEnabled() for b in win.pl_edit_buttons) and win.pl_copy_btn.isHidden()
         win.pl_spotify_btn.click()                                        # and hide the Spotify ones again
         assert win.pl_list.count() == 1 and win.pl_spotify_btn.text().startswith("Show Spotify")
@@ -106,7 +106,7 @@ def test_make_add_save_edit_and_delete_in_the_window(qapp, cfg, monkeypatch, tmp
     win = make(qapp, cfg, monkeypatch, tmp_path)
     try:
         songs = sorted(win.songs, key=lambda s: s.path)
-        assert win._new_playlist() == "Road trip" and win.pl_list.item(0).text() == "★  Road trip"
+        assert win._new_playlist() == "Road trip" and win.pl_list.item(0).text() == "◈  Road trip"
         win._add_to_playlist("Road trip", songs[:2])
         assert [e.path for e in win._playlist_entries] == [s.path for s in songs[:2]]
         win._add_to_playlist("Road trip", songs[:3])
