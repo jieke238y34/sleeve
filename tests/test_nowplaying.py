@@ -199,7 +199,8 @@ def test_expanding_the_cover_never_changes_the_window_size(qapp, cfg, monkeypatc
             win.expand_btn.click()
             settle(qapp, 0.1)
             assert (win.width(), win.height()) == (1000, 700)
-            assert win.np_side.isHidden() and win.np_cover.side() > normal_side
+            assert win.np_side.isHidden() and win.np_cover.side() >= normal_side      # never smaller
+            assert not win.np_title.isHidden() and not win.np_artist.isHidden()       # the song is still named
             assert win.np_cover.side() <= min(win.np_cover.width(), win.np_cover.height())     # it fits the space
             win.expand_btn.click()
             settle(qapp, 0.1)

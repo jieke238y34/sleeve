@@ -24,7 +24,7 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -1685,6 +1684,7 @@ class MainWindow(QMainWindow):
         self._look = look
         self._accent_shown = colour
         self.backdrop.set_fixed(theme.look_backdrop(look))
+        self.backdrop.set_art(self._cover_expanded, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
@@ -2063,7 +2063,7 @@ class MainWindow(QMainWindow):
         sel = self._selected()
         if not sel:
             return
-        m = QMenu(self)
+        m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in sel], 0, self._folder_source()))
         m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
@@ -2449,7 +2449,7 @@ class MainWindow(QMainWindow):
             self._tile_menu(tile).exec(self.pl_look_btn.mapToGlobal(QPoint(0, self.pl_look_btn.height())))
 
     def _tile_menu(self, tile):
-        menu = QMenu(self)
+        menu = theme.Menu(self)
         menu.addAction("Open", lambda: self._open_playlist_tile(tile))
         if tile.songs:
             menu.addAction("Play", lambda: self._play_queue(tile.paths, 0, tile.name))
@@ -2712,7 +2712,7 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(self._current_path)
         if song is None:
             return
-        menu = QMenu(self)
+        menu = theme.Menu(self)
         self._playlist_choices(menu, [song])
         self._popup_menu(menu, self.add_pl_btn)
 
@@ -2730,7 +2730,7 @@ class MainWindow(QMainWindow):
     def _queue_menu(self, pos):
         row = self.queue_list.currentRow()
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
-        m = QMenu(self)
+        m = theme.Menu(self)
         if songs:
             m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
                         lambda: self._toggle_like([songs[0].path]))
@@ -2743,7 +2743,7 @@ class MainWindow(QMainWindow):
         songs = self._songs_for([self._playlist_entries[r].path for r in rows if r < len(self._playlist_entries)])
         if not songs:
             return
-        m = QMenu(self)
+        m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in songs], 0, self._playlist_source()))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
         m.addAction(labels.UNDO if all(s.path in self.likes for s in songs) else labels.VERB,
@@ -2981,8 +2981,17 @@ class MainWindow(QMainWindow):
         return QIcon(self._placeholder_thumb())
 
     def _blank_icon(self):
+        "What a row shows while its cover is still loading: a dim rounded square, nothing that flashes when scrolling."
         if getattr(self, "_blank", None) is None:
-            self._blank = QIcon(self._placeholder_thumb())
+            pix = QPixmap(44, 44)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, 20))
+            p.drawRoundedRect(0, 0, 44, 44, 8, 8)
+            p.end()
+            self._blank = QIcon(pix)
         return self._blank
 
     def _trim_thumbs(self, keep=2000):
@@ -3001,7 +3010,7 @@ class MainWindow(QMainWindow):
     def _load_library_thumbs(self):
         "Covers for the rows of the song table that are on screen, three a tick, so the window never stalls."
         songs = self.model.songs
-        todo = [r for r in self._visible_rows(self.table, len(songs)) if songs[r].path not in self._thumbs][:3]
+        todo = [r for r in self._visible_rows(self.table, len(songs)) if songs[r].path not in self._thumbs][:5]
         for r in todo:
             self._thumbs[songs[r].path] = self._make_thumb(songs[r].path)
             ix = self.model.index(r, 0)
@@ -3014,7 +3023,7 @@ class MainWindow(QMainWindow):
         "The same for the playlist on show."
         entries = self._playlist_entries
         rows = self._visible_rows(self.pl_table, len(entries))
-        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists][:3]
+        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists][:5]
         for r in todo:
             self._thumbs[entries[r].path] = self._make_thumb(entries[r].path)
         for r in rows:
@@ -3047,8 +3056,7 @@ class MainWindow(QMainWindow):
         "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
         self.np_side.setVisible(not self._cover_expanded)
-        for lab in (self.np_title, self.np_artist, self.np_album):
-            lab.setVisible(not self._cover_expanded)
+        self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
         self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
@@ -3060,7 +3068,9 @@ class MainWindow(QMainWindow):
             return
         screen = CoverScreen(self)
         screen.closed.connect(self._cover_screen_closed)
+        screen.seekRequested.connect(self._seek_now)
         screen.set_song(self._np_pix, self.np_title.text(), self.np_artist.text())
+        screen.set_progress(self._pos, self._dur)
         self._cover_screen = screen
         if self.screen() is not None:
             screen.setScreen(self.screen())                   # on the screen this window is on
@@ -3499,6 +3509,8 @@ class MainWindow(QMainWindow):
         if not seeked:
             self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
+        if self._cover_screen is not None:
+            self._cover_screen.set_progress(pos, self._dur)
         if jumped:
             self._update_presence()                          # a seek moves Discord's progress bar too
         if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
@@ -3514,6 +3526,8 @@ class MainWindow(QMainWindow):
 
     def _on_duration(self, dur):
         self._dur = dur
+        if self._cover_screen is not None:
+            self._cover_screen.set_progress(self._pos, dur)
         self.dur_label.setText(fmt_time(dur))
         self.seek.blockSignals(True)                 # a range change can move the value: not a seek
         self.seek.setRange(0, int(dur * 10))

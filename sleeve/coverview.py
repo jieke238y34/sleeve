@@ -7,9 +7,9 @@ Esc, F11, Enter, a click or a double tap, so it is never a place you cannot leav
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import theme
 
@@ -66,10 +66,104 @@ class CoverView(QWidget):
             p.drawPixmap(x + (side - logo.width()) // 2, y + (side - logo.height()) // 2, logo)
 
 
+def clock(seconds):
+    s = int(max(0, seconds))
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
+
+
+class SeekBar(QWidget):
+    "A thin progress bar to click or drag. Says seekRequested(seconds) when you let go."
+
+    seekRequested = Signal(float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pos = self._dur = 0.0
+        self._drag = False
+        self._colour = QColor("#f6f3ee")
+        self.setFixedHeight(28)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMouseTracking(True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_progress(self, pos, dur):
+        if not self._drag:
+            self._pos, self._dur = max(0.0, pos), max(0.0, dur)
+            self.update()
+
+    def set_accent(self, colour):
+        self._colour = QColor(colour)
+        self.update()
+
+    def value(self):
+        return self._pos
+
+    def _seconds_at(self, x):
+        return max(0.0, min(1.0, x / max(1, self.width()))) * self._dur
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self._dur > 0:
+            self._drag = True
+            self._pos = self._seconds_at(e.position().x())
+            self.update()
+        e.accept()                                           # a press here must not close the full-screen window
+
+    def mouseMoveEvent(self, e):
+        if self._drag:
+            self._pos = self._seconds_at(e.position().x())
+            self.update()
+
+    def mouseReleaseEvent(self, e):
+        if self._drag:
+            self._drag = False
+            self._pos = self._seconds_at(e.position().x())
+            self.seekRequested.emit(self._pos)
+            self.update()
+        e.accept()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        mid, w = self.height() / 2, self.width()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 60))
+        p.drawRoundedRect(QRectF(0, mid - 3, w, 6), 3, 3)
+        share = self._pos / self._dur if self._dur > 0 else 0.0
+        p.setBrush(self._colour)
+        p.drawRoundedRect(QRectF(0, mid - 3, max(6.0, w * share), 6), 3, 3)
+        p.drawEllipse(QRectF(w * share - 7, mid - 7, 14, 14))
+
+
+class _Line(QLabel):
+    "One line of text that is cut with … when it is too long, so the layout never changes with the song."
+
+    def __init__(self, style):
+        super().__init__()
+        self._full = ""
+        self.setStyleSheet(f"color: #f6f3ee; background: transparent; {style}")
+        self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        self.setTextFormat(Qt.PlainText)
+        self.setMinimumWidth(10)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.setFixedHeight(self.fontMetrics().height() * 3 // 2 + 6)      # tall enough for its own font, always
+
+    def setText(self, text):
+        self._full = text or ""
+        self._fit()
+
+    def _fit(self):
+        super().setText(self.fontMetrics().elidedText(self._full, Qt.ElideRight, max(10, self.width() - 8)))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._fit()
+
+
 class CoverScreen(theme.Backdrop):
     "A full-screen window of only the album art, on a gradient of its colours. Esc, F11, Enter or a click closes it."
 
     closed = Signal()
+    seekRequested = Signal(float)
 
     def __init__(self, window):
         super().__init__()
@@ -79,13 +173,23 @@ class CoverScreen(theme.Backdrop):
         self.setFocusPolicy(Qt.StrongFocus)
         self.cover = CoverView(max_side=100_000)
         self.cover.clicked.connect(self.close)
-        self.title, self.artist = QLabel(), QLabel()
-        for label, style in ((self.title, "font-size: 26pt; font-weight: 700;"), (self.artist, "font-size: 15pt;")):
-            label.setAlignment(Qt.AlignHCenter)
-            label.setTextFormat(Qt.PlainText)
-            label.setWordWrap(True)
-            label.setStyleSheet(f"color: #f6f3ee; background: transparent; {style}")
-        self.hint = QLabel("Esc or click to close   ·   Space plays and pauses   ·   ← → skip 5 seconds")
+        self.title = _Line("font-size: 26pt; font-weight: 700;")
+        self.artist = _Line("font-size: 15pt;")
+        self.seek = SeekBar()
+        self.seek.seekRequested.connect(self.seekRequested)
+        label_style = "color: rgba(246, 243, 238, 200); background: transparent; font-size: 10pt;"
+        self.pos_label, self.dur_label = QLabel("0:00"), QLabel("0:00")
+        for label, side in ((self.pos_label, Qt.AlignRight), (self.dur_label, Qt.AlignLeft)):
+            label.setStyleSheet(label_style)
+            label.setAlignment(side | Qt.AlignVCenter)
+            label.setFixedWidth(label.fontMetrics().horizontalAdvance("0:00:00") + 6)      # never moves while counting
+        bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.addWidget(self.pos_label)
+        bar.addWidget(self.seek, 1)
+        bar.addWidget(self.dur_label)
+        self.hint = QLabel("Esc or click the picture to close   ·   Space plays and pauses   ·   ← → skip 5 s   ·   "
+                           "drag the bar to seek")
         self.hint.setAlignment(Qt.AlignHCenter)
         self.hint.setStyleSheet("color: rgba(246, 243, 238, 150); background: transparent; font-size: 10pt;")
         lay = QVBoxLayout(self)
@@ -94,8 +198,23 @@ class CoverScreen(theme.Backdrop):
         lay.addWidget(self.cover, 1)
         lay.addWidget(self.title)
         lay.addWidget(self.artist)
+        lay.addLayout(bar)
         lay.addWidget(self.hint)
+        keep = self.hint.sizePolicy()
+        keep.setRetainSizeWhenHidden(True)                    # when the hint goes its row stays: no jump in size
+        self.hint.setSizePolicy(keep)
         QTimer.singleShot(HINT_SECONDS * 1000, self.hint.hide)           # the hint has done its job after a moment
+        self.set_art(True, getattr(window, "_accent_shown", None))        # a blurred copy of the cover behind it all
+        self.seek.set_accent(getattr(window, "_accent_shown", "#f6f3ee"))
+
+    def set_progress(self, pos, dur):
+        "Where the song is now: moves the bar and the two times (the times only change when the second does)."
+        self.seek.set_progress(pos, dur)
+        shown, total = clock(pos), clock(dur)
+        if self.pos_label.text() != shown:
+            self.pos_label.setText(shown)
+        if self.dur_label.text() != total:
+            self.dur_label.setText(total)
 
     def set_song(self, pix, title, artist):
         self.cover.set_pixmap(pix)

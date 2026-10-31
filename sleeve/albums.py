@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QListView,
     QListWidget,
     QListWidgetItem,
-    QMenu,
     QPushButton,
     QStyle,
     QStyledItemDelegate,
@@ -269,7 +268,7 @@ class AlbumGrid(QListWidget):
 
     def album_menu(self, album):
         "A menu for one album (not shown: the caller places it). Its actions emit the signals."
-        menu = QMenu(self)
+        menu = theme.Menu(self)
         menu.addAction("Play").triggered.connect(lambda: self.playAlbum.emit(album.paths))
         menu.addAction("Play next").triggered.connect(lambda: self.playNextAlbum.emit(album.paths))
         menu.addAction("Add to queue").triggered.connect(lambda: self.enqueueAlbum.emit(album.paths))
