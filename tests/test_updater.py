@@ -92,6 +92,7 @@ def test_removal_takes_the_environment_and_launcher_and_nothing_else(tmp_path):
     home, env = tmp_path / "home", {"SLEEVE_PREFIX": str(tmp_path / "home/.local/share/sleeve")}
     venv = tmp_path / "home/.local/share/sleeve/venv"
     (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
     (venv / "bin/sleeve").write_text("x")
     (tmp_path / "home/.local/bin").mkdir(parents=True)
     (tmp_path / "home/.local/bin/sleeve").symlink_to(venv / "bin/sleeve")
@@ -126,6 +127,8 @@ def test_a_sleeve_command_that_is_not_ours_is_left_alone(tmp_path):
 def test_the_removal_script_quotes_paths_and_lists_only_planned_things(tmp_path):
     home = tmp_path / "it's home"
     env = {"SLEEVE_PREFIX": str(home / ".local/share/sleeve")}
+    (home / ".local/share/sleeve/venv").mkdir(parents=True)
+    (home / ".local/share/sleeve/venv/pyvenv.cfg").write_text("home = /usr/bin\n")
     script = updater.removal_script(env, home)
     parts = shlex.split(script.replace(";", " ; "))                       # what the shell would see as arguments
     assert parts[:4] == ["sleep", "1", ";", "rm"] and str(home / ".local/share/sleeve/venv") in parts

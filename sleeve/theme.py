@@ -345,6 +345,16 @@ class Menu(QMenu):
         self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.setWindowFlag(Qt.NoDropShadowWindowHint, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_DeleteOnClose, True)         # one menu per right-click must not pile up
+
+    def addMenu(self, arg):
+        "A submenu made from a title is a Sleeve menu as well (a plain QMenu would show square corners)."
+        if isinstance(arg, str):
+            sub = Menu(self)
+            sub.setTitle(arg)
+            super().addMenu(sub)
+            return sub
+        return super().addMenu(arg)
 
 
 class Backdrop(QWidget):
@@ -391,6 +401,14 @@ class Backdrop(QWidget):
         self._fade.stop()
         self._fade.start()
 
+    def _blurred(self, w, h):
+        "The cover shrunk and stretched to fill w x h: a cheap blur, kept until the cover or the size changes."
+        key = (self._pix.cacheKey(), w, h)
+        if getattr(self, "_blur", (None, None))[0] != key:
+            small = self._pix.scaled(28, 28, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            self._blur = (key, small.scaled(w, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+        return self._blur[1]
+
     def _fading(self, t):
         self._now = [self._mix(a, b, t) for a, b in zip(self._from, self._to, strict=True)]
         self.update()
@@ -433,8 +451,7 @@ class Backdrop(QWidget):
         p.fillRect(self.rect(), glow)
         if self._art:
             if self._pix is not None and not self._pix.isNull():     # the cover, shrunk and stretched: a cheap blur
-                small = self._pix.scaled(28, 28, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                big = small.scaled(w, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                big = self._blurred(w, h)
                 p.setOpacity(0.6)
                 p.drawPixmap((w - big.width()) // 2, (h - big.height()) // 2, big)
                 p.setOpacity(1.0)

@@ -93,19 +93,23 @@ class History:
         listened per day (or per week for a month), the busiest weekday, the usual hour, and the same numbers for the
         `days` before, to compare with."""
         now = time.time() if now is None else now
-        since = now - days * DAY
-        mine = [e for e in self.events if e[1] >= since]
-        before = [e for e in self.events if since - days * DAY <= e[1] < since]
-        earlier = {e[0] for e in self.events if e[1] < since}
         today = dt.date.fromtimestamp(now)
+        first = today - dt.timedelta(days=days - 1)
+        since = time.mktime(first.timetuple())                  # midnight at the start of the first day, like the chart
+        earlier_start = time.mktime((first - dt.timedelta(days=days)).timetuple())
+        mine = [e for e in self.events if since <= e[1] <= now]   # nothing from the future, no half days at the start
+        before = [e for e in self.events if earlier_start <= e[1] < since]
+        earlier = {e[0] for e in self.events if e[1] < since}
         per_day, weekday, hour = Counter(), Counter(), Counter()
         for _path, when, secs in mine:
-            local = time.localtime(when)
+            try:
+                local = time.localtime(when)
+            except (OverflowError, OSError, ValueError):         # a nonsense time stamp in a hand-edited file
+                continue
             per_day[dt.date(local.tm_year, local.tm_mon, local.tm_mday)] += secs
             weekday[local.tm_wday] += secs
             hour[local.tm_hour] += 1
         chunk = 1 if days <= 7 else 7
-        first = today - dt.timedelta(days=days - 1)
         buckets = []
         for start in range(0, days, chunk):
             span = [first + dt.timedelta(days=start + i) for i in range(min(chunk, days - start))]

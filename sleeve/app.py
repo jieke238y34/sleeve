@@ -332,6 +332,7 @@ class MainWindow(QMainWindow):
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
+        self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
         self._queue_source = ""                        # what the queue was started from: a playlist, an album, a folder
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
@@ -509,11 +510,12 @@ class MainWindow(QMainWindow):
         self.table.setAlternatingRowColors(False)             # a clean list: no stripes
         self.table.setIconSize(QSize(36, 36))
         self.table.verticalHeader().setDefaultSectionSize(46)
-        self.model.icons = self._thumbs = {}                  # shared with the queue: path -> cover icon
+        self.model.icons = self._thumbs                       # shared with the queue: path -> cover icon
         self._lib_thumb_timer = QTimer(self)
         self._lib_thumb_timer.setSingleShot(True)
         self._lib_thumb_timer.setInterval(30)
         self._lib_thumb_timer.timeout.connect(self._load_library_thumbs)
+        self.model.modelReset.connect(self._lib_thumb_timer.start)       # a new order shows new rows: their covers
         self.table.verticalScrollBar().valueChanged.connect(lambda _=0: self._lib_thumb_timer.start())
         SmoothScroll.attach(self.table)
         head = self.table.horizontalHeader()
@@ -812,7 +814,6 @@ class MainWindow(QMainWindow):
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lay.addWidget(side)
         lay.addLayout(right, 1)
-        self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)

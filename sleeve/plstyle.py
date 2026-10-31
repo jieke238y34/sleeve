@@ -13,7 +13,7 @@ from pathlib import Path
 STYLE_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "playlist-style.json"
 MAX_FILE = 1_000_000                 # a style file larger than this is not ours
 MAX_IMAGE_BYTES = 25_000_000         # the biggest picture file accepted
-MAX_PIXELS = 100_000_000             # and the most pixels it may have (a 10000 x 10000 picture)
+MAX_PIXELS = 40_000_000              # and the most pixels it may have (a 6300 x 6300 picture, about 160 MB decoded)
 COVER_SIDE = 600                     # stored covers are squares this big
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
@@ -123,6 +123,8 @@ class PlaylistStyles:
             raise ValueError(f"The picture could not be read ({e.strerror}).") from None
         reader = QImageReader(str(src))
         reader.setAutoTransform(True)
+        if hasattr(reader, "setAllocationLimit"):
+            reader.setAllocationLimit(256)                         # megabytes: a bigger decode fails cleanly
         size = reader.size()
         if not size.isValid() or size.width() * size.height() > MAX_PIXELS:
             raise ValueError("That file is not a picture Sleeve can use, or it is enormous.")

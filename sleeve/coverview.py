@@ -8,7 +8,7 @@ Esc, F11, Enter, a click or a double tap, so it is never a place you cannot leav
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import theme
@@ -86,7 +86,11 @@ class SeekBar(QWidget):
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
+    PAD = 8                                                    # room at both ends so the knob is never cut off
+
     def set_progress(self, pos, dur):
+        if max(0.0, dur) != self._dur:
+            self._drag = False                                   # another song: the drag belonged to the old one
         if not self._drag:
             self._pos, self._dur = max(0.0, pos), max(0.0, dur)
             self.update()
@@ -99,7 +103,7 @@ class SeekBar(QWidget):
         return self._pos
 
     def _seconds_at(self, x):
-        return max(0.0, min(1.0, x / max(1, self.width()))) * self._dur
+        return max(0.0, min(1.0, (x - self.PAD) / max(1, self.width() - 2 * self.PAD))) * self._dur
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton and self._dur > 0:
@@ -124,28 +128,33 @@ class SeekBar(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        mid, w = self.height() / 2, self.width()
+        mid, pad = self.height() / 2, self.PAD
+        w = self.width() - 2 * pad
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(255, 255, 255, 60))
-        p.drawRoundedRect(QRectF(0, mid - 3, w, 6), 3, 3)
-        share = self._pos / self._dur if self._dur > 0 else 0.0
+        p.drawRoundedRect(QRectF(pad, mid - 3, w, 6), 3, 3)
+        share = min(1.0, self._pos / self._dur) if self._dur > 0 else 0.0
         p.setBrush(self._colour)
-        p.drawRoundedRect(QRectF(0, mid - 3, max(6.0, w * share), 6), 3, 3)
-        p.drawEllipse(QRectF(w * share - 7, mid - 7, 14, 14))
+        p.drawRoundedRect(QRectF(pad, mid - 3, max(6.0, w * share), 6), 3, 3)
+        p.drawEllipse(QRectF(pad + w * share - 7, mid - 7, 14, 14))
 
 
 class _Line(QLabel):
     "One line of text that is cut with … when it is too long, so the layout never changes with the song."
 
-    def __init__(self, style):
+    def __init__(self, size, bold=False):
         super().__init__()
         self._full = ""
-        self.setStyleSheet(f"color: #f6f3ee; background: transparent; {style}")
+        font = self.font()                                  # the size is set on the font itself, not by a stylesheet,
+        font.setPointSizeF(size)                            # so the height below is worked out from the real thing
+        font.setBold(bold)
+        self.setFont(font)
+        self.setStyleSheet("color: #f6f3ee; background: transparent;")
         self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self.setTextFormat(Qt.PlainText)
         self.setMinimumWidth(10)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        self.setFixedHeight(self.fontMetrics().height() * 3 // 2 + 6)      # tall enough for its own font, always
+        self.setFixedHeight(QFontMetrics(font).height() * 3 // 2 + 6)      # tall enough for its own font, always
 
     def setText(self, text):
         self._full = text or ""
@@ -173,8 +182,8 @@ class CoverScreen(theme.Backdrop):
         self.setFocusPolicy(Qt.StrongFocus)
         self.cover = CoverView(max_side=100_000)
         self.cover.clicked.connect(self.close)
-        self.title = _Line("font-size: 26pt; font-weight: 700;")
-        self.artist = _Line("font-size: 15pt;")
+        self.title = _Line(26, bold=True)
+        self.artist = _Line(15)
         self.seek = SeekBar()
         self.seek.seekRequested.connect(self.seekRequested)
         label_style = "color: rgba(246, 243, 238, 200); background: transparent; font-size: 10pt;"
@@ -210,7 +219,7 @@ class CoverScreen(theme.Backdrop):
     def set_progress(self, pos, dur):
         "Where the song is now: moves the bar and the two times (the times only change when the second does)."
         self.seek.set_progress(pos, dur)
-        shown, total = clock(pos), clock(dur)
+        shown, total = clock(self.seek.value()), clock(dur)          # the label follows the bar, also when dragged
         if self.pos_label.text() != shown:
             self.pos_label.setText(shown)
         if self.dur_label.text() != total:
