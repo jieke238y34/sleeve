@@ -2599,7 +2599,8 @@ class MainWindow(QMainWindow):
         else:
             text = {"ready": "Connected to Discord.", "connecting": "Connecting…",
                     "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
-        self.discord_status.setText(text)
+        note = getattr(self, "_cover_note", "")
+        self.discord_status.setText(f"{text} {note}".strip() if s.discord_presence and self.presence.enabled else text)
 
     def _discord_art_toggled(self, on):
         if on and not self._confirm_online():                # the cover lookup also uses the internet: ask first
@@ -2617,12 +2618,24 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(self._current_path) if self._current_path else None
         title = song.name if song else (Path(self._current_path).stem if self._current_path else "")
         artist = song.artist if song else ""
-        cover = ""
-        if song is not None and song.album and self.settings.discord_art and self._is_playing:
+        cover, note = "", ""
+        if not self.settings.discord_art:
+            note = "Cover: off."
+        elif song is not None and self._is_playing and not song.album:
+            note = "Cover: this song has no album name, so there is nothing to look up."
+        elif song is not None and song.album and self._is_playing:
             known, cover = self._art_cache.get(song.album, artist)
             if not known:
                 self._want_art(song.album, artist)
+                note = "Cover: looking it up on MusicBrainz…"
+            elif cover:
+                note = "Cover: found and sent to Discord. If it does not show, Discord could not fetch the picture."
+            else:
+                note = "Cover: MusicBrainz has no match for this album."
             self._prefetch_art()
+        if note != getattr(self, "_cover_note", None):
+            self._cover_note = note
+            self._show_presence_state()
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
