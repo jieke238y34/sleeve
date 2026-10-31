@@ -55,7 +55,7 @@ def sign(params, secret):
     return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
-def call(method, params, secret="", signed=True, opener=urllib.request.urlopen):
+def call(method, params, secret="", signed=True, opener=urllib.request.urlopen):  # nosec B107  (empty means none, not a password)
     "One last.fm API call (a POST). Returns the decoded answer; raises LastfmError."
     fields = {k: str(v) for k, v in params.items() if v not in (None, "")}
     fields["method"] = method
@@ -98,7 +98,7 @@ class Account:
 
     def __init__(self, file=None):
         self.file = Path(file or LASTFM_FILE)
-        self.api_key = self.secret = self.session = self.user = ""
+        self.api_key = self.secret = self.session = self.user = ""  # nosec B105  (empty means none, not a password)
         self.queue = []
         self.load()
 
@@ -139,7 +139,7 @@ class Account:
 
     def forget(self):
         "Disconnect: the key, secret and session go; so do songs that were waiting (they belong to that account)."
-        self.api_key = self.secret = self.session = self.user = ""
+        self.api_key = self.secret = self.session = self.user = ""  # nosec B105  (empty means none, not a password)
         self.queue = []
 
 
@@ -220,7 +220,7 @@ class Scrobbler(QObject):
             then(None, "Paste both the API key and the shared secret first.")
             return
         self.account.api_key, self.account.secret, self.account.session = api_key, secret, ""
-        self._token = ""
+        self._token = ""  # nosec B105  (empty means none, not a password)
 
         def done(result, error):
             token = result.get("token") if isinstance(result, dict) else None
@@ -245,7 +245,7 @@ class Scrobbler(QObject):
                 then("", str(error) if error else "last.fm gave no session.")
                 return
             self.account.session, self.account.user = key[:64], _text(info.get("name"), 64)
-            self._token = ""
+            self._token = ""  # nosec B105  (empty means none, not a password)
             self._save()
             self.changed.emit()
             then(self.account.user, "")
@@ -254,7 +254,7 @@ class Scrobbler(QObject):
 
     def disconnect(self):
         self.account.forget()
-        self._token = ""
+        self._token = ""  # nosec B105  (empty means none, not a password)
         self.retry.stop()
         self._save()
         self.changed.emit()
