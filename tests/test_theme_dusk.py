@@ -76,3 +76,20 @@ def test_a_saved_theme_is_worn_at_startup(qapp, cfg, monkeypatch, tmp_path):  # 
         assert second.theme_box.currentData() == "dusk"
     finally:
         second.close()
+
+
+def test_a_hand_picked_theme_keeps_its_accent_while_a_song_plays(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtGui import QPixmap
+
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        red = QPixmap(64, 64)
+        red.fill(QColor("#c01830"))
+        win.match_box.setChecked(True)
+        win._show_cover(red, "Song", "Artist", "Album")
+        assert win._accent_shown != theme.look_accent("dusk")                    # no theme: the cover colours it
+        win.theme_box.setCurrentIndex(win.theme_box.findData("dusk"))
+        win._show_cover(red, "Song", "Artist", "Album")
+        assert win._accent_shown == theme.look_accent("dusk")                    # Dusk stays peach
+    finally:
+        win.close()

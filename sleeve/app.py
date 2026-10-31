@@ -1833,7 +1833,10 @@ class MainWindow(QMainWindow):
         self._apply_accent()
 
     def _effective_accent(self):
-        "The accent to show: a look carries its own, else the chosen one, or (if asked) one in the cover's hue."
+        """The accent to show: a theme picked by hand (Dusk, your own) keeps its own accent whatever is playing; else
+        the cover's hue if asked, else a seasonal look's accent, else the chosen one."""
+        if self._look in theme.CUSTOM_THEMES and self.settings.theme == self._look:
+            return theme.look_accent(self._look)
         if self.settings.accent_from_cover and self._np_pix is not None:
             return theme.accent_from_cover(self._np_pix) or self.settings.accent_color
         if self._look:

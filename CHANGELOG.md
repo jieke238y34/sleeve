@@ -19,6 +19,8 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Changed
 
+- `install.sh` run from the web installs the newest published release (with the source as a fallback), so a normal
+  install is never ahead of `sleeve --update`. `SLEEVE_FROM=main` installs the newest source.
 - The album art is bigger by default (up to 1400 px in Settings) and sits on the same line as the transport buttons.
 - `sleeve --update` on a copy newer than the newest release says it is a development copy and to pull the source and
   run `./install.sh` again.
@@ -26,6 +28,8 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Fixed
 
+- A theme you pick by hand (Dusk, or your own) kept turning into the cover's colour as soon as a song played with "Match
+  the colours of the song" on. It now keeps its own accent; seasons and holidays still follow the cover.
 - The play buttons in the player bar were off the middle of the window (about 100 px at 2560 wide) because the song on
   the left and the volume on the right were different widths; both sides now have equal limits, so the buttons are at
   the window's center at every size. A test checks it from 800 to 2560 wide.
