@@ -1,4 +1,33 @@
+import os
+import shutil
+import subprocess
+
 import pytest
+
+
+def _private_session_bus():
+    """Give the tests a session bus of their own. Qt connects to whatever DBUS_SESSION_BUS_ADDRESS says (and without it
+    to the desktop's own bus), so a test that publishes a media player or sends a notification would do it on the real
+    desktop, where the panel, the lock screen and widgets watch for exactly that. This runs before Qt is touched."""
+    dead = "unix:path=/nonexistent/sleeve-tests-have-no-bus"          # tests that need a bus skip themselves
+    os.environ["DBUS_SESSION_BUS_ADDRESS"] = dead
+    exe = shutil.which("dbus-daemon")
+    if exe is None:
+        return None
+    try:
+        proc = subprocess.Popen([exe, "--session", "--nofork", "--print-address"],  # noqa: S603
+                                stdout=subprocess.PIPE, text=True)
+    except OSError:
+        return None
+    address = proc.stdout.readline().strip()
+    if not address:
+        proc.kill()
+        return None
+    os.environ["DBUS_SESSION_BUS_ADDRESS"] = address
+    return proc
+
+
+_BUS = _private_session_bus()
 
 
 @pytest.fixture(autouse=True)
@@ -84,9 +113,10 @@ def pytest_unconfigure(config):
     """The last hook, after the summary is printed. PySide6 segfaults while Python tears Qt down at exit (exit code 139,
     even though every test passed), which turned CI red. Leave directly with pytest's own exit status instead. A
     workaround, not a fix: remove it once the teardown crash is found."""
-    import os
     import sys
 
+    if _BUS is not None:
+        _BUS.kill()
     status = getattr(config, "_sleeve_exitstatus", None)
     if status is not None and _APP is not None:
         sys.stdout.flush()
