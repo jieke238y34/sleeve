@@ -576,7 +576,14 @@ class MainWindow(QMainWindow):
         self.side_lay.setSpacing(6)
         self.side_lay.addWidget(self.nav, 1)
         self.splitter.addWidget(self.side)
-        self.splitter.addWidget(self.stack)
+        self.wave_strip = self._wave_strip()                  # shown while the player bar is folded away: pages only
+        content = QWidget()                                   # the pages and the strip under them, beside the sidebar
+        column = QVBoxLayout(content)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(self.stack, 1)
+        column.addWidget(self.wave_strip)
+        self.splitter.addWidget(content)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setSizes([self.settings.nav_width, 10_000])
@@ -591,8 +598,6 @@ class MainWindow(QMainWindow):
         self.bar = self._player_bar()
         self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
         outer.addWidget(self.bar)
-        self.wave_strip = self._wave_strip()                  # shown instead of the bar while it is folded away
-        outer.addWidget(self.wave_strip)
         self.setCentralWidget(root)
         self.status = self.statusBar()
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back

@@ -126,3 +126,22 @@ def test_one_loud_spike_does_not_flatten_the_rest_of_the_song():
     loud_part = sorted(peaks)[len(peaks) // 2]                            # the typical bar
     assert loud_part > 0.5, loud_part                                     # visible, not a row of dots
     assert min(peaks) < loud_part                                         # and the quiet ends still look quieter
+
+
+def test_the_strip_stays_in_the_page_area_and_never_overlaps_the_sidebar(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    monkeypatch.setattr(waveform, "compute_peaks", lambda path, **kw: [0.6] * 30)
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1180, 760)
+        win.show()
+        win.bar_fold_btn.click()
+        for _ in range(6):
+            qapp.processEvents()
+        strip = win.wave_strip.mapTo(win, win.wave_strip.rect().topLeft())
+        nav_right = win.side.mapTo(win, win.side.rect().topRight()).x()
+        assert win.wave_strip.isVisible() and strip.x() > nav_right                 # right of the sidebar, not under it
+        nav_bottom = win.side.mapTo(win, win.side.rect().bottomLeft()).y()
+        assert nav_bottom >= win.wave_strip.mapTo(win, win.wave_strip.rect().bottomLeft()).y() - 2   # the sidebar goes on
+        win.grab().save(str(tmp_path / "hidden.png"))                              # for a look by hand
+    finally:
+        win.close()
