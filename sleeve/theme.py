@@ -233,6 +233,8 @@ QListWidget#lyrics {{ font-size: 13pt; background: rgba(10, 8, 16, 90); }}
 QListWidget#lyrics::item {{ padding: 9px 8px; color: {muted}; border-radius: 8px; }}
 QListWidget#lyrics::item:selected {{ background: transparent; color: {accent}; font-weight: 700; }}
 QLabel#title {{ font-size: 20pt; font-weight: 700; }}
+QLabel#nowtitle {{ font-size: 11.5pt; font-weight: 700; }}
+QLabel#nowartist {{ font-size: 10pt; color: {muted}; }}
 QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {muted}; }}
 QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
