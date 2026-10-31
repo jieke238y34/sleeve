@@ -584,7 +584,7 @@ class MainWindow(QMainWindow):
         self.pl_list.setMaximumWidth(210)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
         self.pl_list.itemDoubleClicked.connect(self._play_playlist)
-        new_btn = QPushButton("＋  New playlist")
+        new_btn = QPushButton("＋  New")                         # short: the list beside it is narrow
         new_btn.setToolTip("Make an empty playlist of your own")
         new_btn.clicked.connect(lambda: self._new_playlist())
         import_btn = QPushButton("Import…")
