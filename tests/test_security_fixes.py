@@ -5,6 +5,9 @@ import os
 import subprocess
 
 import pytest
+from PySide6.QtWidgets import QPushButton
+from test_app import cfg, qapp  # noqa: F401  (fixtures)
+from test_likes import make_window
 
 from sleeve import plstyle, updater
 
@@ -134,3 +137,16 @@ def test_a_full_uninstall_also_names_and_removes_the_downloaded_dl_py(tmp_path):
 
 def test_pictures_are_limited_to_forty_megapixels():
     assert plstyle.MAX_PIXELS <= 40_000_000
+
+
+def test_the_new_button_beside_the_playlist_list_is_not_clipped(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1100, 700)
+        win.show()
+        win.pl_stack.setCurrentIndex(1)
+        qapp.processEvents()
+        button = next(b for b in win.findChildren(QPushButton) if b.text().strip().endswith("New"))
+        assert button.fontMetrics().horizontalAdvance(button.text()) + 12 <= button.width()
+    finally:
+        win.close()

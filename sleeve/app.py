@@ -584,7 +584,7 @@ class MainWindow(QMainWindow):
         self.pl_list.setMaximumWidth(210)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
         self.pl_list.itemDoubleClicked.connect(self._play_playlist)
-        new_btn = QPushButton("＋  New playlist")
+        new_btn = QPushButton("＋  New")                         # short: the list beside it is narrow
         new_btn.setToolTip("Make an empty playlist of your own")
         new_btn.clicked.connect(lambda: self._new_playlist())
         import_btn = QPushButton("Import…")
@@ -792,11 +792,6 @@ class MainWindow(QMainWindow):
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
-        right.addStretch(1)                            # the cover and its words sit centered as one group
-        right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
-        right.addSpacing(14)
-        for lab in (self.np_title, self.np_artist, self.np_album):
-            right.addWidget(lab)
         self.expand_btn = QPushButton("⤢")
         self.expand_btn.setObjectName("round")
         self.expand_btn.setToolTip("Expand the album art")
@@ -805,15 +800,11 @@ class MainWindow(QMainWindow):
         self.full_btn.setObjectName("round")
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
-        cover_btns = QHBoxLayout()
-        cover_btns.addStretch(1)
-        cover_btns.addWidget(self.expand_btn)
-        cover_btns.addWidget(self.full_btn)
-        cover_btns.addStretch(1)
-        right.addSpacing(8)
-        right.addLayout(cover_btns)
-        right.addStretch(1)                            # the bottom stretch balances the top one
+        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album),
+                               (self.expand_btn, self.full_btn))     # the words and buttons ride on the cover
+        right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
+        self._np_balance()                                   # centered over the whole page from the first paint
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
@@ -3055,14 +3046,27 @@ class MainWindow(QMainWindow):
         if self._cover_screen is not None:
             self._cover_screen.set_song(self._np_pix, title, artist)
 
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        QTimer.singleShot(0, self._np_balance)               # after the layout settles: the balance needs real widths
+
     def _toggle_cover(self):
         "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
         self.np_side.setVisible(not self._cover_expanded)
+        self._np_balance()
         self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
         self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
+
+    def _np_balance(self):
+        "Keep the cover centered over the whole page: while the queue panel shows, the square and its words avert to"
+        " the page center by mirroring half of the panel's width (spacing and margins included); nothing when hidden."
+        " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
+        shift = 0 if self.np_side.isHidden() else 190
+        shift = max(0, min(shift, (self.np_cover.width() - 360) // 2))
+        self.np_cover.set_shift(shift)
 
     def _toggle_fullscreen(self):
         "A separate full-screen window of the album art. Esc, F11, Enter or a click closes it; this one is untouched."

@@ -7,7 +7,7 @@ Esc, F11, Enter, a click or a double tap, so it is never a place you cannot leav
 
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
@@ -27,7 +27,8 @@ class CoverView(QWidget):
         self.max_side = max_side
         self._pix = None
         self._cache = None                    # ((cache key, side), the rounded, scaled picture)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)     # wants max_side, yields to the window
+        self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
         self.setMinimumSize(120, 120)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -36,16 +37,74 @@ class CoverView(QWidget):
         self._cache = None
         self.update()
 
+    def set_info(self, labels, buttons):
+        "The song words and the round buttons sit over the cover area itself, centered together with the art."
+        self._rows = list(labels)
+        self._btns = list(buttons)
+        for w in (*self._rows, *self._btns):
+            w.setParent(self)
+            w.show()
+        self._place_info()
+
     def set_max_side(self, side):
+        "A new cap for the drawn square (the cover never asks the window for room, so this only repaints)."
         self.max_side = side
         self.update()
+
+    def set_shift(self, shift):
+        "Shift the whole group sideways so its center sits over the page, not just over this column."
+        self.x_shift = shift
+        self._place_info()
 
     def sizeHint(self):
         return QSize(self.max_side, self.max_side)      # the space it wants; the layout never gives more than fits
 
+    def _info_height(self):
+        "The height of the words and buttons below the art, all of them at the width the group may use now."
+        span = self.width() - 2 * self.x_shift
+        if not self._rows or span <= 8:
+            return 0
+        total = 26                                          # the gap between the art and the words
+        for w in self._rows:
+            total += w.heightForWidth(span - 12) or w.sizeHint().height()
+        total += 8 + max((b.minimumSizeHint().height() for b in self._btns), default=0)
+        return total
+
+    def _place_info(self):
+        "Put the square and the words where the group is centered (over the page when it is shifted out), and say"
+        " where the art will be drawn."
+        info, wid, hei = self._info_height(), self.width(), self.height()
+        span = max(0, wid - 2 * self.x_shift)               # the width the panel leaves on both sides when balanced
+        side = max(0, min(span, hei - info, self.max_side))
+        cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
+        self._art_y = max(0, (hei - side - info) // 2)
+        y = self._art_y + side + 26
+        span -= 12                                          # the words keep the same edge room as before
+        for w in self._rows:
+            h = w.heightForWidth(max(10, span)) or w.sizeHint().height()
+            w.setGeometry(cx - span // 2, y, span, h)
+            y += h
+        if self._btns:
+            widest = max(b.minimumSizeHint().width() for b in self._btns)
+            x = cx - (widest * len(self._btns) + 8 * (len(self._btns) - 1)) // 2
+            for b in self._btns:
+                b.setGeometry(x, y + 8, widest, b.minimumSizeHint().height())
+                x += widest + 8
+        self.update()
+
     def side(self):
         "The length of the square that is drawn now."
-        return max(0, min(self.width(), self.height(), self.max_side))
+        span = self.width() - 2 * self.x_shift
+        return max(0, min(span, self.height() - self._info_height(), self.max_side))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._place_info()
+
+    def changeEvent(self, e):                            # the words take another height, so re-place everything
+        super().changeEvent(e)
+        if e.type() == QEvent.FontChange:
+            self._place_info()
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -58,7 +117,7 @@ class CoverView(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        x, y = (self.width() - side) // 2, (self.height() - side) // 2
+        x, y = self.width() // 2 - self.x_shift - side // 2, self._art_y
         if self._pix is not None:
             key = (self._pix.cacheKey(), side)
             if self._cache is None or self._cache[0] != key:
