@@ -326,6 +326,8 @@ def main(argv=None):
                 for issue in audit.run(page, img) + audit.run(win.bar, img):
                     found.setdefault(issue, set()).add(f"{name}@{size}/{accent}")
                 if name == "Now Playing":                      # the same page with the lyrics tab showing
+                    win.tab_queue.setChecked(False)                # lyrics alone, so they show at every size; and
+                    win.tab_lyrics.setChecked(False)               # off then on, so the panel logic really runs
                     win.tab_lyrics.setChecked(True)
                     win._on_position(25.0)
                     settle(qapp, 25)

@@ -30,6 +30,33 @@ CUSTOM_THEMES = {"dusk": "Dusk"}
 BACKDROPS = {"dusk": ("#8f745a", "#6c5756", "#5f697b")}
 
 
+def set_custom(custom):
+    "Make the user's own theme (a dict from Settings, or None) one of the looks. It is called 'custom'."
+    if not custom:
+        LOOKS.pop("custom", None)
+        BACKDROPS.pop("custom", None)
+        CUSTOM_THEMES.pop("custom", None)
+        return
+    LOOKS["custom"] = (custom["bg"], custom["text"], custom["muted"], custom["accent"])
+    CUSTOM_THEMES["custom"] = custom.get("name") or "My theme"
+    if custom.get("backdrop"):
+        BACKDROPS["custom"] = tuple(custom["backdrop"])
+    else:
+        BACKDROPS.pop("custom", None)
+
+
+def problems(bg, text, muted, accent):
+    "Plain-English reasons a colour choice would be hard to read, or an empty list."
+    found = []
+    if not readable(text, bg, 4.5):
+        found.append("The text is hard to read on the background. Make one lighter and the other darker.")
+    if not readable(muted, bg, 3.0):
+        found.append("The quiet text is too faint on the background.")
+    if not readable(bg, accent, 3.0):
+        found.append("Text on buttons in the accent colour would be hard to read. Make the accent lighter.")
+    return found
+
+
 def _luminance(colour):
     c = QColor(colour)
     parts = [v / 255 for v in (c.red(), c.green(), c.blue())]
@@ -104,7 +131,7 @@ QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
-QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 80); }}
+QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
@@ -114,7 +141,7 @@ QPushButton#play:hover {{ background: {CREAM}; }}
 QPushButton#primary {{ background: {accent}; color: {bg}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
 QPushButton#primary:hover {{ background: {CREAM}; }}
-QPushButton#primary:disabled {{ background: rgba({rgb}, 70); color: rgba(21, 19, 29, 160); }}
+QPushButton#primary:disabled {{ background: rgba({rgb}, 46); color: rgba(255, 255, 255, 150); }}
 QListWidget#activity {{ font-size: 10.5pt; }}
 QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#activity::item:selected {{ background: transparent; }}

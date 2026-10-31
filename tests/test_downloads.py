@@ -151,9 +151,8 @@ def test_dl_py_lyrics_lines_become_plain_sentences():
     assert t.feed("Lyrics: every song already has a lyrics file, or was tried recently.")[0] == activity.INFO
 
 
-def lyric_names(win):
-    return [win.activity.item(i).text() for i in range(win.activity.count()) if "Lyrics added" in
-            win.activity.item(i).text()]
+def lyric_names(lw):
+    return [t for t in lw.texts() if "Lyrics added" in t]
 
 
 def test_lyrics_job_lists_each_song_that_got_lyrics(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
@@ -162,60 +161,72 @@ def test_lyrics_job_lists_each_song_that_got_lyrics(qapp, cfg, monkeypatch, tmp_
     from pathlib import Path
 
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    lw = win.lyrics_win
     try:
         a, b, c = sorted(win.songs, key=lambda s: s.path)[:3]
         old = Path(a.path).with_suffix(".lrc")
         old.write_text("[00:01.00]old\n")                                       # lyrics from before the job
         long_ago = time.time() - 3600
         os.utime(old, (long_ago, long_ago))
-        win._lyrics_begin()
+        lw.begin()
         Path(b.path).with_suffix(".lrc").write_text("[00:01.00]new\n")           # written while it runs
         Path(c.path).with_suffix(".txt").write_text("plain words\n")
-        win._lyrics_scan()
-        names = lyric_names(win)
+        lw.scan()
+        names = lyric_names(lw)
         assert len(names) == 2 and any("(synced)" in n for n in names) and any("(text only)" in n for n in names)
         assert not any(a.name in n for n in names)                              # the old one is not claimed
-        win._lyrics_scan()
-        assert len(lyric_names(win)) == 2                                       # and nothing is listed twice
-        assert win._lyrics_run["synced"] == 1 and win._lyrics_run["plain"] == 1
-        win._lyrics_timer.stop()
+        lw.scan()
+        assert len(lyric_names(lw)) == 2                                        # and nothing is listed twice
+        assert lw.run["synced"] == 1 and lw.run["plain"] == 1
+        lw.timer.stop()
     finally:
         win.close()
 
 
 def test_get_lyrics_keeps_going_batch_after_batch_until_done_or_stopped(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    lw = win.lyrics_win
     started = []
     try:
-        monkeypatch.setattr(win.runner, "run", lambda name: started.append(name) or True)
-        win._lyrics_begin()
-        win._on_sync_line("Lyrics: looking for 300 of 700 songs (lrclib)...")
-        assert win._lyrics_run["more"] == 400
-        win._on_sync_finished(0)                                                # batch 1 ended: 400 are left
-        assert win._lyrics_run is not None                                      # so the job is not over
-        win._lyrics_next_batch()                                                # (normally fired by a timer)
-        assert started == ["Fetch lyrics"] and win._lyrics_run["batches"] == 2
-        win._on_sync_line("Lyrics: looking for 300 of 400 songs (lrclib)...")
-        win._on_sync_finished(0)
-        win._lyrics_next_batch()
-        win._on_sync_line("Lyrics: looking for 100 of 100 songs (lrclib)...")
-        assert win._lyrics_run["more"] == 0
-        win._on_sync_finished(0)                                                # the last one: all done
-        assert win._lyrics_run is None and not win._lyrics_timer.isActive()
-        texts = [win.activity.item(i).text() for i in range(win.activity.count())]
-        assert any("Lyrics done" in t and "3 batches" in t for t in texts)
+        monkeypatch.setattr(lw.runner, "run", lambda name: started.append(name) or True)
+        lw.begin()
+        lw.on_line("Lyrics: looking for 300 of 700 songs (lrclib)...")
+        assert lw.run["more"] == 400
+        lw.on_finished(0)                                                       # batch 1 ended: 400 are left
+        assert lw.run is not None                                               # so the job is not over
+        lw.next_batch()                                                         # (normally fired by a timer)
+        assert started == ["Fetch lyrics"] and lw.run["batches"] == 2
+        lw.on_line("Lyrics: looking for 300 of 400 songs (lrclib)...")
+        lw.on_finished(0)
+        lw.next_batch()
+        lw.on_line("Lyrics: looking for 100 of 100 songs (lrclib)...")
+        assert lw.run["more"] == 0
+        lw.on_finished(0)                                                       # the last one: all done
+        assert lw.run is None and not lw.timer.isActive()
+        assert any("Lyrics done" in t and "3 batches" in t for t in lw.texts())
         # Stop ends the whole job, not just one batch
         started.clear()
-        win._lyrics_begin()
-        win._on_sync_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
-        win._stop_clicked()
-        win._on_sync_finished(-1)
-        assert win._lyrics_run is None and started == []
-        assert any("Lyrics stopped" in win.activity.item(i).text() for i in range(win.activity.count()))
+        lw.begin()
+        lw.on_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
+        lw.stop()
+        lw.on_finished(-1)
+        assert lw.run is None and started == []
+        assert any("Lyrics stopped" in t for t in lw.texts())
         # a failed batch does not loop forever
-        win._lyrics_begin()
-        win._on_sync_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
-        win._on_sync_finished(1)
-        assert win._lyrics_run is None and started == []
+        lw.begin()
+        lw.on_line("Lyrics: looking for 300 of 900 songs (lrclib)...")
+        lw.on_finished(1)
+        assert lw.run is None and started == []
+    finally:
+        win.close()
+
+
+def test_lyrics_job_does_not_wait_for_a_download(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win._set_external(True)                                                 # a download is going on
+        assert not win._action_buttons["Sync playlists"].isEnabled()
+        assert win._action_buttons["Fetch lyrics"].isEnabled()
+        assert win.lyrics_win.runner is not win.runner                          # and it has a runner of its own
     finally:
         win.close()

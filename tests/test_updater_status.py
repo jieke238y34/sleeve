@@ -25,7 +25,7 @@ def test_the_status_sentence_says_ahead_instead_of_newest_for_a_development_copy
     monkeypatch.setattr(updater, "local_build", lambda: 129)
     text = updater.status_text(RELEASE, "0.2.0 · build 129")
     assert "newer than the newest published release" in text and "0.2.0 · build 117" in text
-    assert "Nobody can update" in text
+    assert "no release to update to" in text and "./install.sh" in text
     monkeypatch.setattr(updater, "local_build", lambda: 117)
     assert updater.status_text(RELEASE, "0.2.0 · build 117") == "You have the newest release, Sleeve 0.2.0 · build 117."
 

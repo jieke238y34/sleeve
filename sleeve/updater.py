@@ -90,8 +90,9 @@ def relation(release, local=__version__, local_build_number=None):
 def status_text(release, shown):
     "One sentence for 'is there something newer?', where `shown` is how this copy is written (build_label())."
     where = {"same": f"You have the newest release, Sleeve {shown}.",
-             "ahead": (f"This copy (Sleeve {shown}) is newer than the newest published release, {label(release)}. "
-                       "Nobody can update to it until a release is published.")}
+             "ahead": (f"This copy (Sleeve {shown}) is newer than the newest published release, {label(release)}, so "
+                       "there is no release to update to. It is a development copy: to get newer changes, pull the "
+                       "source and run ./install.sh again in that folder.")}
     return where[relation(release)]
 
 

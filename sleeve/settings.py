@@ -27,6 +27,7 @@ DEFAULTS = {
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
     "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
+    "custom_theme": None,      # the user's own theme: {name, bg, text, muted, accent, backdrop} or None (see theme.py)
     "theme": "default",        # "default" (accent colour and seasons) or a theme from theme.CUSTOM_THEMES
     "seasonal": "off",         # "off", "seasons", "holidays" or "both": which looks follow the calendar
     "season_choice": "auto",   # "auto" or "spring"/"summer"/"autumn"/"winter": pin a season by hand
@@ -64,6 +65,20 @@ def legible(colour):
     return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
+def _valid_custom_theme(value):
+    "{name, bg, text, muted, accent, backdrop?}: four #rrggbb colours, a short name, and three more colours or None."
+    if not isinstance(value, dict) or not {"bg", "text", "muted", "accent"} <= set(value) <= {
+            "name", "bg", "text", "muted", "accent", "backdrop"}:
+        return False
+    if not all(isinstance(value[k], str) and _HEX.fullmatch(value[k]) for k in ("bg", "text", "muted", "accent")):
+        return False
+    if not isinstance(value.get("name", ""), str) or len(value.get("name", "")) > 24:
+        return False
+    back = value.get("backdrop")
+    return back is None or (isinstance(back, list) and len(back) == 3
+                            and all(isinstance(c, str) and _HEX.fullmatch(c) for c in back))
+
+
 def _valid(key, value):
     if key in ("volume", "max_volume"):
         low, high = (30, 150) if key == "max_volume" else (0, 100)
@@ -79,7 +94,9 @@ def _valid(key, value):
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
     if key == "theme":
-        return value in ("default", "dusk")
+        return value in ("default", "dusk", "custom")
+    if key == "custom_theme":
+        return value is None or _valid_custom_theme(value)
     if key == "seasonal":
         return value in ("off", "seasons", "holidays", "both")
     if key == "season_choice":

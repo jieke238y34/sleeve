@@ -30,7 +30,7 @@ class CoverView(QWidget):
         self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
         self.top_inset = 0                    # the art never starts above this many pixels from the top
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
-        self.setMinimumSize(200, 120)      # wide enough for the round buttons under the art
+        self.setMinimumSize(120, 120)
         self.setCursor(Qt.PointingHandCursor)
 
     def set_pixmap(self, pix):

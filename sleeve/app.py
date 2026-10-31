@@ -3,7 +3,6 @@ import argparse
 import dataclasses
 import os
 import random
-import re
 import sys
 import time
 from collections import Counter
@@ -112,6 +111,7 @@ from .coverart import ArtCache, ArtWorker, is_art_url
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
+from .lyricswin import LyricsWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
@@ -122,13 +122,13 @@ from .session import Session
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
+from .themedialog import ThemeDialog
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
 CUSTOM_LABEL = "Custom…"
 QUEUE_ROW = QSize(10, 54)                    # every row of the queue is this tall, with or without its cover
 DL_HOME = "https://github.com/jieke238y34/playlist-sync"
-LYRICS_MAX_BATCHES = 200                     # 200 x 300 songs: more than any library, but a loop must end
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
 
 
@@ -169,7 +169,7 @@ def fmt_time(seconds):
 
 
 class ElidedLabel(QLabel):
-    "A one-line label that ends in … when its text does not fit, and shows all of it as a tooltip."
+    "A label whose lines each end in … when they do not fit, and shows all of it as a tooltip."
 
     def __init__(self, text="", parent=None):
         super().__init__(parent)
@@ -184,7 +184,8 @@ class ElidedLabel(QLabel):
         self._fit()
 
     def _fit(self):
-        shown = self.fontMetrics().elidedText(self._full, Qt.ElideRight, max(20, self.width()))
+        fm, room = self.fontMetrics(), max(20, self.width())
+        shown = "\n".join(fm.elidedText(line, Qt.ElideRight, room) for line in self._full.split("\n"))   # per line
         super().setText(shown)
         self.setToolTip(self._full if shown != self._full else "")
 
@@ -243,6 +244,13 @@ class VolumeBubble(QLabel):
         x = max(screen.left(), min(above.x() - self.width() // 2, screen.right() - self.width()))
         self.move(x, max(screen.top(), above.y() - self.height() - 8))
         self.show()
+
+
+class QuietCombo(QComboBox):
+    "A drop-down the mouse wheel does not change: scrolling over it moves the page, as people expect in Settings."
+
+    def wheelEvent(self, e):
+        e.ignore()                                        # the page behind gets it
 
 
 class ClickSlider(QSlider):
@@ -436,6 +444,7 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
+        theme.set_custom(self.settings.custom_theme)         # the user's own theme, if they made one
         self._look = self._look_name()                      # the theme picked by hand, else the seasonal look, if any
         self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
@@ -518,10 +527,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+K"), self, self._quick_search)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
-        self._lyrics_run = None                               # the lyrics job in progress (see _lyrics_begin)
-        self._lyrics_timer = QTimer(self)                     # while it runs, look for the files it has just written
-        self._lyrics_timer.setInterval(4000)
-        self._lyrics_timer.timeout.connect(self._lyrics_scan)
+        self.lyrics_win = LyricsWindow(cfg, lambda: self.songs, self)      # its own runner: downloads keep going
+        self.lyrics_win.finishedJob.connect(self.rescan)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -575,7 +582,10 @@ class MainWindow(QMainWindow):
         self.model.modelReset.connect(self._lib_thumb_timer.start)       # a new order shows new rows: their covers
         self.table.verticalScrollBar().valueChanged.connect(lambda _=0: self._lib_thumb_timer.start())
         SmoothScroll.attach(self.table)
+        self.table.setWordWrap(False)                         # a long title ends in … instead of a second line
+        self.table.setTextElideMode(Qt.ElideRight)
         head = self.table.horizontalHeader()
+        head.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         head.setStretchLastSection(False)
         head.setSectionResizeMode(0, QHeaderView.Stretch)
         for col, width in ((1, 160), (2, 180), (3, 105)):
@@ -945,8 +955,12 @@ class MainWindow(QMainWindow):
             b.setToolTip(what)
             if primary:
                 b.setObjectName("primary")
-            b.clicked.connect(lambda _=False, n=name: self._run_action(n))
-            self.sync_buttons.append(b)
+            if name == "Fetch lyrics":                         # its own window and runner: never waits for a download
+                b.setText("Get lyrics…")
+                b.clicked.connect(self._open_lyrics_window)
+            else:
+                b.clicked.connect(lambda _=False, n=name: self._run_action(n))
+                self.sync_buttons.append(b)
             self._action_buttons[name] = b
             return b
 
@@ -964,7 +978,9 @@ class MainWindow(QMainWindow):
         self.setup_btn.clicked.connect(self._open_setup)
         self.setup_btn.setVisible(self.cfg.has_dl)
         tidy.addWidget(self.setup_btn)
-        tidy.addWidget(QLabel("Tidy up:"))
+        tidy_label = QLabel("Tidy up:")
+        tidy_label.setContentsMargins(4, 0, 4, 0)
+        tidy.addWidget(tidy_label)
         for name in sync.ACTIONS:
             if name != "Sync playlists":
                 tidy.addWidget(action_button(name))
@@ -999,11 +1015,10 @@ class MainWindow(QMainWindow):
         foot.addWidget(self.details_btn)
         foot.addWidget(clear)
         foot.addStretch(1)
-        self.sync_note = QLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
+        self.sync_note = ElidedLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
         self.sync_note.setObjectName("muted")
-        self.sync_note.setTextFormat(Qt.PlainText)
-        self.sync_note.setWordWrap(True)                    # a long path wraps instead of widening the page
-        foot.addWidget(self.sync_note)
+        self.sync_note.setAlignment(Qt.AlignRight | Qt.AlignVCenter)     # one line; the whole path is the tooltip
+        foot.addWidget(self.sync_note, 1)
 
         self.sync_log = QPlainTextEdit()          # what dl.py really printed, for when something needs a closer look
         self.sync_log.setReadOnly(True)
@@ -1233,6 +1248,7 @@ class MainWindow(QMainWindow):
         self.ceiling_slider = ClickSlider(Qt.Horizontal)
         self.ceiling_slider.setRange(30, 150)
         self.ceiling_slider.setValue(self.settings.max_volume)
+        self.ceiling_slider.setMinimumWidth(220)
         self.ceiling_slider.setMaximumWidth(280)
         self.ceiling_label = QLabel(f"{self.settings.max_volume}%")
         self.ceiling_label.setMinimumWidth(56)
@@ -1264,7 +1280,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.same_volume_hint)
 
         row = QHBoxLayout()
-        self.output_box = QComboBox()
+        self.output_box = QuietCombo()
         self.output_box.setMinimumContentsLength(24)
         self._devices = QMediaDevices(self)                 # outputs come and go (earbuds, HDMI): keep the list current
         self._devices.audioOutputsChanged.connect(self._fill_outputs)
@@ -1292,14 +1308,16 @@ class MainWindow(QMainWindow):
 
         section("Theme")
         row = QHBoxLayout()
-        self.theme_box = QComboBox()
-        self.theme_box.addItem("Sleeve (your own colours and the seasons)", "default")
-        for name, label in theme.CUSTOM_THEMES.items():
-            self.theme_box.addItem(label, name)
-        self.theme_box.setCurrentIndex(max(self.theme_box.findData(self.settings.theme), 0))
+        self.theme_box = QuietCombo()
+        self._fill_theme_box()
         self.theme_box.currentIndexChanged.connect(self._theme_changed)
+        self.theme_make_btn = QPushButton("")
+        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a theme")
+        self.theme_make_btn.clicked.connect(self._make_theme)
+        self._theme_button_text()
         row.addWidget(QLabel("Theme"))
         row.addWidget(self.theme_box)
+        row.addWidget(self.theme_make_btn)
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(hint("Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. "
@@ -1312,6 +1330,7 @@ class MainWindow(QMainWindow):
         self.cover_slider.setRange(240, 1400)
         self.cover_slider.setSingleStep(40)
         self.cover_slider.setValue(self.settings.cover_size)
+        self.cover_slider.setMinimumWidth(220)
         self.cover_slider.setMaximumWidth(280)
         self.cover_label = QLabel(f"{self.settings.cover_size} px")
         self.cover_label.setMinimumWidth(56)
@@ -1328,6 +1347,7 @@ class MainWindow(QMainWindow):
         self.scroll_slider.setSingleStep(10)
         self.scroll_slider.setPageStep(50)
         self.scroll_slider.setValue(self.settings.scroll_speed)
+        self.scroll_slider.setMinimumWidth(220)
         self.scroll_slider.setMaximumWidth(280)
         self.scroll_label = QLabel(f"{self.settings.scroll_speed}%")
         self.scroll_label.setMinimumWidth(56)
@@ -1339,7 +1359,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         lay.addWidget(hint("How far one turn of the mouse wheel moves a list. Higher is faster."))
         row = QHBoxLayout()
-        self.accent_box = QComboBox()
+        self.accent_box = QuietCombo()
         for name, colour in settings.ACCENTS.items():
             self.accent_box.addItem(QIcon(theme.swatch(colour)), name)
         self.accent_box.addItem(QIcon(theme.swatch(self.settings.accent_custom)), CUSTOM_LABEL)
@@ -1356,7 +1376,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("The accent colour follows the cover of the song that is playing. The colour chosen above "
                            "is used when nothing is playing."))
         row = QHBoxLayout()
-        self.seasonal_box = QComboBox()
+        self.seasonal_box = QuietCombo()
         for label, value in (("Off", "off"), ("Seasons", "seasons"), ("Holidays", "holidays"), ("Both", "both")):
             self.seasonal_box.addItem(label, value)
         self.seasonal_box.setCurrentIndex(max(self.seasonal_box.findData(self.settings.seasonal), 0))
@@ -1367,7 +1387,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("A look changes the colours of the window for the time of year. Holidays follow their "
                            "dates; seasons follow today's date. Nothing is sent anywhere."))
         row = QHBoxLayout()
-        self.season_choice_box = QComboBox()
+        self.season_choice_box = QuietCombo()
         for label, value in (("Follow the calendar", "auto"), ("Spring", "spring"), ("Summer", "summer"),
                              ("Autumn", "autumn"), ("Winter", "winter")):
             self.season_choice_box.addItem(label, value)
@@ -1375,7 +1395,7 @@ class MainWindow(QMainWindow):
         self.season_choice_box.currentIndexChanged.connect(self._seasonal_changed)
         row.addWidget(QLabel("Season"))
         row.addWidget(self.season_choice_box)
-        self.holiday_choice_box = QComboBox()
+        self.holiday_choice_box = QuietCombo()
         for label, value in (("Follow the calendar", "auto"), ("Christmas", "christmas"), ("Halloween", "halloween"),
                              ("New Year", "newyear")):
             self.holiday_choice_box.addItem(label, value)
@@ -1826,6 +1846,42 @@ class MainWindow(QMainWindow):
             return self.settings.theme
         return seasons.resolve(self.settings.seasonal, self.settings.season_choice, self.settings.holiday_choice)
 
+    def _fill_theme_box(self):
+        box = self.theme_box
+        box.blockSignals(True)
+        box.clear()
+        box.addItem("Sleeve (your own colours and the seasons)", "default")
+        for name, label in theme.CUSTOM_THEMES.items():
+            box.addItem(label, name)
+        box.setCurrentIndex(max(box.findData(self.settings.theme), 0))
+        box.blockSignals(False)
+
+    def _theme_button_text(self):
+        self.theme_make_btn.setText("Edit my theme…" if self.settings.custom_theme else "Create your own…")
+
+    def _make_theme(self):
+        "Open the colour picker for the user's own theme; keep what comes out and wear it."
+        start = self.settings.custom_theme
+        if not start:
+            bg, text, muted = theme.look_palette(self._look)
+            start = {"bg": bg, "text": text, "muted": muted, "accent": self._accent_shown, "name": "", "backdrop": None}
+        dlg = ThemeDialog(self, start, can_remove=bool(self.settings.custom_theme))
+        if dlg.exec() != QDialog.Accepted:
+            return
+        if dlg.removed:
+            self.settings.set("custom_theme", None)
+            if self.settings.theme == "custom":
+                self.settings.set("theme", "default")
+        else:
+            self.settings.set("custom_theme", dlg.result_theme())
+            self.settings.set("theme", "custom")
+        theme.set_custom(self.settings.custom_theme)
+        self._save_settings()
+        self._fill_theme_box()
+        self._theme_button_text()
+        self._look = self._look_name()
+        self._apply_accent(force=True)
+
     def _theme_changed(self):
         "The user picked a theme in Settings: save it and repaint everything."
         self.settings.set("theme", self.theme_box.currentData())
@@ -1965,6 +2021,15 @@ class MainWindow(QMainWindow):
         self.health_table = QTableWidget(0, 3)
         self.health_table.setHorizontalHeaderLabels(["Title", "Artist", "File"])
         self._style_table(self.health_table)
+        head = self.health_table.horizontalHeader()
+        head.setStretchLastSection(False)
+        head.setSectionResizeMode(0, QHeaderView.Stretch)
+        head.setSectionResizeMode(1, QHeaderView.Interactive)
+        head.setSectionResizeMode(2, QHeaderView.Stretch)
+        head.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.health_table.setColumnWidth(1, 200)
+        self.health_table.setTextElideMode(Qt.ElideMiddle)     # a long path keeps its folder and its file name
+        self.health_table.setWordWrap(False)
         self.health_table.cellDoubleClicked.connect(self._play_health_row)
         self._health = {}
         self._health_rows = []
@@ -1985,11 +2050,23 @@ class MainWindow(QMainWindow):
         actions = FlowLayout()
         for b in (self.health_play_btn, self.health_folder_btn, self.health_online_btn, self.health_fix_btn):
             actions.addWidget(b)
+        self.health_empty = QLabel("Nothing to fix here.")
+        self.health_empty.setObjectName("muted")
+        self.health_empty.setAlignment(Qt.AlignCenter)
+        title = QLabel("Health")
+        title.setObjectName("title")
+        sub = QLabel("Problems found in your music folder. Pick a kind on the left; fix them all with one button.")
+        sub.setObjectName("muted")
+        sub.setWordWrap(True)
         right = QVBoxLayout()
+        right.addWidget(title)
+        right.addWidget(sub)
         right.addWidget(self.health_table, 1)
+        right.addWidget(self.health_empty, 1)
         right.addLayout(actions)
         lay.addWidget(self.health_list)
         lay.addLayout(right, 1)
+        self.health_table.setVisible(False)                # until a kind with problems is picked
         self._health_buttons()
         return page
 
@@ -2007,8 +2084,7 @@ class MainWindow(QMainWindow):
         self._cover_click_timer.timeout.connect(lambda: self.show_page("Now Playing"))
         self.cover.clicked.connect(self._cover_click_timer.start)
         self.cover.doubleClicked.connect(self._cover_double_clicked)
-        self.now = QLabel("Nothing playing")
-        self.now.setTextFormat(Qt.PlainText)
+        self.now = ElidedLabel("Nothing playing")          # ends in … instead of being cut; the tooltip has it all
         self.now.setMinimumWidth(100)
         self.now.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # takes what its side block gives it
 
@@ -3281,9 +3357,13 @@ class MainWindow(QMainWindow):
 
     NP_PANEL, NP_PANEL_MIN, NP_COVER_MIN = 360, 280, 340  # widest and narrowest side panel; least for the art
 
+    def _np_width(self):
+        "The width Now Playing has or will have: a page that is not on show does not follow the window by itself."
+        return self.np_page.width() if self.np_page.isVisible() else self.stack.width()
+
     def _np_room_for_both(self):
         "Whether the page is wide enough for the playlist, the art and the lyrics side by side."
-        return self.np_page.width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
+        return self._np_width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
 
     def _np_panel_toggled(self, which, on):
         "The playlist or lyrics panel was shown or hidden. On a narrow page asking for one puts the other away."
@@ -3306,12 +3386,15 @@ class MainWindow(QMainWindow):
             self.tab_lyrics.blockSignals(False)
         shown = int(queue) + int(lyrics)
         if shown:                                            # equal panels, so the art sits in the middle of the page
-            spare = self.np_page.width() - 24 - 20 * shown - self.NP_COVER_MIN
+            spare = self._np_width() - 24 - 20 * shown - self.NP_COVER_MIN
             width = max(self.NP_PANEL_MIN, min(self.NP_PANEL, spare // shown))
             self.np_side.setFixedWidth(width)
             self.np_lyrics_side.setFixedWidth(width)
         self.np_side.setVisible(queue)
         self.np_lyrics_side.setVisible(lyrics)
+        if not self.np_page.isVisible() and self.centralWidget() is not None:     # a page that is not on show cannot
+            for holder in (self.np_page, self.stack, self.centralWidget()):          # tell the window its size changed
+                holder.layout().invalidate()
         if queue:
             QTimer.singleShot(0, self._queue_catch_up)
         if lyrics:
@@ -3438,14 +3521,17 @@ class MainWindow(QMainWindow):
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
 
     def _np_balance(self):
-        "Keep the cover centered over the whole page: while the queue panel shows, the square and its words avert to"
-        " the page center by mirroring half of the panel's width (spacing and margins included); nothing when hidden."
+        "Keep the cover centered over the whole window, in line with the transport buttons: while a panel shows, the"
+        " square and its words avert to that line by mirroring half of the panel's width (spacing and margins"
+        " included); nothing when hidden."
         " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
         gap = 20
         left = 0 if self.np_side.isHidden() else self.np_side.width() + gap
         right = 0 if self.np_lyrics_side.isHidden() else self.np_lyrics_side.width() + gap
         limit = max(0, (self.np_cover.width() - 360) // 2)
-        self.np_cover.set_shift(max(-limit, min(limit, (left - right) // 2)))
+        sidebar = self.nav.width() + self.splitter.handleWidth()
+        wanted = (left - right) // 2 + sidebar // 2        # over the window's middle, where the transport buttons are
+        self.np_cover.set_shift(max(-limit, min(limit, wanted)))
         inset = 0                                            # the art never starts above the top of the list beside it
         for panel, view in ((self.np_side, self.queue_list), (self.np_lyrics_side, self.lyrics)):
             if not panel.isHidden() and view.isVisible():
@@ -3512,11 +3598,15 @@ class MainWindow(QMainWindow):
                 started = self.runner.run(name)
             if started:
                 self._add_activity(activity.STEP, f"Starting: {label}")
-                if name == "Fetch lyrics":
-                    self._lyrics_begin()
         except Exception as e:
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
+    def _open_lyrics_window(self):
+        win = self.lyrics_win
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
             b.setEnabled(not running and self.cfg.has_dl)
@@ -3528,10 +3618,6 @@ class MainWindow(QMainWindow):
     def _on_sync_finished(self, code):
         if self._closing:
             return
-        if self._lyrics_run is not None:
-            self._lyrics_after_batch(code)
-            if self._lyrics_run is not None:                       # more batches to come: not finished, not an error
-                return
         if code == 0:
             self._add_activity(activity.GOOD, "Finished")
         elif code in (15, -15, 143, -1) and not self.runner.running:
@@ -3542,82 +3628,9 @@ class MainWindow(QMainWindow):
     def _on_sync_line(self, line):
         self.sync_log.appendPlainText(line)
         self._show_line(line)
-        run = self._lyrics_run
-        if run is not None:
-            looking = re.match(r"^Lyrics: looking for (\d[\d,]*) of (\d[\d,]*) songs", line)
-            if looking:                                            # dl.py asks 300 at a time: how many are still left?
-                asked, total = (int(n.replace(",", "")) for n in looking.groups())
-                run["more"] = max(0, total - asked)
-            elif line.startswith("Lyrics: every song already has a lyrics file"):
-                run["more"] = 0
-
-    # --- lyrics: all the batches, and which songs got some ------------------------
-    def _lyrics_begin(self):
-        self._lyrics_run = {"start": time.time(), "seen": set(), "batches": 1, "more": 0, "synced": 0, "plain": 0,
-                            "stop": False}
-        self._lyrics_timer.start()
 
     def _stop_clicked(self):
-        if self._lyrics_run is not None:
-            self._lyrics_run["stop"] = True                         # Stop ends the whole job, not just this batch
         self.runner.stop()
-
-    def _lyrics_scan(self):
-        "List the songs whose lyrics file has appeared since the job began (dl.py itself never says which)."
-        run = self._lyrics_run
-        if run is None:
-            return
-        found = []
-        for song in self.songs:
-            if song.path in run["seen"]:
-                continue
-            base = Path(song.path)
-            for suffix in (".lrc", ".txt"):
-                try:
-                    fresh = os.stat(base.with_suffix(suffix)).st_mtime >= run["start"] - 1
-                except OSError:
-                    continue
-                if fresh:
-                    run["seen"].add(song.path)
-                    run["synced" if suffix == ".lrc" else "plain"] += 1
-                    found.append((song, suffix == ".lrc"))
-                    break
-        for song, synced in found[:80]:
-            label = f"{song.artist} - {song.name}" if song.artist else song.name
-            self._add_activity(activity.GOOD, f"Lyrics added: {label} ({'synced' if synced else 'text only'})")
-        if len(found) > 80:
-            self._add_activity(activity.INFO, f"…and {len(found) - 80} more songs got lyrics")
-
-    def _lyrics_after_batch(self, code):
-        "A batch of lyrics ended: start the next one while songs are left, or say how it all went."
-        run = self._lyrics_run
-        self._lyrics_scan()
-        if code == 0 and run["more"] > 0 and not run["stop"] and run["batches"] < LYRICS_MAX_BATCHES:
-            QTimer.singleShot(800, self._lyrics_next_batch)
-            return
-        self._lyrics_timer.stop()
-        added = run["synced"] + run["plain"]
-        if run["stop"]:
-            self._add_activity(activity.WARN, f"Lyrics stopped. {added} songs got lyrics so far.")
-        elif code == 0:
-            self._add_activity(
-                activity.GOOD, f"Lyrics done: {added} songs got lyrics ({run['synced']} synced, "
-                               f"{run['plain']} text only) in {run['batches']} batches")
-        self._lyrics_run = None
-
-    def _lyrics_next_batch(self):
-        run = self._lyrics_run
-        if run is None or run["stop"] or self.runner.running or self._closing:
-            return
-        run["batches"] += 1
-        self._add_activity(activity.STEP, f"Batch {run['batches']}: {run['more']:,} songs still to try")
-        try:
-            if not self.runner.run("Fetch lyrics"):
-                self._lyrics_after_batch(1)
-        except Exception as e:                                     # e.g. dl.py changed and needs approving again
-            self._add_activity(activity.BAD, f"Could not start the next batch: {e}")
-            self._lyrics_timer.stop()
-            self._lyrics_run = None
 
     def _show_line(self, line):
         "One line of dl.py output: shown as a friendly message (or not at all) and as the progress summary."
@@ -3634,8 +3647,8 @@ class MainWindow(QMainWindow):
 
     def _poll_log(self):
         "Follow a download started outside the app (a terminal, a timer); keep this page from starting another."
-        if self.runner.running or not self.cfg.has_dl:
-            return
+        if self.runner.running or self.lyrics_win.running or not self.cfg.has_dl:
+            return                                            # our own dl.py processes are not "another program's"
         try:
             fresh = sync.other_dl_running()
             if fresh is None:                                 # this system cannot list processes: go by the log
@@ -3666,8 +3679,9 @@ class MainWindow(QMainWindow):
             return
         self._external = on
         for name, b in self._action_buttons.items():
-            b.setEnabled(not on or name == "Status")
-            b.setToolTip(FRIENDLY[name][1] if not on or name == "Status" else "A download is already running")
+            free = not on or name in ("Status", "Fetch lyrics")        # the lyrics job has its own runner
+            b.setEnabled(free)
+            b.setToolTip(FRIENDLY[name][1] if free else "A download is already running")
         if on:
             self.dl_state.setText("A download is running (started outside Sleeve). Following it here.")
         else:
@@ -3702,7 +3716,11 @@ class MainWindow(QMainWindow):
             else:
                 vals = (Path(it).stem, "", it)
             for c, text in enumerate(vals):
-                self.health_table.setItem(r, c, QTableWidgetItem(text))
+                item = QTableWidgetItem(text)
+                item.setToolTip(text)
+                self.health_table.setItem(r, c, item)
+        self.health_table.setVisible(bool(items))
+        self.health_empty.setVisible(not items)
         self._health_buttons()
 
     def _health_path(self):
@@ -4080,6 +4098,7 @@ class MainWindow(QMainWindow):
         if self._vol_timer.isActive():               # the volume was changed in the last moment
             self._vol_timer.stop()
             self._save_settings()
+        self.lyrics_win.shutdown()
         self.runner.shutdown()
         self.player.close()
         super().closeEvent(event)
