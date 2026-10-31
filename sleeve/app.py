@@ -922,8 +922,7 @@ class MainWindow(QMainWindow):
         self.full_btn.setObjectName("round")
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
-        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album),
-                               (self.tab_queue, self.expand_btn, self.full_btn, self.tab_lyrics))   # ride on the cover
+        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lyrics_side = self.np_lyrics_side = QWidget()               # the lyrics panel (right side unless moved)
@@ -3499,6 +3498,15 @@ class MainWindow(QMainWindow):
         for widget, side in panels:
             if side == "right":
                 lay.addWidget(widget)
+        if hasattr(self, "np_cover"):
+            self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())
+
+    def _np_buttons(self):
+        """The round buttons under the art, in the order of the panels: the button of a panel on the left sits on the
+        left, of one on the right on the right, so each button is on the side of the panel it opens."""
+        mine = ((self.tab_queue, self.settings.np_queue_side), (self.tab_lyrics, self.settings.np_lyrics_side))
+        return ([b for b, side in mine if side == "left"] + [self.expand_btn, self.full_btn]
+                + [b for b, side in mine if side == "right"])
 
     def _np_side_width(self, side):
         "Room taken by the panels shown on one side (each with the gap beside it)."
