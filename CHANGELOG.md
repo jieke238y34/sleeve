@@ -40,6 +40,9 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   part in the accent colour; click or drag on it to seek. It is worked out in the background with ffmpeg, once per song.
 - Now Playing: the album art and the words under it start level with the top of the panel beside them, instead of
   floating lower.
+- The album art of the song playing now sits in the empty space under the sidebar's page list (as big as fits, up to
+  260 px), and the player bar's left block is all the song: more room for its name, in bold, with the artist under it in
+  the quiet colour.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on

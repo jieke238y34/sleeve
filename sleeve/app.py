@@ -164,6 +164,8 @@ FRIENDLY = {
 KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", activity.BAD: "✕", activity.STEP: "▸"}
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
+SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
+SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
 ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
@@ -228,6 +230,36 @@ class ElidedLabel(QLabel):
 
     def full_text(self):
         return self._full
+
+
+class NowText(QWidget):
+    """The song in the player bar: the title in bold, the artist under it in the quiet colour, each shortened with an …
+    when it does not fit. `setText("title\nartist")` and `text()` work like a label's."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.title, self.artist = ElidedLabel(), ElidedLabel()
+        self.title.setObjectName("nowtitle")
+        self.artist.setObjectName("nowartist")
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        box.addStretch(1)
+        box.addWidget(self.title)
+        box.addWidget(self.artist)
+        box.addStretch(1)
+        self._text = ""
+        self.setText(text)
+
+    def setText(self, text):
+        self._text = text or ""
+        first, _, rest = self._text.partition("\n")
+        self.title.setText(first)
+        self.artist.setText(rest)
+        self.artist.setVisible(bool(rest))
+
+    def text(self):
+        return self._text
 
 
 class ClickLabel(QLabel):
@@ -538,7 +570,12 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(6)
-        self.splitter.addWidget(self.nav)
+        self.side = QWidget()                                 # the page list, and the album art in the space under it
+        self.side_lay = QVBoxLayout(self.side)
+        self.side_lay.setContentsMargins(0, 0, 0, 8)
+        self.side_lay.setSpacing(6)
+        self.side_lay.addWidget(self.nav, 1)
+        self.splitter.addWidget(self.side)
         self.splitter.addWidget(self.stack)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
@@ -549,8 +586,10 @@ class MainWindow(QMainWindow):
         def _late_restore():
             self._restore_size()
             self.splitter.setSizes([self.settings.nav_width, 10_000])
-            QTimer.singleShot(0, _late_restore)
+            self._fit_side_art()
+        QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
+        self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
         outer.addWidget(self.bar)
         self.wave_strip = self._wave_strip()                  # shown instead of the bar while it is folded away
         outer.addWidget(self.wave_strip)
@@ -2492,17 +2531,18 @@ class MainWindow(QMainWindow):
         bar = QWidget()
         bar.setObjectName("playerbar")
         lay = QHBoxLayout(bar)
-        self.cover = ClickLabel()
-        self.cover.setFixedSize(56, 56)
-        self.cover.setScaledContents(True)
+        self.cover = ClickLabel()                            # the album art, in the space under the sidebar's list
+        self.cover.setFixedSize(SIDE_ART_MIN, SIDE_ART_MIN)
+        self.cover.setAlignment(Qt.AlignCenter)
         self.cover.setToolTip("Open Now Playing (double-click for fullscreen)")
+        self._side_src = None
         self._cover_click_timer = QTimer(self)        # a single click waits to see whether a second one follows
         self._cover_click_timer.setSingleShot(True)
         self._cover_click_timer.setInterval(QApplication.doubleClickInterval())
         self._cover_click_timer.timeout.connect(lambda: self.show_page("Now Playing"))
         self.cover.clicked.connect(self._cover_click_timer.start)
         self.cover.doubleClicked.connect(self._cover_double_clicked)
-        self.now = ElidedLabel("Nothing playing")          # ends in … instead of being cut; the tooltip has it all
+        self.now = NowText("Nothing playing")              # bold title, quiet artist; each ends in … when too long
         self.now.setMinimumWidth(100)
         self.now.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # takes what its side block gives it
 
@@ -2552,8 +2592,7 @@ class MainWindow(QMainWindow):
         left_lay, right_lay = QHBoxLayout(left), QHBoxLayout(right)      # middle of the window, not of what is left
         for box in (left_lay, right_lay):
             box.setContentsMargins(0, 0, 0, 0)
-        left_lay.addWidget(self.cover)
-        left_lay.addWidget(self.now, 1)
+        left_lay.addWidget(self.now, 1)                      # the whole left block is the song now: more room for it
         right_lay.addStretch(1)
         right_lay.addWidget(self.volume)
         for side in (left, right):                   # same limits and stretch: kept equal
@@ -4142,6 +4181,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._fit_side_art()
         QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
 
     def _toggle_cover(self):
@@ -4478,7 +4518,30 @@ class MainWindow(QMainWindow):
                 return True
         return False
 
+    def _fit_side_art(self):
+        "Size the album art to the room under the page list: as wide as the sidebar allows, never squeezing the list."
+        if not hasattr(self, "side"):
+            return
+        rows = self.nav.count() * max(self.nav.sizeHintForRow(0), 28) + 16
+        room = self.side.height() - rows - 20
+        side = max(SIDE_ART_MIN, min(self.side.width() - 24, room, SIDE_ART_MAX))
+        if self.cover.width() != side:
+            self.cover.setFixedSize(side, side)
+            self._render_side_art()
+
+    def _set_side_art(self, pix):
+        self._side_src = pix if pix is not None and not pix.isNull() else None
+        self._render_side_art()
+
+    def _render_side_art(self):
+        side = self.cover.width()
+        src = self._side_src
+        if src is None:
+            src = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(side, side)
+        self.cover.setPixmap(theme.rounded_pixmap(src, side, max(8, side // 12)))
+
     def _nav_resized(self, *_):
+        self._fit_side_art()
         if self.settings.set("nav_width", self.nav.width()):
             self._vol_timer.start()                       # saved a moment after the dragging stops
 
@@ -4593,6 +4656,7 @@ class MainWindow(QMainWindow):
         self._update_like_button()
         if not path:
             self.now.setText("Nothing playing")
+            self._side_src = None
             self.cover.clear()
             self.lyrics.clear()
             self._lyrics = []
@@ -4620,10 +4684,10 @@ class MainWindow(QMainWindow):
             data = None
         pix = QPixmap()
         if data and pix.loadFromData(data):
-            self.cover.setPixmap(theme.rounded_pixmap(pix, 56, 10))
+            self._set_side_art(pix)
             self._show_cover(pix, s.name, s.artist, s.album, audioinfo.describe(s))
         else:
-            self.cover.setPixmap(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(56, 56))
+            self._set_side_art(None)
             self._show_cover(None, s.name, s.artist, s.album, audioinfo.describe(s))
         self._load_lyrics(s)
 
