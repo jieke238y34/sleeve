@@ -16,6 +16,10 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   `DSD64 · 2.822 MHz · played as PCM · lossless`. Sleeve plays through FFmpeg, which decodes to PCM first, so it never
   claims a bit-perfect or native DSD path it does not have.
 - Settings > Listening: **Clear cached artwork** forgets the cover addresses looked up online.
+- Library > **Recently played**: the songs you played last, newest first, each once (needs "Remember what I listen to").
+- Settings > **Backup**: *Back up my data* saves your settings, stashed songs, listening history, playlist covers and
+  title colours as one zip; *Restore from a backup* puts them back. The zip never holds your music, your Last.fm
+  sign-in or your dl.py approval, and a restore only accepts those files, so a doctored zip cannot write elsewhere.
 
 ### Changed
 

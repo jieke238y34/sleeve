@@ -77,6 +77,7 @@ from . import (
     activity,
     art,
     audioinfo,
+    backup,
     build_label,
     config,
     desktop,
@@ -164,6 +165,7 @@ ONLINE_LIMIT = 50                                    # songs per lookup: about t
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = f"{labels.MARK} {labels.SONGS}"
+RECENT = "Recently played"
 
 
 def fmt_time(seconds):
@@ -289,6 +291,7 @@ class SongModel(QAbstractTableModel):
         self.liked = set()                    # the window's stashed paths; shown with a mark before the title
         self.icons, self.placeholder = {}, None   # path -> cover icon, shared with the window; the mark until one loads
         self._sort = None                     # (column, order) the header shows; kept when the list changes
+        self.keep_order = False               # the list is in an order of its own (recently played): do not sort it
 
     def set_songs(self, songs):
         self.beginResetModel()
@@ -297,7 +300,7 @@ class SongModel(QAbstractTableModel):
         self.endResetModel()
 
     def _apply_sort(self):
-        if self._sort:
+        if self._sort and not self.keep_order:
             col, order = self._sort
             self.songs.sort(key=self.SORT_KEYS[col], reverse=order == Qt.DescendingOrder)
 
@@ -1502,6 +1505,21 @@ class MainWindow(QMainWindow):
         row.addWidget(art_clear)
         lay.addLayout(row)
 
+        section("Backup")
+        lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
+                           "covers and title colours. It never holds your music, your Last.fm sign-in or your dl.py "
+                           "approval."))
+        backup_btn = QPushButton("Back up my data…")
+        backup_btn.setToolTip("Save a zip of your settings, stashed songs, listening history and playlist looks")
+        backup_btn.clicked.connect(self._backup_data)
+        restore_btn = QPushButton("Restore from a backup…")
+        restore_btn.setToolTip("Put the files of a backup made here back; restart Sleeve afterwards")
+        restore_btn.clicked.connect(self._restore_data)
+        row = FlowLayout()
+        row.addWidget(backup_btn)
+        row.addWidget(restore_btn)
+        lay.addLayout(row)
+
         section("Your files")
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
@@ -2204,10 +2222,11 @@ class MainWindow(QMainWindow):
         self.folders.clear()
         self.folders.addItem(ALL)
         self.folders.addItem(LIKED)
+        self.folders.addItem(RECENT)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
-        names = [ALL, LIKED, *groups]
+        names = [ALL, LIKED, RECENT, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
@@ -2268,8 +2287,11 @@ class MainWindow(QMainWindow):
             songs = self.songs
         elif self.folder == LIKED:
             songs = [s for s in self.songs if s.path in self.likes]
+        elif self.folder == RECENT:                          # newest first, until a column header is clicked
+            songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
+        self.model.keep_order = self.folder == RECENT
         self.model.set_songs(library.search(songs, self.search.text()))
         if self.model.placeholder is None:
             self.model.placeholder = self._blank_icon()
@@ -2666,6 +2688,39 @@ class MainWindow(QMainWindow):
         if on:                                            # a fresh listen starts when the history is on again
             self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
         self._refresh_listening()
+
+    def _backup_data(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        self._save_settings()                                # the file on disk is what gets saved
+        start = str(Path.home() / f"sleeve-backup-{time.strftime('%Y-%m-%d')}.zip")
+        path, _ = QFileDialog.getSaveFileName(self, "Back up my data", start, "Zip files (*.zip)")
+        if not path:
+            return
+        try:
+            target = backup.make(self.settings.file.parent, path if path.endswith(".zip") else path + ".zip")
+        except backup.BackupError as e:
+            self.status.showMessage(str(e), 8000)
+            return
+        self.status.showMessage(f"Backed up to {target}", 8000)
+
+    def _restore_data(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(self, "Restore from a backup", str(Path.home()), "Zip files (*.zip)")
+        if not path:
+            return
+        ask = QMessageBox.question(self, "Restore from a backup",
+                                   "This replaces your settings, stashed songs, listening history and playlist looks "
+                                   "with the ones in the backup. Your music and playlists are not touched.\n\nGo on?")
+        if ask != QMessageBox.Yes:
+            return
+        try:
+            done = backup.restore(path, self.settings.file.parent)
+        except backup.BackupError as e:
+            self.status.showMessage(str(e), 8000)
+            return
+        self.status.showMessage(f"Restored {len(done)} files. Restart Sleeve to use them.", 12000)
 
     def _clear_art_cache(self):
         n = clear_art_cache(self._art_cache)
