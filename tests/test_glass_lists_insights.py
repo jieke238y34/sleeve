@@ -174,7 +174,7 @@ def test_all_songs_and_stashed_songs_start_in_a_fresh_random_order(qapp, cfg, mo
             assert win.player.queue == list(reversed([s.path for s in win.model.songs]))
             assert win.queue_heading.text().endswith("(shuffled)")
         genre = next(win.folders.item(i) for i in range(win.folders.count())
-                     if win.folders.item(i).text() not in ("All songs", win.folders.item(1).text()))
+                     if win.folders.item(i).text() not in ("All songs", win.folders.item(1).text(), "Recently played"))
         win._play_folder(genre)
         assert win.player.queue == [s.path for s in win.model.songs] and "(shuffled)" not in win.queue_heading.text()
         assert order

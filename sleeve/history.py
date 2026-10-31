@@ -84,6 +84,17 @@ class History:
         order = sorted(plays, key=lambda p: (-plays[p], -seconds[p], -last[p], p))
         return [Play(p, plays[p], seconds[p]) for p in order[:limit]]
 
+    def recent(self, limit=100):
+        "The songs played most recently, newest first, each once."
+        seen, out = set(), []
+        for path, _when, _secs in reversed(self.events):
+            if path not in seen:
+                seen.add(path)
+                out.append(path)
+                if len(out) >= limit:
+                    break
+        return out
+
     def seconds(self, days, now=None):
         "Total time listened in the last `days` days."
         return sum(e[2] for e in self._within(days, now))
