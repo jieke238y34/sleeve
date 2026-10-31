@@ -35,6 +35,7 @@ jobs:
         python: ["3.10", "3.12", "3.13"]
     env:
       QT_QPA_PLATFORM: offscreen
+      PYTHONFAULTHANDLER: "1"            # a crash in Qt prints the Python stack, so the log names the test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,7 +49,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0 libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
       - run: pip install -e ".[dev]"
-      - run: pytest
+      - name: Find the crash (Python 3.10 aborts after test_glass_lists_insights.py)
+        if: matrix.python == '3.10'
+        continue-on-error: true
+        run: pytest -s -x tests/test_grid_fills.py 2>&1 | tail -60
+      - run: pytest -v
       - name: Run the desktop-integration tests on a session bus (Linux)
         run: dbus-run-session -- pytest tests/test_mpris.py tests/test_singleton.py -q
 
