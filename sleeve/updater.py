@@ -11,6 +11,7 @@ Updating installs the wheel attached to the newest GitHub release into Sleeve's 
 that environment, the `sleeve` command, the launcher entry and the icon, and leaves music, playlists and settings.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import shlex
 import shutil
 import subprocess  # nosec B404 (the command line update/removal runs pip and nothing else)
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +35,8 @@ API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 APP_ID = "io.github.jieke238y34.Sleeve"
 MAX_BYTES = 1_000_000
+MAX_WHEEL = 100_000_000                                            # a wheel is a few MB; more than this is not ours
+_SHA256 = re.compile(r"[0-9a-fA-F]{64}")
 _NUM = r"(0|[1-9]\d{0,3})"                                          # SemVer: no leading zeros
 _TAG = re.compile(rf"v{_NUM}\.{_NUM}\.{_NUM}(?:\+build\.(\d{{1,7}}))?")   # v0.2.0 or v0.2.0+build.99
 _TITLE_BUILD = re.compile(r"\(build (\d{1,7})\)")
@@ -155,10 +159,42 @@ def how_to_update(kind):
             "Update it the way you installed it.")
 
 
-def update_command(tag, python=None):
+def valid_sha256(text):
+    "True for 64 hexadecimal digits: the SHA-256 of a file written the usual way (`sha256sum`)."
+    return isinstance(text, str) and bool(_SHA256.fullmatch(text.strip()))
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch_wheel(url, dest, opener=urllib.request.urlopen):
+    "Download the release wheel to `dest` (never more than MAX_WHEEL bytes). Raises UpdateError."
+    req = urllib.request.Request(url, headers={"User-Agent": f"Sleeve/{__version__}"})  # noqa: S310  # nosec B310
+    size = 0
+    try:
+        with opener(req, timeout=60) as resp, open(dest, "wb") as out:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_WHEEL:
+                    raise UpdateError("The download was unexpectedly large, so it was stopped.")
+                out.write(chunk)
+    except (urllib.error.URLError, OSError) as e:
+        raise UpdateError("Could not download the release. Check your internet connection.") from e
+
+
+def update_command(tag, python=None, wheel=None):
     """The pip command that puts a release into the running environment. A newer build of the version already
-    installed has the same version number, so pip is told to reinstall it (without touching Qt and the rest)."""
-    url = wheel_url(tag)
+    installed has the same version number, so pip is told to reinstall it (without touching Qt and the rest).
+    `wheel` is a file already downloaded and checked; without it pip fetches the release's own address."""
+    url = wheel or wheel_url(tag)
     if parse_version(tag) < parse_version(__version__):
         raise ValueError("that release is older than this copy")             # never a downgrade, whoever asks
     same = parse_version(tag) == parse_version(__version__)
@@ -320,8 +356,12 @@ def removal_script(env=None, home=None, plan=None, pid=None):
     return "; ".join(steps)
 
 
-def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env=None):
-    "`sleeve --update`: returns the exit code."
+def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env=None, sha256=None):
+    """`sleeve --update`: returns the exit code. With `sha256` the wheel is downloaded first and installed only when
+    its SHA-256 is exactly that: for a developer who was handed the hash of a build (`sha256sum` of the file)."""
+    if sha256 is not None and not valid_sha256(sha256):
+        out("--sha256 needs the 64 hexadecimal digits of the wheel's SHA-256, as `sha256sum` prints them.")
+        return 2
     kind = install_kind(env)
     if kind != "venv":
         out(how_to_update(kind))
@@ -338,7 +378,22 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
         out(status_text(release, f"{__version__} · build {local_build()}"))
         return 0
     out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
-    done = run(update_command(release["tag"]), check=False)  # noqa: S603  # nosec B603
+    if sha256 is None:
+        done = run(update_command(release["tag"]), check=False)  # noqa: S603  # nosec B603
+    else:
+        with tempfile.TemporaryDirectory(prefix="sleeve-update-") as folder:
+            wheel = Path(folder) / wheel_url(release["tag"]).rsplit("/", 1)[1]
+            try:
+                fetch_wheel(wheel_url(release["tag"]), wheel, opener)
+            except UpdateError as e:
+                out(str(e))
+                return 1
+            got = file_sha256(wheel)
+            if got != sha256.strip().lower():
+                out(f"The download does not match the SHA-256 you gave, so nothing was installed. It was {got}.")
+                return 1
+            out("The SHA-256 matches.")
+            done = run(update_command(release["tag"], wheel=str(wheel)), check=False)  # noqa: S603  # nosec B603
     if done.returncode != 0:
         out("The update did not finish. Your current Sleeve is unchanged; try again, or see the releases page: "
             + RELEASES_PAGE)

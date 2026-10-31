@@ -175,3 +175,51 @@ def test_the_update_command_line_with_a_fake_environment(tmp_path, monkeypatch):
         urllib.error.HTTPError(r.full_url, 404, "x", {}, None))) == 0 and "No release" in lines[-1]
     fail = lambda cmd, check: SimpleNamespace(returncode=1)  # noqa: E731
     assert updater.cli_update(lines.append, opener=answer("v9.0.0"), run=fail) == 1 and "unchanged" in lines[-1]
+
+
+class FakeDownload:
+    "What urlopen gives back for a wheel: a context manager with read()."
+
+    def __init__(self, data):
+        self.data, self.pos = data, 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self, n=-1):
+        chunk, self.pos = self.data[self.pos:self.pos + n], self.pos + n
+        return chunk
+
+
+def test_update_with_a_sha256_installs_only_a_wheel_that_matches(monkeypatch):
+    import hashlib
+
+    wheel = b"not really a wheel"
+    good = hashlib.sha256(wheel).hexdigest()
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+    release = answer("v9.0.0")
+
+    def opener(req, timeout):
+        return release(req, timeout) if "api.github.com" in req.full_url else FakeDownload(wheel)
+
+    ran, lines = [], []
+
+    def run(cmd, check):
+        ran.append(cmd)
+        return SimpleNamespace(returncode=0)
+
+    assert updater.cli_update(lines.append, opener=opener, run=run, sha256=good.upper()) == 0
+    assert "matches" in "".join(lines) and ran and ran[0][-1].endswith("-py3-none-any.whl")
+    assert "releases/download" not in ran[0][-1]                       # pip got the checked file, not the address
+    ran.clear()
+    assert updater.cli_update(lines.append, opener=opener, run=run, sha256="0" * 64) == 1
+    assert not ran and "does not match" in lines[-1] and good in lines[-1]
+    assert updater.cli_update(lines.append, opener=opener, run=run, sha256="abc") == 2 and not ran
+
+
+def test_the_sha256_must_be_64_hex_digits():
+    assert updater.valid_sha256("a" * 64) and updater.valid_sha256(("AB12" * 16) + "\n")
+    assert not updater.valid_sha256("a" * 63) and not updater.valid_sha256("g" * 64) and not updater.valid_sha256(None)

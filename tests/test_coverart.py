@@ -127,3 +127,14 @@ def test_the_first_cover_lookup_starts_at_once_and_the_next_songs_are_looked_up_
         assert win._art_wanted == [("Album C", "Artist C"), ("Album A", "Artist A"), ("Album B", "Artist B")]
     finally:
         win.close()
+
+
+def test_clearing_the_cover_cache_forgets_every_address_and_deletes_the_file(tmp_path):
+    from sleeve import coverart
+
+    cache = coverart.ArtCache(tmp_path / "cover-urls.json")
+    cache.put("Album", "Artist", "https://coverartarchive.org/release/x/front-250")
+    assert (tmp_path / "cover-urls.json").is_file() and cache.get("Album", "Artist")[0]
+    assert coverart.clear_cache(cache) == 1
+    assert not (tmp_path / "cover-urls.json").exists() and cache.get("Album", "Artist") == (False, "")
+    assert coverart.clear_cache(cache) == 0                                 # nothing left: no error

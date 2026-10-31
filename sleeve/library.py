@@ -4,7 +4,10 @@ import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-AUDIO_EXT = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav"}
+from .audioinfo import fmt_of
+from .textfold import fold
+
+AUDIO_EXT = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aif", ".ape", ".wv", ".tta", ".dsf", ".dff"}
 SKIP_DIRS = {"errors", "archives"}            # dl.py's own folders, skipped at the top level only
 LOOSE = "(no genre folder)"
 
@@ -21,6 +24,9 @@ class Song:
     folder: str = LOOSE            # top-level folder under the music dir = the genre folder
     track: int = 0                 # the number on the album (0 = the file does not say)
     disc: int = 0                  # the disc of a multi-disc album (0 = does not say)
+    rate: int = 0                  # sample rate in Hz (0 = unknown)
+    bits: int = 0                  # bits per sample (0 = unknown; 1 for DSD)
+    fmt: str = ""                  # 'FLAC', 'MP3', 'ALAC', 'DSD'... (see audioinfo.py)
 
     @property
     def name(self):
@@ -72,6 +78,9 @@ def read_song(path, music_dir, mutagen_file=None):
         info = getattr(audio, "info", None)
         s.length = float(getattr(info, "length", 0) or 0)
         s.bitrate = int(getattr(info, "bitrate", 0) or 0) // 1000
+        s.rate = int(getattr(info, "sample_rate", 0) or 0)
+        s.bits = int(getattr(info, "bits_per_sample", 0) or 0)
+        s.fmt = fmt_of(audio)
     return s
 
 
@@ -106,13 +115,16 @@ def _cached_song(hit, key, stat_key, music_dir):
         if not isinstance(hit, dict) or hit["k"] != stat_key:
             return None
         data = hit["s"]
-        if not isinstance(data, dict) or data.get("path") != key or "track" not in data:
-            return None                                       # no track number in it: read before they were kept
+        if not isinstance(data, dict) or data.get("path") != key or "track" not in data or "fmt" not in data:
+            return None                                       # no track number or format in it: an older cache
         song = Song(**{k: v for k, v in data.items() if k in _FIELD_NAMES})
         if not all(isinstance(getattr(song, k), str) for k in ("path", "title", "artist", "album", "genre")):
             return None
         song.length, song.bitrate = float(song.length), int(song.bitrate)
         song.track, song.disc = int(song.track), int(song.disc)
+        song.rate, song.bits = int(song.rate), int(song.bits)
+        if not isinstance(song.fmt, str):
+            return None
         song.folder = folder_of(key, music_dir)             # always from the current music folder
         return song
     except (KeyError, TypeError, ValueError):
@@ -156,16 +168,16 @@ def scan(music_dir, cache_file=None, extra_skip=(), progress=None, mutagen_file=
 
 
 def _haystack(s):
-    "Lower-case text a search looks in, built once per song (kept outside the dataclass fields, so not cached to disk)."
+    "Folded text (see textfold.py) a search looks in, built once per song (not a dataclass field, so not cached)."
     h = s.__dict__.get("_hay")
     if h is None:
-        h = s.__dict__["_hay"] = f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}".lower()
+        h = s.__dict__["_hay"] = fold(f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}")
     return h
 
 
 def search(songs, text):
     "Songs where every word of text is in the title, artist, album, genre or file name."
-    words = text.lower().split()
+    words = fold(text).split()
     if not words:
         return list(songs)
     return [s for s in songs if all(w in _haystack(s) for w in words)]
@@ -176,4 +188,4 @@ def by_folder(songs):
     out = {}
     for s in songs:
         out.setdefault(s.folder, []).append(s)
-    return dict(sorted(out.items(), key=lambda kv: kv[0].lower()))
+    return dict(sorted(out.items(), key=lambda kv: fold(kv[0])))

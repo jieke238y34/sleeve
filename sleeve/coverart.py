@@ -97,6 +97,19 @@ class ArtCache:
             pass
 
 
+def clear_cache(cache):
+    "Forget every cover address Sleeve looked up (and delete the file). Returns how many were forgotten."
+    n = len(cache.urls)
+    cache.urls = {}
+    try:
+        cache.file.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass                                        # the file stays; the addresses are forgotten here at least
+    return n
+
+
 def lookup(album, artist, fetch=mb.fetch_json):
     "The cover address for an album, or '' when MusicBrainz is not sure which release it is."
     mbid = pick_release(fetch(release_url(album, artist)).get("releases", []), album, artist)

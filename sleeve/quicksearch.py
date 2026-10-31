@@ -1,6 +1,5 @@
 """Ctrl+K quick search: type a few letters, pick a song, playlist or genre folder, play it from the keyboard."""
 import os
-import unicodedata
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
@@ -17,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import theme
+from . import textfold, theme
 
 MAX_RESULTS = 50
 MAX_OTHER = 8                  # playlists and folders shown at most, so songs never crowd them out
@@ -38,7 +37,7 @@ QListWidget#qslist::item, QListWidget#qslist::item:selected {{ background: trans
 
 def fold(text):
     "Lower-case text without accents, for case- and accent-insensitive matching."
-    return "".join(c for c in unicodedata.normalize("NFKD", str(text).lower()) if not unicodedata.combining(c))
+    return textfold.fold(text)
 
 
 def _clock(seconds):
