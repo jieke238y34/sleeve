@@ -6,6 +6,8 @@ import os
 import re
 from pathlib import Path
 
+from . import themes
+
 SETTINGS_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "settings.json"
 MAX_BYTES = 100_000
 
@@ -47,6 +49,10 @@ DEFAULTS = {
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
     "remember_session": True,          # open again with the queue and song that were playing, paused where they were
+    "gradient": None,                  # your own 5-colour background (a list of #rrggbb), or None: follow the cover
+    "np_queue_side": "left",           # Now Playing: which side the playlist panel is on
+    "np_lyrics_side": "right",         # Now Playing: which side the lyrics panel is on
+    "player_bar_hidden": False,        # the player bar at the bottom is folded away (one click brings it back)
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
     "lastfm_on": False,                # send what is played to last.fm (needs a connected account, see lastfm.py)
@@ -75,7 +81,7 @@ def _valid_custom_theme(value):
     if not isinstance(value.get("name", ""), str) or len(value.get("name", "")) > 24:
         return False
     back = value.get("backdrop")
-    return back is None or (isinstance(back, list) and len(back) == 3
+    return back is None or (isinstance(back, list) and len(back) in (3, 5)
                             and all(isinstance(c, str) and _HEX.fullmatch(c) for c in back))
 
 
@@ -89,12 +95,17 @@ def _valid(key, value):
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
-                "np_queue_shown", "np_lyrics_shown", "remember_session"):
+                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
+    if key == "gradient":
+        return value is None or (isinstance(value, list) and len(value) == 5
+                                 and all(isinstance(c, str) and _HEX.fullmatch(c) for c in value))
+    if key in ("np_queue_side", "np_lyrics_side"):
+        return value in ("left", "right")
     if key == "theme":
-        return value in ("default", "dusk", "custom")
+        return value == "default" or value == "custom" or value in themes.NAMES
     if key == "custom_theme":
         return value is None or _valid_custom_theme(value)
     if key == "seasonal":

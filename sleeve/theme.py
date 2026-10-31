@@ -7,6 +7,8 @@ from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, QVariantAnimation
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QMenu, QWidget
 
+from . import themes
+
 LAVENDER, CREAM = "#b7afe0", "#f3e9d2"
 BG, TEXT, MUTED = "#15131d", "#ece9f6", "#a29cbd"
 
@@ -28,6 +30,11 @@ CUSTOM_THEMES = {"dusk": "Dusk"}
 
 # A theme can fix the backdrop gradient (top left, middle, bottom right) instead of taking it from the cover.
 BACKDROPS = {"dusk": ("#8f745a", "#6c5756", "#5f697b")}
+
+for _name, (_label, *_colours, _backdrop) in themes.BUILTIN.items():      # the themes that come with Sleeve
+    LOOKS[_name] = tuple(_colours)
+    CUSTOM_THEMES[_name] = _label
+    BACKDROPS[_name] = _backdrop
 
 
 def set_custom(custom):
@@ -134,6 +141,9 @@ QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
+QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; padding: 0 12px; font-size: 9pt;
+                       background: transparent; }}
+QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
                     padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
 QPushButton#play:hover {{ background: {CREAM}; }}
@@ -317,6 +327,24 @@ def _distance(a, b):
     return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
 
 
+def resample(colours, count):
+    "The colours of a gradient as `count` evenly spaced colours (the same ones when it already has that many)."
+    colours = [QColor(c) for c in colours]
+    if len(colours) == count or not colours or count < 1:
+        return colours
+    if len(colours) == 1:
+        return [QColor(colours[0]) for _ in range(count)]
+    out = []
+    for i in range(count):
+        pos = i * (len(colours) - 1) / max(1, count - 1)
+        lo = min(int(pos), len(colours) - 2)
+        t = pos - lo
+        a, b = colours[lo], colours[lo + 1]
+        out.append(QColor(round(a.red() + (b.red() - a.red()) * t), round(a.green() + (b.green() - a.green()) * t),
+                          round(a.blue() + (b.blue() - a.blue()) * t)))
+    return out
+
+
 def palette_from(pix, count=3):
     """The main colours of a cover as `count` QColors, vivid ones first, darkened so white text stays readable.
     Greys and near-blacks only fill in when the cover has nothing more colourful. [] for a missing cover."""
@@ -440,7 +468,7 @@ class Backdrop(QWidget):
         self.update()
 
     def set_fixed(self, colours):
-        "Use these three colours whatever is playing (a theme's own backdrop); None goes back to the cover's colours."
+        "Use these three or five colours whatever is playing (a theme's or your own backdrop); None follows the cover."
         colours = [QColor(c) for c in colours] if colours else None
         if [c.rgb() for c in colours or ()] != [c.rgb() for c in self._fixed or ()]:
             self._fixed = colours
@@ -448,7 +476,7 @@ class Backdrop(QWidget):
 
     def _retarget(self):
         colours = self._fixed or palette_from(self._pix) or [QColor(c) for c in NEUTRAL]
-        self._from, self._to = list(self._now), colours
+        self._from, self._to = resample(self._now, len(colours)), colours     # 3 and 5 colours fade into each other
         self._fade.stop()
         self._fade.start()
 
@@ -491,11 +519,14 @@ class Backdrop(QWidget):
         pix.fill(Qt.transparent)
         p = QPainter(pix)
         w, h = self.width(), self.height()
-        c1, c2, c3 = self._now
+        c1 = self._now[0]
         base = QLinearGradient(0, 0, w, h)                   # corner to corner
-        base.setColorAt(0.0, c1)
-        base.setColorAt(0.55, c2)
-        base.setColorAt(1.0, c3)
+        if len(self._now) == 3:
+            stops = (0.0, 0.55, 1.0)                         # the middle colour sits a little past halfway
+        else:
+            stops = tuple(i / (len(self._now) - 1) for i in range(len(self._now)))        # a 5-point gradient: even
+        for at, colour in zip(stops, self._now, strict=True):
+            base.setColorAt(at, colour)
         p.fillRect(self.rect(), base)
         glow = QRadialGradient(QPointF(w * 0.78, h * 0.18), max(w, h) * 0.55)       # a soft light behind the cover
         light = QColor(c1)

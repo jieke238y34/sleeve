@@ -189,10 +189,12 @@ def build_demo_window(tmp):
 SHOWCASE = (("accent", "Crimson"), ("accent", "Tangerine"), ("accent", "Sunflower"), ("accent", "Emerald"),
             ("accent", "Azure"), ("accent", "Magenta"), ("season", "spring"), ("season", "summer"),
             ("season", "autumn"), ("season", "winter"), ("holiday", "halloween"), ("holiday", "christmas"),
-            ("holiday", "newyear"), ("theme", "dusk"), ("theme", "custom"))
+            ("holiday", "newyear"), ("theme", "dusk"), ("theme", "frog"), ("theme", "midnight"),
+            ("theme", "sakura"), ("theme", "ocean"), ("theme", "ember"), ("theme", "graphite"),
+            ("theme", "sunset"), ("theme", "custom"))
 CUSTOM_DEMO = {"name": "Night bus", "bg": "#0f1a1c", "text": "#eef6f4", "muted": "#8fb0ab", "accent": "#7fd1ae",
                "backdrop": ["#1d4e4a", "#12363a", "#0d2230"]}
-SHOWCASE_COLUMNS, SHOWCASE_TILE = 3, 440
+SHOWCASE_COLUMNS, SHOWCASE_TILE = 4, 340
 
 
 def colour_showcase(win, s, play):

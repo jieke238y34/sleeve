@@ -16,6 +16,13 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   `DSD64 · 2.822 MHz · played as PCM · lossless`. Sleeve plays through FFmpeg, which decodes to PCM first, so it never
   claims a bit-perfect or native DSD path it does not have.
 - Settings > Listening: **Clear cached artwork** forgets the cover addresses looked up online.
+- Seven more themes come with Sleeve, next to Dusk: Frog, Midnight, Sakura, Ocean, Ember, Graphite and Sunset. Each
+  keeps its own colours and background whatever is playing, and a test checks every one is readable.
+- A **5-point background gradient** (Settings > Look > My own background): five colours from the top left corner to
+  the bottom right replace the background that follows the cover. Your own themes can use one too, and the older
+  3-colour backdrops fade into it.
+- Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
+- **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - Library > **Recently played**: the songs you played last, newest first, each once (needs "Remember what I listen to").
 - Settings > **Backup**: *Back up my data* saves your settings, stashed songs, listening history, playlist covers and
   title colours as one zip; *Restore from a backup* puts them back. The zip never holds your music, your Last.fm

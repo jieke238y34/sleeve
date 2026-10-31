@@ -1,6 +1,6 @@
 """Make your own Sleeve theme: pick the colours, watch a small preview, save it as a theme you can switch to."""
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -18,7 +18,59 @@ from PySide6.QtWidgets import (
 from . import theme
 
 FIELDS = (("bg", "Background"), ("text", "Text"), ("muted", "Quiet text"), ("accent", "Accent"))
-BACK_FIELDS = (("b0", "Top left"), ("b1", "Middle"), ("b2", "Bottom right"))
+POINT_NAMES = ("Top left", "Second", "Middle", "Fourth", "Bottom right")
+DEFAULT_GRADIENT = ["#3b2f66", "#5a3d8a", "#2a5f8a", "#1f7a7a", "#16131f"]
+
+
+class GradientEditor(QWidget):
+    "Five colour swatches and a strip showing the gradient they make, corner to corner. `changed` says the colours did."
+
+    changed = Signal()
+
+    def __init__(self, colours=None, parent=None):
+        super().__init__(parent)
+        self._colours = [QColor(c).name() for c in (colours or DEFAULT_GRADIENT)]
+        self._buttons = []
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        for i, name in enumerate(POINT_NAMES):
+            b = QPushButton("")
+            b.setToolTip(f"Colour {i + 1} of 5 ({name}): choose")
+            b.setAccessibleName(f"Gradient colour {i + 1}")
+            b.setFixedSize(52, 28)
+            b.clicked.connect(lambda _=False, n=i: self._pick(n))
+            row.addWidget(b)
+            self._buttons.append(b)
+        row.addStretch(1)
+        self.strip = QLabel("")
+        self.strip.setFixedHeight(14)
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(6)
+        box.addLayout(row)
+        box.addWidget(self.strip)
+        self._paint()
+
+    def colours(self):
+        return list(self._colours)
+
+    def set_colours(self, colours):
+        self._colours = [QColor(c).name() for c in colours]
+        self._paint()
+
+    def _pick(self, n):
+        chosen = QColorDialog.getColor(QColor(self._colours[n]), self, f"Colour {n + 1} of 5")
+        if chosen.isValid():
+            self._colours[n] = chosen.name()
+            self._paint()
+            self.changed.emit()
+
+    def _paint(self):
+        for b, colour in zip(self._buttons, self._colours, strict=True):
+            b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 1px solid rgba(255,255,255,90); "
+                            f"border-radius: 14px; }}")
+        stops = ", ".join(f"stop:{i / 4:.2f} {c}" for i, c in enumerate(self._colours))
+        self.strip.setStyleSheet(f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0, {stops}); border-radius: 7px;")
 
 
 class Preview(QWidget):
@@ -45,7 +97,7 @@ class Preview(QWidget):
         if self.backdrop:
             g = QLinearGradient(0, 0, w, h)
             for i, col in enumerate(self.backdrop):
-                g.setColorAt(i / 2, QColor(col))
+                g.setColorAt(i / max(1, len(self.backdrop) - 1), QColor(col))
             p.setOpacity(0.55)
             p.fillRect(0, 0, w, h, g)
             p.setOpacity(1)
@@ -81,7 +133,6 @@ class ThemeDialog(QDialog):
         self.removed = False
         self._colours = {k: current[k] for k, _ in FIELDS}
         back = current.get("backdrop") or ["#8f745a", "#6c5756", "#5f697b"]
-        self._colours.update({f"b{i}": back[i] for i in range(3)})
         heading = QLabel("Your own theme")
         heading.setObjectName("heading")
         sub = QLabel("Pick the colours. The preview shows how they look together.")
@@ -97,15 +148,11 @@ class ThemeDialog(QDialog):
         for row, (key, label) in enumerate(FIELDS):
             grid.addWidget(QLabel(label), row, 0)
             grid.addWidget(self._swatch(key, label), row, 1)
-        self.own_back = QCheckBox("Colour the background glow myself (otherwise it follows the cover)")
+        self.own_back = QCheckBox("Colour the background myself with a 5-point gradient (else it follows the cover)")
         self.own_back.setChecked(bool(current.get("backdrop")))
         self.own_back.toggled.connect(self._refresh)
-        back_row = QHBoxLayout()
-        for key, label in BACK_FIELDS:
-            back_row.addWidget(self._swatch(key, label))
-        self.back_box = QWidget()
-        self.back_box.setLayout(back_row)
-        back_row.setContentsMargins(0, 0, 0, 0)
+        self.back_box = GradientEditor([c.name() for c in theme.resample(back, 5)])       # a 3-colour glow becomes 5
+        self.back_box.changed.connect(self._refresh)
         self.warning = QLabel("")
         self.warning.setObjectName("muted")
         self.warning.setWordWrap(True)
@@ -167,7 +214,7 @@ class ThemeDialog(QDialog):
         self.save_btn.setEnabled(not found)
 
     def _backdrop(self):
-        return [self._colours[f"b{i}"] for i in range(3)] if self.own_back.isChecked() else None
+        return self.back_box.colours() if self.own_back.isChecked() else None
 
     def result_theme(self):
         out = {k: self._colours[k] for k, _ in FIELDS}
