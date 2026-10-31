@@ -76,6 +76,25 @@ def is_newer(remote, remote_build=0, local=__version__, local_build_number=None)
     return (r, remote_build) > (v, mine)
 
 
+def relation(release, local=__version__, local_build_number=None):
+    """How this copy stands against the newest published release: 'older' (there is an update), 'same', or 'ahead'
+    (built from newer work than any release, as a development copy is)."""
+    r, v = parse_version(release["version"]), parse_version(local)
+    mine = local_build() if local_build_number is None else local_build_number
+    if not (r and v):
+        return "same"
+    theirs, ours = (r, release.get("build") or 0), (v, mine)
+    return "older" if theirs > ours else "ahead" if theirs < ours else "same"
+
+
+def status_text(release, shown):
+    "One sentence for 'is there something newer?', where `shown` is how this copy is written (build_label())."
+    where = {"same": f"You have the newest release, Sleeve {shown}.",
+             "ahead": (f"This copy (Sleeve {shown}) is newer than the newest published release, {label(release)}. "
+                       "Nobody can update to it until a release is published.")}
+    return where[relation(release)]
+
+
 def wheel_url(tag):
     "The wheel the release workflow attaches. Only a well-formed tag can make an address."
     version = parse_version(tag) if isinstance(tag, str) and tag.startswith("v") else None
@@ -314,7 +333,7 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
         out("No release has been published yet, so there is nothing to update to.")
         return 0
     if not is_newer(release["version"], release["build"]):
-        out(f"Sleeve {__version__} (build {local_build()}) is the newest.")
+        out(status_text(release, f"{__version__} · build {local_build()}"))
         return 0
     out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
     done = run(update_command(release["tag"]), check=False)  # noqa: S603  # nosec B603

@@ -1448,7 +1448,7 @@ class MainWindow(QMainWindow):
         elif release is None:
             self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
         elif not updater.is_newer(release["version"], release["build"]):
-            self.update_label.setText(f"You have the newest version, Sleeve {build_label()}.")
+            self.update_label.setText(updater.status_text(release, build_label()))
         elif updater.install_kind() == "venv":
             self.update_label.setText(f"Sleeve {updater.label(release)} is available (you have {build_label()}). "
                                       "Updating replaces Sleeve's own program files only.")
