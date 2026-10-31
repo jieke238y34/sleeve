@@ -76,6 +76,7 @@ from PySide6.QtWidgets import (
 from . import (
     activity,
     art,
+    audioinfo,
     build_label,
     config,
     desktop,
@@ -108,6 +109,7 @@ from . import (
 from .albums import AlbumDetail, AlbumGrid
 from .boost import StreamBoost
 from .coverart import ArtCache, ArtWorker, is_art_url
+from .coverart import clear_cache as clear_art_cache
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
@@ -122,6 +124,7 @@ from .session import Session
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
+from .textfold import fold
 from .themedialog import ThemeDialog
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
@@ -277,8 +280,8 @@ class ClickSlider(QSlider):
 class SongModel(QAbstractTableModel):
     COLS = ("Title", "Artist", "Album", "Genre", "Time")
 
-    SORT_KEYS = (lambda s: s.name.lower(), lambda s: s.artist.lower(), lambda s: s.album.lower(),
-                 lambda s: (s.genre or s.folder).lower(), lambda s: s.length)
+    SORT_KEYS = (lambda s: fold(s.name), lambda s: fold(s.artist), lambda s: fold(s.album),
+                 lambda s: fold(s.genre or s.folder), lambda s: s.length)
 
     def __init__(self, songs=()):
         super().__init__()
@@ -323,6 +326,8 @@ class SongModel(QAbstractTableModel):
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:
             return self.COLS[section]
+        if role == Qt.TextAlignmentRole and orientation == Qt.Horizontal:
+            return int(Qt.AlignRight | Qt.AlignVCenter) if section == 4 else int(Qt.AlignLeft | Qt.AlignVCenter)
         return None
 
     def sort(self, column, order=Qt.AscendingOrder):
@@ -1488,9 +1493,13 @@ class MainWindow(QMainWindow):
                            "the top songs on the Identity page and is never sent anywhere."))
         clear = QPushButton("Clear listening history")
         clear.clicked.connect(self._clear_listening)
-        row = QHBoxLayout()
+
+        art_clear = QPushButton("Clear cached artwork")
+        art_clear.setToolTip("Forget the cover addresses Sleeve looked up online. Covers inside your own files stay.")
+        art_clear.clicked.connect(self._clear_art_cache)
+        row = FlowLayout()                                  # side by side, and one under the other when narrow
         row.addWidget(clear)
-        row.addStretch(1)
+        row.addWidget(art_clear)
         lay.addLayout(row)
 
         section("Your files")
@@ -1728,12 +1737,12 @@ class MainWindow(QMainWindow):
 
     def _filter_settings(self, text):
         "Show only the sections that mention every word typed (their titles, labels, hints and buttons)."
-        words = text.casefold().split()
+        words = fold(text).split()
         shown = 0
         for box in self._setting_groups:
             parts = [w.text() for w in box.findChildren(QWidget) if hasattr(w, "text")]
             parts += [w.toolTip() + " " + w.accessibleName() for w in box.findChildren(QWidget)]
-            hay = " ".join(parts).casefold()
+            hay = fold(" ".join(parts))
             match = all(word in hay for word in words)
             box.setVisible(match)
             shown += match
@@ -2658,6 +2667,10 @@ class MainWindow(QMainWindow):
             self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
         self._refresh_listening()
 
+    def _clear_art_cache(self):
+        n = clear_art_cache(self._art_cache)
+        self.status.showMessage(f"Forgot {n} cover address{'' if n == 1 else 'es'} looked up online", 6000)
+
     def _clear_listening(self):
         saved = list(self.history.events)                 # kept back until the clear is safely on disk
         self._listen_event = None                         # the play in progress goes with the rest
@@ -3497,7 +3510,7 @@ class MainWindow(QMainWindow):
         logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(44, 44)
         return theme.rounded_pixmap(logo, 44, 8) if not logo.isNull() else logo
 
-    def _show_cover(self, pix, title, artist, album):
+    def _show_cover(self, pix, title, artist, album, detail=""):
         "The Now Playing page, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
@@ -3506,7 +3519,8 @@ class MainWindow(QMainWindow):
             self._apply_accent(force=False)                 # a new song may bring a new colour
         self.np_title.setText(title or "Nothing playing")
         self.np_artist.setText(artist)
-        self.np_album.setText(album)
+        self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
+        self.np_album.setToolTip(detail)
         if self._cover_screen is not None:
             self._cover_screen.set_song(self._np_pix, title, artist)
 
@@ -3989,16 +4003,16 @@ class MainWindow(QMainWindow):
         pix = QPixmap()
         if data and pix.loadFromData(data):
             self.cover.setPixmap(theme.rounded_pixmap(pix, 56, 10))
-            self._show_cover(pix, s.name, s.artist, s.album)
+            self._show_cover(pix, s.name, s.artist, s.album, audioinfo.describe(s))
         else:
             self.cover.setPixmap(QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(56, 56))
-            self._show_cover(None, s.name, s.artist, s.album)
+            self._show_cover(None, s.name, s.artist, s.album, audioinfo.describe(s))
         self._load_lyrics(s)
 
     def _read_lyrics_file(self, path):
         try:
             if path and path.stat().st_size <= lrc.MAX_BYTES:
-                return path.read_text(encoding="utf-8", errors="replace")
+                return lrc.decode(path.read_bytes())               # UTF-8, UTF-16, or what other programs saved
         except (OSError, ValueError):
             pass
         return ""

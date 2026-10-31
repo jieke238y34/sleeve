@@ -29,7 +29,7 @@ SOFT = "#d4cfe8"                    # secondary text on the tabs: at least 4.5:1
 
 UNKNOWN = "Unknown"
 REST = "Everything else"                         # the last bar: all the genres that did not fit
-LOSSLESS_EXT = {".flac", ".wav"}
+LOSSLESS_EXT = {".flac", ".wav", ".aiff", ".aif", ".ape", ".wv", ".tta", ".dsf", ".dff"}
 QUALITY = ("lossless", "high", "ok", "low")
 TOP_N = 6
 NO_GENRE = {"", "other", "unknown", "unknown genre", "none", "n/a"}
@@ -119,7 +119,7 @@ class Identity:
 
 def quality_of(song):
     "'lossless', 'high' (256 kbps and up), 'ok' (128 and up), 'low', or '' when unknown."
-    if Path(song.path).suffix.lower() in LOSSLESS_EXT:
+    if Path(song.path).suffix.lower() in LOSSLESS_EXT or getattr(song, "fmt", "") == "ALAC":
         return "lossless"
     b = song.bitrate
     return "" if b <= 0 else "high" if b >= 256 else "ok" if b >= 128 else "low"

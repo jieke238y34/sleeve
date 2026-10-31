@@ -388,9 +388,9 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
             except UpdateError as e:
                 out(str(e))
                 return 1
-            if file_sha256(wheel) != sha256.strip().lower():
-                out("The download does not match the SHA-256 you gave, so nothing was installed. "
-                    f"It was {file_sha256(wheel)}.")
+            got = file_sha256(wheel)
+            if got != sha256.strip().lower():
+                out(f"The download does not match the SHA-256 you gave, so nothing was installed. It was {got}.")
                 return 1
             out("The SHA-256 matches.")
             done = run(update_command(release["tag"], wheel=str(wheel)), check=False)  # noqa: S603  # nosec B603

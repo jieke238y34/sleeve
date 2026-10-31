@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - Unreleased
+
+Work towards the next stable release. Releases stay stable-only: a build is published when it is ready, not per commit.
+
+### Added
+
+- More audio formats are found in the library: AIFF, APE, WavPack, TTA, DSF and DFF (DSD) next to MP3, M4A (AAC and
+  ALAC), FLAC, Ogg, Opus and WAV. They are read with their tags, sample rate and bit depth.
+- Now Playing says what the file really is: `FLAC · 96 kHz · 24-bit · lossless`, `MP3 · 44.1 kHz · lossy`, and for DSD
+  `DSD64 · 2.822 MHz · played as PCM · lossless`. Sleeve plays through FFmpeg, which decodes to PCM first, so it never
+  claims a bit-perfect or native DSD path it does not have.
+- Settings > Listening: **Clear cached artwork** forgets the cover addresses looked up online.
+
+### Changed
+
+- Better for music in other languages: search and sorting ignore case, Latin/Greek/Cyrillic accents and full-width
+  versus half-width letters (`beyonce` finds Beyoncé, `ＹＯＡＳＯＢＩ` finds YOASOBI), while Japanese voiced marks and
+  Korean syllables are kept as they are. Synced and plain lyrics files saved in Shift-JIS, EUC-KR, GB18030, Windows-1251
+  or UTF-16 are read correctly instead of showing garbage.
+
 ## [0.2.0] - Unreleased
 
 Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 104 (27c3882)`.

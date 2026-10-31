@@ -78,7 +78,7 @@ RELEASE_API="https://api.github.com/repos/jieke238y34/sleeve/releases/latest"
 RELEASE_PREFIX="https://github.com/jieke238y34/sleeve/releases/download/"
 latest_wheel() {
     command -v curl >/dev/null 2>&1 || return 1
-    curl -fsSL --max-time 20 -H "Accept: application/vnd.github+json" "$RELEASE_API" 2>/dev/null | "$PY" -c '
+    curl -fsSL --proto "=https" --proto-redir "=https" --max-time 20 -H "Accept: application/vnd.github+json" "$RELEASE_API" 2>/dev/null | "$PY" -c '
 import json, sys
 try:
     assets = json.load(sys.stdin).get("assets", [])
@@ -110,7 +110,7 @@ if [ -n "$SHA256" ]; then
     WORK=$(mktemp -d)
     case "$SOURCE" in
         https://*) command -v curl >/dev/null 2>&1 || fail "curl is needed to download the wheel"
-                   curl -fsSL --max-time 300 -o "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE" ;;
+                   curl -fsSL --proto "=https" --proto-redir "=https" --max-time 300 -o "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE" ;;
         *) [ -f "$SOURCE" ] || fail "no such file: $SOURCE"
            cp "$SOURCE" "$WORK/${SOURCE##*/}" ;;
     esac
