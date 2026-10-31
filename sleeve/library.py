@@ -43,7 +43,7 @@ def _first(tags, key):
 def _number(text):
     "The leading number of a tag such as '3', '03' or '3/12' (the part after the slash is the total), else 0."
     head = str(text).split("/", 1)[0].strip()
-    return int(head) if head.isdigit() and len(head) < 6 else 0
+    return int(head) if head.isascii() and head.isdecimal() and len(head) < 6 else 0
 
 
 def folder_of(path, music_dir):

@@ -28,6 +28,21 @@ CUSTOM_THEMES = {"dusk": "Dusk"}
 BACKDROPS = {"dusk": ("#8f745a", "#6c5756", "#5f697b")}
 
 
+def _luminance(colour):
+    c = QColor(colour)
+    parts = [v / 255 for v in (c.red(), c.green(), c.blue())]
+    lin = [p / 12.92 if p <= 0.03928 else ((p + 0.055) / 1.055) ** 2.4 for p in parts]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def readable(colour, background=BG, minimum=3.0):
+    "True when text in `colour` can be read on `background` (WCAG contrast of at least `minimum`, 3 for large text)."
+    if not QColor(colour).isValid():
+        return False
+    hi, lo = sorted((_luminance(colour), _luminance(background)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05) >= minimum
+
+
 def look_backdrop(name):
     "The three fixed backdrop colours of a look, or None when the backdrop follows the cover."
     return BACKDROPS.get(name)
@@ -92,8 +107,6 @@ QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
                     padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
 QPushButton#play:hover {{ background: {CREAM}; }}
-QPushButton#heart {{ font-size: 15pt; }}
-QPushButton#heart:checked {{ background: rgba(255, 255, 255, 24); color: #ff8fb1; }}
 
 QPushButton#primary {{ background: {accent}; color: {bg}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}

@@ -35,6 +35,7 @@ GAP = 14                                          # space around a tile
 TEXT_H = 40                                       # two lines of text under the cover
 SOURCE_SIDE = TILE_MAX * 2                        # covers are kept at this size (sharp on a 2x screen)
 COVER_TRIES = 6                                   # songs of one album whose tag is tried before giving up
+KEEP_SOURCES, KEEP_TILES = 160, 320                # covers and tiles kept in memory at once (the oldest go first)
 PER_TICK = 2                                      # covers loaded per 20 ms tick, like the queue thumbnails
 
 
@@ -171,8 +172,8 @@ class _TileDelegate(QStyledItemDelegate):
         fm = QFontMetrics(font)
         top = y + side + 6
         p.setFont(font)
-        title = QColor(getattr(album, "colour", "") or theme.TEXT)       # a playlist can have a title colour of its own
-        p.setPen(title if title.isValid() else QColor(theme.TEXT))
+        wanted = getattr(album, "colour", "")                            # a playlist can have a title colour of its own
+        p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor(theme.TEXT))
         p.drawText(QRect(x, top, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
                    fm.elidedText(album.name, Qt.ElideRight, side))
         small = QFont(option.font)
@@ -291,7 +292,14 @@ class AlbumGrid(QListWidget):
                 src = placeholder_pixmap(album.name, SOURCE_SIDE)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
             self._tiles[album.key] = pix
+            self._trim()
         return pix
+
+    def _trim(self):
+        "Forget the oldest covers beyond the limit; one that is still wanted is simply loaded again when it is drawn."
+        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES)):
+            while len(cache) > limit:
+                cache.pop(next(iter(cache)))
 
     def _apply_size(self, width):
         cols = max(1, width // (TILE_WANT + GAP))
@@ -325,6 +333,7 @@ class AlbumGrid(QListWidget):
         self.loads += 1
         self._sources[album.key] = load_cover(album, self.cover_loader)
         self._tiles.pop(album.key, None)
+        self._trim()
 
     def _visible_unloaded(self, limit):
         "Up to `limit` albums on screen (or just below it) whose cover was not asked for yet."

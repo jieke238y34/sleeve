@@ -10,6 +10,15 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Fixed
 
+- Memory: the album and playlist grids kept a full-size cover for every tile ever drawn (a library of 3,600 albums
+  reached gigabytes); they now keep a few hundred and draw the rest again when needed.
+- A click no longer leaves a dashed ring on the Identity tabs or a frame around the sliders; Tab still shows one.
+- Playlist covers: a new picture replaces the old one at once, a changed playlist gets a fresh mosaic, and renaming
+  or deleting one playlist can no longer overwrite or remove another's cover.
+- A playlist title colour that cannot be read on the dark background is refused (and not painted if one was saved).
+- The Playlists page no longer pushes the window wider than it is: the edit buttons and the update buttons wrap.
+  With no playlists it says what to do. Playlist files are read again only when they changed.
+- A track or disc tag that only looks like a digit (such as "²") no longer stops a library scan.
 - Previous goes back to the song you actually heard before, also with shuffle on (it used to play whatever sat above
   the current song in the queue). The history starts over with a new queue.
 - Listening history now keeps adding to a play while you keep listening (each play used to stay at 30 seconds, so the

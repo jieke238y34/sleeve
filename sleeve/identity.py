@@ -574,7 +574,7 @@ class TabCard(QAbstractButton):
         self.key, self.label, self.value, self.note, self.accent = key, label, "", "", LAVENDER
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.TabFocus)                    # the ring is for the keyboard, not for a mouse click
         self.setFixedHeight(self.H)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setToolTip(tip)

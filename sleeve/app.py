@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSplitter,
     QStackedWidget,
@@ -206,6 +207,10 @@ class VolumeBubble(QLabel):
 class ClickSlider(QSlider):
     "A slider whose track jumps to where you click (a stock one only steps by a page), and can still be dragged."
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.TabFocus)             # no frame after a mouse click; Tab and the keys still reach it
+
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             opt = QStyleOptionSlider()
@@ -322,6 +327,7 @@ class MainWindow(QMainWindow):
         self.likes = likes.Likes(likes_file)
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
+        self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
@@ -557,7 +563,7 @@ class MainWindow(QMainWindow):
         lay = QHBoxLayout(detail)
         lay.setContentsMargins(12, 12, 12, 12)
         self.pl_list = QListWidget()
-        self.pl_list.setMaximumWidth(260)
+        self.pl_list.setMaximumWidth(210)
         self.pl_list.currentRowChanged.connect(self._playlist_selected)
         self.pl_list.itemDoubleClicked.connect(self._play_playlist)
         new_btn = QPushButton("＋  New playlist")
@@ -578,7 +584,7 @@ class MainWindow(QMainWindow):
         left.addWidget(self.pl_list, 1)
         left.addWidget(self.pl_spotify_btn)
         side = QWidget()
-        side.setMaximumWidth(260)
+        side.setMaximumWidth(210)
         side.setLayout(left)
         left.setContentsMargins(0, 0, 0, 0)
 
@@ -590,6 +596,7 @@ class MainWindow(QMainWindow):
         self.pl_table.customContextMenuRequested.connect(self._playlist_song_menu)
         self.pl_info = QLabel("")
         self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
+        self.pl_info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # a long line never widens the window
         self.pl_like_all = QPushButton(f"{labels.MARK} {labels.VERB} all")
         self.pl_like_all.setToolTip(f"Add every song of this playlist to your {labels.SONGS.lower()}")
         self.pl_like_all.clicked.connect(self._like_playlist)
@@ -606,7 +613,7 @@ class MainWindow(QMainWindow):
         self.pl_empty.setObjectName("muted")
         self.pl_empty.setWordWrap(True)
 
-        edit_row = QHBoxLayout()
+        edit_row = FlowLayout()                            # the edit buttons wrap in a narrow window
         self.pl_edit_buttons = []
         for text, tip, slot in (("Rename", "Rename this playlist", self._rename_playlist),
                                 ("Delete", "Delete this playlist (the songs stay in your library)",
@@ -624,17 +631,18 @@ class MainWindow(QMainWindow):
         self.pl_copy_btn.setToolTip("Make a playlist of your own from this one, which you can then change")
         self.pl_copy_btn.clicked.connect(self._copy_to_mine)
         edit_row.addWidget(self.pl_copy_btn)
-        edit_row.addStretch(1)
         self.pl_edit_note = QLabel("")
         self.pl_edit_note.setObjectName("muted")
         self.pl_edit_note.setTextFormat(Qt.PlainText)
-        edit_row.addWidget(self.pl_edit_note)
+        self.pl_edit_note.setWordWrap(True)
+        self.pl_edit_note.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         right = QVBoxLayout()
         right.addLayout(info_row)
         right.addWidget(self.pl_empty, 1)
         right.addWidget(self.pl_table, 1)
         right.addLayout(edit_row)
+        right.addWidget(self.pl_edit_note)
         self.pl_edit_row = edit_row
         lay.addWidget(side)
         lay.addLayout(right, 1)
@@ -1303,7 +1311,7 @@ class MainWindow(QMainWindow):
         section("Updates")
         self.update_label = hint(f"You have Sleeve {build_label()}. Nothing is checked until you press the button.")
         lay.addWidget(self.update_label)
-        row = QHBoxLayout()
+        row = FlowLayout()                                    # wraps when the window is narrow
         self.update_check_btn = QPushButton("Check for updates")
         self.update_check_btn.clicked.connect(self._check_update)
         self.update_btn = QPushButton("Update now")
@@ -1318,7 +1326,6 @@ class MainWindow(QMainWindow):
         self.uninstall_btn.clicked.connect(self._uninstall)
         for b in (self.update_check_btn, self.update_btn, self.update_page_btn, self.uninstall_btn):
             row.addWidget(b)
-        row.addStretch(1)
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
 
@@ -2302,6 +2309,11 @@ class MainWindow(QMainWindow):
         self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
         lay.addWidget(self.pl_grid, 1)
+        self.pl_grid_hint = QLabel("You have no playlists yet. Press the ＋ tile to make one, drag playlist files "
+                                   "(.m3u8) onto this page, or right-click songs and choose Add to playlist.")
+        self.pl_grid_hint.setObjectName("muted")
+        self.pl_grid_hint.setWordWrap(True)
+        lay.addWidget(self.pl_grid_hint)
         return page
 
     def _refresh_playlist_grid(self):
@@ -2309,14 +2321,30 @@ class MainWindow(QMainWindow):
         tiles = []
         for name, path, mine in self._playlist_files:
             key = str(path)
-            try:
-                entries = playlists.read_m3u8(path, self.cfg.music_dir)
-            except OSError:
-                entries = []
-            songs = [self.by_path[e.path] for e in entries if e.exists and e.path in self.by_path]
-            tiles.append(plgrid.PlaylistTile(name, key, len(entries), songs, self.pl_styles.colour(key),
-                                             self.pl_styles.image(key), mine=mine))
+            count, songs, stamp = self._playlist_songs(path)
+            tiles.append(plgrid.PlaylistTile(name, key, count, songs, self.pl_styles.colour(key),
+                                             self.pl_styles.image(key), mine=mine, stamp=stamp))
         self.pl_grid.set_playlists(tiles)
+        self.pl_grid_hint.setVisible(not self._playlist_files)
+
+    def _playlist_songs(self, path):
+        """(songs in the file, those that are in the library, when the file changed). Read again only when the file or
+        the library changed: with hundreds of playlists, reading them all on every refresh took seconds."""
+        try:
+            st = Path(path).stat()
+        except OSError:
+            return 0, [], 0
+        stamp = (st.st_mtime_ns, st.st_size, len(self.by_path))
+        hit = self._pl_cache.get(str(path))
+        if hit and hit[0] == stamp:
+            return hit[1], hit[2], st.st_mtime_ns
+        try:
+            entries = playlists.read_m3u8(path, self.cfg.music_dir)
+        except OSError:
+            entries = []
+        songs = [self.by_path[e.path] for e in entries if e.exists and e.path in self.by_path]
+        self._pl_cache[str(path)] = (stamp, len(entries), songs)
+        return len(entries), songs, st.st_mtime_ns
 
     def _show_playlist_grid(self):
         self.pl_stack.setCurrentIndex(0)
@@ -2395,8 +2423,12 @@ class MainWindow(QMainWindow):
     def _choose_playlist_colour(self, tile):
         start = QColor(tile.colour) if tile.colour else QColor(theme.TEXT)
         chosen = QColorDialog.getColor(start, self, f"Title colour for {tile.name}")
-        if chosen.isValid():
-            self._set_playlist_look(tile, colour=chosen.name())
+        if not chosen.isValid():
+            return
+        if not theme.readable(chosen.name()):
+            self.status.showMessage("That colour is too dark to read on Sleeve's background. Pick a lighter one.", 8000)
+            return
+        self._set_playlist_look(tile, colour=chosen.name())
 
     def _load_playlists(self, select=None):
         "Fill the list: the playlists made in Sleeve first (marked with a star), then the ones dl.py wrote."

@@ -26,10 +26,11 @@ class PlaylistTile:
     image: str = ""                                 # the picture the user chose, '' = none
     new: bool = False                               # the "make a playlist" tile
     mine: bool = False                              # made in Sleeve (can be changed)
+    stamp: int = 0                                  # when the playlist file last changed: a new mosaic when it does
 
     @property
     def key(self):
-        return NEW_KEY if self.new else f"{self.path}\0{self.image}"
+        return NEW_KEY if self.new else f"{self.path}\0{self.image}\0{self.stamp}"
 
     @property
     def artist(self):
@@ -148,6 +149,7 @@ class PlaylistGrid(AlbumGrid):
         self.loads += 1
         self._sources[tile.key] = load_cover(tile, self.cover_loader)
         self._tiles.pop(tile.key, None)
+        self._trim()
 
     def cover_pixmap(self, tile, size=SOURCE_SIDE):
         self._ensure_source(tile)
@@ -165,6 +167,7 @@ class PlaylistGrid(AlbumGrid):
                 src = placeholder_pixmap(tile.name, SOURCE_SIDE)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
             self._tiles[tile.key] = pix
+            self._trim()
         return pix
 
     def keyPressEvent(self, ev):

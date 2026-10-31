@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import uuid
 from pathlib import Path
 
 STYLE_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "playlist-style.json"
@@ -132,8 +133,8 @@ class PlaylistStyles:
         square = image.copy(QRect((image.width() - side) // 2, (image.height() - side) // 2, side, side))
         square = square.scaled(COVER_SIDE, COVER_SIDE, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         self.cover_dir.mkdir(parents=True, exist_ok=True)
-        name = hashlib.sha1(key.encode("utf-8", "replace"), usedforsecurity=False).hexdigest()   # nosec B324
-        dest = self.cover_dir / f"{name}.png"
+        name = hashlib.sha1(key.encode("utf-8", "replace"), usedforsecurity=False).hexdigest()[:10]   # nosec B324
+        dest = self.cover_dir / f"{name}-{uuid.uuid4().hex[:12]}.png"      # new every time: never overwrites another
         if not square.save(str(dest), "PNG"):
             raise ValueError("The picture could not be saved in Sleeve's folder.")
         return str(dest)
