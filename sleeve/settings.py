@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from . import themes
+from . import navidrome, themes
 
 SETTINGS_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "settings.json"
 MAX_BYTES = 100_000
@@ -49,6 +49,7 @@ DEFAULTS = {
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
     "remember_session": True,          # open again with the queue and song that were playing, paused where they were
+    "navidrome": None,                 # {url, user, salt, token} of your Navidrome server (the password is not kept)
     "gradient_follow_accent": True,    # the gradient is made from the accent colour (off: the five colours you set)
     "gradient": None,                  # your own 5-colour background (a list of #rrggbb), or None: follow the cover
     "np_queue_side": "left",           # Now Playing: which side the playlist panel is on
@@ -104,6 +105,8 @@ def _valid(key, value):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
+    if key == "navidrome":
+        return value is None or navidrome.valid_login(value)
     if key == "gradient":
         return value is None or (isinstance(value, list) and len(value) == 5
                                  and all(isinstance(c, str) and _HEX.fullmatch(c) for c in value))
