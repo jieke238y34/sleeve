@@ -45,6 +45,7 @@ DEFAULTS = {
     "update_check_ok": False,          # the user agreed that Sleeve may ask GitHub for the newest release
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
+    "lastfm_on": False,                # send what is played to last.fm (needs a connected account, see lastfm.py)
     "discord_client_id": "",           # the user's own Discord application id (digits), needed for the above
     "output_device": "",               # which sound output to play through; empty: whatever the system default is
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
@@ -69,7 +70,7 @@ def _valid(key, value):
     if key == "identity_tab":
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
-                "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art"):
+                "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM

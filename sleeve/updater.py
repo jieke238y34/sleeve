@@ -237,7 +237,7 @@ def describe_data(plan):
     if config_dir is not None:
         liked, plays = _count(config_dir / "liked.json", "liked"), _count(config_dir / "history.json", "plays")
         lines.append(f"your stashed songs ({liked}) and your listening history ({plays} plays)")
-        lines.append(f"your settings, playlist covers and title colours, in {config_dir}")
+        lines.append(f"your settings, playlist covers, title colours and Last.fm sign-in, in {config_dir}")
     if cache_dir is not None:
         lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {cache_dir}")
     if plan.get("dl_dir") is not None:
