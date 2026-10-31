@@ -79,6 +79,7 @@ from . import (
     health,
     identity,
     labels,
+    lastfm,
     library,
     likes,
     loudness,
@@ -335,6 +336,7 @@ class MainWindow(QMainWindow):
         self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
         self._queue_source = ""                        # what the queue was started from: a playlist, an album, a folder
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
+        self._scrobbled, self._started_at = False, 0           # last.fm: sent for this play yet, and when it began
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
         self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
@@ -354,6 +356,9 @@ class MainWindow(QMainWindow):
         self._art_timer = QTimer(self)                      # keeps cover lookups a second apart (MusicBrainz's limit)
         self._art_timer.setSingleShot(True)
         self._art_timer.timeout.connect(self._start_art_lookup)
+        self.scrobbler = lastfm.Scrobbler(lastfm.Account(), parent=self)
+        self.scrobbler.active = self.settings.lastfm_on
+        self.scrobbler.status.connect(lambda text: self.status.showMessage(text, 10000))
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
@@ -1309,6 +1314,40 @@ class MainWindow(QMainWindow):
                            "name is what people see after 'Listening to'. The song title and artist are shared with "
                            "Discord while this is on, and cleared when you pause, switch it off or quit."))
 
+        section("Last.fm")
+        self.lastfm_box = Switch("Scrobble to Last.fm")
+        self.lastfm_box.setChecked(self.settings.lastfm_on)
+        self.lastfm_box.toggled.connect(self._lastfm_toggled)
+        lay.addWidget(self.lastfm_box)
+        self.lastfm_status = hint("")
+        lay.addWidget(self.lastfm_status)
+        self.lastfm_key, self.lastfm_secret = QLineEdit(), QLineEdit()
+        self.lastfm_key.setPlaceholderText("API key")
+        self.lastfm_secret.setPlaceholderText("Shared secret")
+        self.lastfm_secret.setEchoMode(QLineEdit.Password)
+        self.lastfm_connect = QPushButton("Connect")
+        self.lastfm_connect.clicked.connect(self._lastfm_connect)
+        self.lastfm_done = QPushButton("I have allowed it")
+        self.lastfm_done.setObjectName("primary")
+        self.lastfm_done.clicked.connect(self._lastfm_finish)
+        self.lastfm_done.setVisible(False)
+        self.lastfm_out = QPushButton("Disconnect")
+        self.lastfm_out.clicked.connect(self._lastfm_disconnect)
+        lay.addWidget(self.lastfm_key)
+        lay.addWidget(self.lastfm_secret)
+        row = QHBoxLayout()
+        for b in (self.lastfm_connect, self.lastfm_done, self.lastfm_out):
+            row.addWidget(b)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("Create a free API account at last.fm/api/account/create and paste its key and shared "
+                           "secret here (Sleeve has none of its own). When a song has played for half its length or "
+                           "four minutes, Sleeve sends last.fm its artist, title, album, length and start time, and "
+                           "tells it what is playing now. Songs that cannot be sent (no internet) wait in a private "
+                           "file and go later. Nothing is sent until you connect, and Disconnect forgets the key."))
+        self.scrobbler.changed.connect(self._lastfm_refresh)
+        self._lastfm_refresh()
+
         section("Listening")
         self.listening_box = Switch("Remember what I listen to")
         self.listening_box.setChecked(self.settings.track_listening)
@@ -2117,12 +2156,19 @@ class MainWindow(QMainWindow):
         if self._seeking:                                   # a seek just happened: not listening
             self._seeking = False
             return
-        if not (self.settings.track_listening and self._is_playing and self._current_path):
+        if not ((self.settings.track_listening or self.scrobbler.on) and self._is_playing and self._current_path):
             return
         step = pos - previous
         if not 0 < step < 2.0:                                # a new song is not listening
             return
         self._listened += step
+        if not self._scrobbled and self.scrobbler.on and lastfm.should_scrobble(self._listened, self._dur):
+            self._scrobbled = True
+            song = self.by_path.get(self._current_path)
+            if song is not None:
+                self.scrobbler.scrobble(song, self._started_at)
+        if not self.settings.track_listening:
+            return                                          # listening was only counted for last.fm
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
             self._listen_counted = True
             self.history.record(self._current_path, self._listened)
@@ -2262,11 +2308,64 @@ class MainWindow(QMainWindow):
                 self._art_wanted.append(item)
         self._kick_art()
 
+    def _lastfm_refresh(self):
+        a = self.scrobbler.account
+        waiting = f" {len(a.queue)} song(s) are waiting to be sent." if a.queue else ""
+        if a.ready:
+            text = f"Connected as {a.user or 'your account'}." + waiting
+        elif a.api_key and a.secret:
+            text = "Not signed in: press Connect, or Connect again if last.fm signed you out." + waiting
+        else:
+            text = "Not connected."
+        self.lastfm_status.setText(text)
+        self.lastfm_out.setEnabled(bool(a.api_key or a.session))
+        self.lastfm_connect.setText("Reconnect" if a.ready else "Connect")
+
+    def _lastfm_toggled(self, on):
+        self._set_setting("lastfm_on", on)
+        self.scrobbler.active = on
+        self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
+        if on:
+            self.scrobbler.flush()
+        if on and not self.scrobbler.account.ready:
+            self.lastfm_status.setText("Switched on, but not connected yet: enter your key and secret below.")
+
+    def _lastfm_connect(self):
+        self.lastfm_connect.setEnabled(False)
+        self.lastfm_status.setText("Asking last.fm for a sign-in…")
+
+        def opened(url, error):
+            self.lastfm_connect.setEnabled(True)
+            if url is None:
+                self.lastfm_status.setText(error)
+                return
+            QDesktopServices.openUrl(QUrl(url))
+            self.lastfm_done.setVisible(True)
+            self.lastfm_status.setText("Allow Sleeve in the browser page that opened, then press the button below.")
+        self.scrobbler.begin(self.lastfm_key.text(), self.lastfm_secret.text(), opened)
+
+    def _lastfm_finish(self):
+        def done(user, error):
+            if error:
+                self.lastfm_status.setText(error)
+                return
+            self.lastfm_done.setVisible(False)
+            self.lastfm_secret.clear()                       # the secret now lives only in the private file
+            self.lastfm_box.setChecked(True)
+            self._lastfm_refresh()
+        self.scrobbler.finish(done)
+
+    def _lastfm_disconnect(self):
+        self.scrobbler.disconnect()
+        self.lastfm_key.clear()
+        self.lastfm_secret.clear()
+        self.lastfm_done.setVisible(False)
+
     def _track_listening_toggled(self, on):
         self._set_setting("track_listening", on)
         self._finish_listen()
         if on:                                            # a fresh listen starts when the history is on again
-            self._listened, self._listen_counted = 0.0, False
+            self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
         self._refresh_listening()
 
     def _clear_listening(self):
@@ -3549,7 +3648,7 @@ class MainWindow(QMainWindow):
         self._refresh_queue()
         self._finish_listen()
         self._current_path = path
-        self._listened, self._listen_counted = 0.0, False
+        self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
         self._update_presence()
         self._seeking = False                               # a new song starts a fresh listen, not a seek
         self._update_like_button()
@@ -3569,9 +3668,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
             self._current_path = ""                       # the song did not load: nothing is being listened to
-            self._listened, self._listen_counted = 0.0, False
+            self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
             return
         self.now.setText(f"{s.name}\n{s.artist}")
+        self._started_at = int(time.time())
+        self.scrobbler.now_playing(s)
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
         try:
             data = art.cover_bytes(path)

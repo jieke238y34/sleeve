@@ -19,6 +19,7 @@ The search box at the top shows only the sections that mention what you type (tr
 | Match the colours of the song | The accent follows the cover of the song that is playing |
 | Show what I'm listening to on Discord | Off by default. Needs your own Discord Application ID, see [Playback and sound](06-playback-and-sound) |
 | Also show the album cover | Adds the cover to the Discord status, looked up on MusicBrainz and the Cover Art Archive |
+| Scrobble to Last.fm | Off by default. Needs your own free API key and shared secret from last.fm/api/account/create; press Connect, allow Sleeve in the browser, then press "I have allowed it". Songs that cannot be sent wait in `~/.config/sleeve/lastfm.json` and go later |
 | Check for updates / Update now | Asks GitHub for the newest release when you press it (never by itself) and installs it into Sleeve's own folder. A newer build of the same version counts. Only for a copy made by `install.sh` |
 | Uninstall Sleeve | Asks whether to remove Sleeve only (your music, playlists and settings stay) or Sleeve and all its data. The second lists what it will delete, then asks again. Audio files are never deleted |
 | Remember what I listen to | Keeps which songs you play, on this computer only, for the Listening tab on the Identity page |

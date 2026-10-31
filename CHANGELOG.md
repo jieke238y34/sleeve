@@ -47,6 +47,8 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Added
 
+- Last.fm scrobbling (Settings > Last.fm, off until you connect): your own API key and secret, a two-step browser sign-in, scrobbles by Last.fm's rule (half the song or four minutes), "now playing", and an offline queue that is sent later. The key, secret and session live in `~/.config/sleeve/lastfm.json` (mode 0600); Disconnect forgets them.
+
 - Playlist tiles are frosted glass: the cover blurs and darkens under a band with the name and song count, and an
   **Edit** pill appears when you point at a tile (and **Cover & colour…** in the playlist) for the cover picture and
   title colour. Inside a playlist, and in the Library, songs are a clean list with a cover, title and artist.
