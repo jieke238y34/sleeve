@@ -16,10 +16,10 @@ A name that is already taken gets a number, like "Road trip (2)".
 ## The cover grid
 
 The Playlists tab shows a grid of cover tiles, with a New playlist tile first. A playlist's cover is, in this order: the picture
-you chose, a mosaic of the album covers of its songs, or a generated cover with the first letter of its name. Right-click
-a tile for Open, Play, Add to queue, Choose a cover picture, Use the generated cover, Title colour, Normal title colour,
+you chose, a mosaic of the album covers of its songs, or a generated cover with the first letter of its name. Point at a tile and press its **Edit** pill, or right-click it, for Open, Play, Add to queue, Choose a cover picture, Use the generated cover, Title colour, Normal title colour,
 Rename and Delete. A picture you choose is copied into Sleeve's own folder, so it keeps working if the original moves.
-Covers and colours are kept in `~/.config/sleeve`, not in the playlist file.
+Covers and colours are kept in `~/.config/sleeve`, not in the playlist file. In the list of playlists, the ones you made
+are marked with ◈. Inside a playlist, songs are a clean list with a cover, title and artist.
 
 ## Changing a playlist
 

@@ -16,28 +16,34 @@ only need it for that page: without it Sleeve is a complete player and library m
 
 ![Now Playing: the cover, a gradient taken from its colours, and the queue](docs/screenshots/now-playing.png)
 
-> **Status: alpha (v0.2.0).** Linux is the supported platform. Settings shows the version with its build number, for
-> example `0.2.0 · build 93`, so a bug report can name the exact build. Back up your music before using the tag editor, and
+> **Status: alpha (v0.2.0, not yet released).** Linux is the supported platform. Settings shows the version with its build number, for
+> example `0.2.0 · build 104`, so a bug report can name the exact build. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
 ## Showcase
 
-[![Watch the showcase video (under two minutes, no sound)](docs/screenshots/showcase-poster.jpg)](docs/media/sleeve-showcase.mp4)
+![A short tour of Sleeve](docs/media/sleeve-tour.gif)
 
-A short tour of the Now Playing page, the Library, Identity, Downloads and Settings, recorded on a real library. The video
-has no sound.
+A short tour of Sleeve, with no sound, shown on a small made-up demo library. For full quality there is a
+[video file](docs/media/sleeve-tour.mp4) (GitHub shows a download link for it, not a player).
 
 ## Screenshots
 
-The screenshots show a small made-up demo library with generated covers.
+The screenshots and the tour show a small made-up demo library with generated covers.
 
 | | |
 |---|---|
-| ![Library](docs/screenshots/library.png) | ![Downloads](docs/screenshots/downloads.png) |
-| Library: genre folders, search and a sortable table | Downloads: the optional front end for dl.py |
-| ![Identity](docs/screenshots/identity.png) | ![Settings](docs/screenshots/settings.png) |
-| Identity: your library in words and numbers | Settings: sound, accent colour and file locations |
+| ![Library](docs/screenshots/library.png) | ![Playlists](docs/screenshots/playlists.png) |
+| Library: genre folders, search and a clean song list | Playlists: glass tiles with your own covers and title colours |
+| ![Playlist detail](docs/screenshots/playlist-detail.png) | ![Cover view](docs/screenshots/cover-view.png) |
+| A playlist: cover, title and artist for every song | Full-screen cover view with a seek bar |
+| ![Identity](docs/screenshots/identity.png) | ![Listening](docs/screenshots/listening.png) |
+| Identity: your library in words and numbers | Listening: minutes per day, top artists, busiest day |
+| ![Dusk theme](docs/screenshots/dusk.png) | ![Settings](docs/screenshots/settings.png) |
+| The Dusk theme | Settings: sound, theme, accent colour, updates and file locations |
+| ![Downloads](docs/screenshots/downloads.png) | ![Health](docs/screenshots/health.png) |
+| Downloads: the optional front end for dl.py | Health: songs that need attention |
 
 ## Features
 
@@ -51,7 +57,8 @@ The screenshots show a small made-up demo library with generated covers.
   duplicates or broken, with buttons to play, show in the file manager, or run the matching `dl.py` fix.
 - Identity page: a persona, seven trait meters, charts, languages and moods, all worked out from your own tags and
   playlist names.
-- Listening panel on the Identity page: your top songs this week or this month, from a history Sleeve keeps in one
+- Listening tab on the Identity page: your top songs and top artists this week or this month, minutes per day, your
+  busiest weekday and usual hour, and how it compares with the period before, from a history Sleeve keeps in one
   file on your computer. It is opt in, shows real listening time, and can be switched off or cleared in Settings.
 - Albums list their tracks in disc and track-number order; songs without a number come last, by file name.
 - Seasons and holidays: seven dark looks (spring, summer, autumn, winter, Halloween, Christmas, New Year) that follow
@@ -65,7 +72,8 @@ The screenshots show a small made-up demo library with generated covers.
   setting that can go up to 150% (with a hearing warning).
 - Media keys and the Plasma and GNOME media widgets (MPRIS).
 - Now Playing: the cover with a gradient background drawn from its colours, the queue with thumbnails, and a cover you
-  can expand. Fullscreen album art (Esc or a click to leave).
+  can expand. Now Playing names what is playing (the playlist, album, folder or search). Full-screen cover view with a
+  seek bar (F11; Esc or a click to leave).
 - Lyrics tab: synced lyrics from `.lrc` files scroll with the song and can be clicked to seek, plain `.txt` lyrics are
   shown unsynced, and the tab says "No imported lyrics found" otherwise.
 - The small cover in the player bar opens Now Playing with one click.
@@ -74,9 +82,10 @@ The screenshots show a small made-up demo library with generated covers.
 **Playlists**
 
 - Stash: keep the songs you love. The diamond button marks a song, and the **Stashed Songs** folder at the top of the
-  Library lists them. They are kept in Sleeve's own file, not in your music files.
-- The Playlists tab is a grid of cover tiles. Each playlist can have its own cover picture and title colour (right-click
-  a tile); otherwise it gets a mosaic of its album covers.
+  Library lists them. Playing All songs or Stashed Songs starts in a fresh random order. They are kept in Sleeve's own file, not in your music files.
+- The Playlists tab is a grid of frosted-glass tiles. Each playlist can have its own cover picture and title colour (the
+  **Edit** pill that appears on a tile, or right-click); otherwise it gets a mosaic of its album covers. Playlists you
+  made are marked with ◈. Inside a playlist, and in the Library, songs are a clean list with cover, title and artist.
 - Playlists of your own, stored as plain `.m3u8` files in `Playlists/My Playlists`: create, rename, reorder, add songs
   from the Library, add the playing song with the player-bar button, and save the queue. **Clear** in the queue empties it but keeps
   the playing song. **Previous** goes back to the song you actually played, also with shuffle on.
@@ -92,8 +101,8 @@ The screenshots show a small made-up demo library with generated covers.
 
 **Appearance**
 
-- Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. Switches for
-  settings, a resizable sidebar, smooth scrolling.
+- Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. A scroll speed setting,
+  a settings search, a resizable sidebar, smooth scrolling.
 - Settings > Theme: **Dusk** (peach on warm brown and slate, with a background that does not change with the cover).
   Picking a theme replaces your own colour choice and the seasonal looks until you go back to Sleeve's own.
 
@@ -212,7 +221,7 @@ sleeve --uninstall --full     # also delete Sleeve's own data (below); --yes ski
 
 Settings > Updates has **Check for updates**, **Update now** and **Uninstall Sleeve**. Nothing is checked until you
 press the button. Updates follow the version and the build number: a newer build of the same version is an update
-(releases are tagged `v0.2.0` or `v0.2.0-build.N`, see [docs/RELEASING.md](docs/RELEASING.md)).
+(releases are tagged `v0.2.0` or `v0.2.0+build.N`, SemVer build metadata, see [docs/RELEASING.md](docs/RELEASING.md)).
 
 A full uninstall deletes `~/.config/sleeve` (settings, stashed songs, listening history, playlist covers and title
 colours), `~/.cache/sleeve`, and the playlists you made in Sleeve (the `.m3u8` files in `My Playlists` inside the
@@ -274,7 +283,7 @@ No dates are promised.
 ## Documentation
 
 - [Installing](docs/INSTALL.md) and the [user guide](docs/USER_GUIDE.md)
-- [Wiki pages](docs/wiki/README.md): home, install, features, updating and uninstalling, FAQ
+- [User guide topics](docs/guide/README.md)
 - [Architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md) and [releasing](docs/RELEASING.md)
 - [Changelog](CHANGELOG.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md)
 - [Packaging status](packaging/README.md)

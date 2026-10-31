@@ -7,17 +7,16 @@ UI at <https://github.com/jieke238y34/sleeve>.
 
 Repository page, gear icon next to **About**:
 
-- **Description:** `A desktop music player and library manager for the music you own. Optional front end for playlist-sync.`
-- **Website:** leave blank
+- **Description:** `A desktop music player and library manager for the music you own: synced lyrics, playlists, listening stats and colours that follow the album cover. Linux, no accounts, no telemetry.`
+- **Website:** leave blank (it should not just repeat the repository address)
 - **Topics:** `music-player`, `music-library`, `pyside6`, `qt`, `python`, `linux`, `gapless`, `mpris`, `m3u8`,
   `desktop-app`
 - Sidebar: leave **Releases** ticked; untick **Packages** and **Environments** (nothing uses them).
 
-## Open the pull request first
+## Branches
 
-The app currently lives on branch `feature/initial-app`. Open a pull request into `main`, wait for CI, merge, then
-set up protection below (setting up branch protection before the first merge is fine too, as long as you can still
-merge your own pull request).
+Work is done on `feature/initial-app` (or a topic branch) and lands on `main` through a pull request. `main` has no
+branch protection yet, so set it up below.
 
 ## Branch protection for main
 
@@ -44,7 +43,7 @@ Settings, Code security:
 
 ## Features
 
-Settings, General, Features: Issues on, Discussions off, Wikis off, Projects off.
+Settings, General, Features: Issues on, Discussions off, Wikis off (the documentation lives in `docs/`, and an empty Wiki tab only confuses visitors), Projects off.
 
 Pull requests: allow squash merging (recommended), turn off merge commits if you want a linear history, and tick
 **Automatically delete head branches**.

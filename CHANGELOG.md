@@ -4,9 +4,9 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - 2026-10-30
+## [0.2.0] - Unreleased
 
-Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 93 (83504e0)`.
+Alpha, Linux. Version 0.2.0; every build also shows its build number, for example `0.2.0 · build 104 (27c3882)`.
 
 ### Fixed
 
@@ -31,6 +31,11 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 - The Discord cover is on by default; turning Discord on asks before any online lookup.
 - Tests no longer crash Python at exit (exit code 139 failed the Python jobs on GitHub).
 - Lyrics now take a new accent colour at once when the song changes, instead of waiting for the next click.
+- The window and sidebar size now survive the first layout pass (the remembered size was dropped when the pages and
+  player bar were still being built, so a restart could open the window at its layout minimum).
+- Security fix: Spotify links are classified by parsed hostname, not by whether the text contains "spotify", so a
+  pasted link such as `https://evil.com/?u=open.spotify.com` is no longer mistaken for Spotify.
+- Lower idle CPU and GPU use while playing; keyboard focus rings, accessible names and pointer cursors on every button.
 
 ### Changed
 
@@ -50,7 +55,7 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 - The Listening panel says more: plays, songs, artists and time as tiles, minutes per day (per week for a month), your
   top artists, your busiest weekday and usual hour, the change on the week or month before, and how many songs were new.
 - **Scroll speed** in Settings > Look (the default is faster than before).
-- Playlists made in Sleeve are marked with ◈ in the list (it was a star).
+- Playlists made in Sleeve are marked with ◈ in the list (the first look used a star).
 - Updating and removing Sleeve from the program itself. Settings > Updates has **Check for updates**, **Update now**
   and **Uninstall Sleeve**, and the command line has `sleeve --update` and `sleeve --uninstall`. A check happens only
   when you press the button, asks first, and sends GitHub nothing but the Sleeve version. Updating installs the wheel
@@ -73,14 +78,9 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
   A holiday wins over a season when both apply. All stay dark so the cover keeps carrying the colour.
 - A percentage tooltip on the volume slider while it is dragged or moved with the keys. The Lyrics button and the
   "Vol" label left the player bar; lyrics live on Now Playing, where the words are big enough to read.
-- Window and sidebar memory now survives the first layout pass (the remembered size was dropped when the pages and
-  player bar were still being built, so a restart could open the window at its layout minimum).
-- Security fix: Spotify links are classified by parsed hostname, not by whether the text contains "spotify", so a
-  pasted link such as `https://evil.com/?u=open.spotify.com` is no longer mistaken for Spotify.
 - Identity page: a Listening panel with your top songs this week or this month, chosen with a pill switch. It is built
   from what you actually play (a song counts after 30 seconds), kept in a file on this computer, and can be switched
   off or cleared in Settings.
-- Lower idle CPU and GPU use while playing; keyboard focus rings, accessible names and pointer cursors on every button.
 - Restarting while music plays opens the new build as a separate preview instead of replacing the playing copy.
 - One-command install: `./install.sh` builds Sleeve from source into a private environment, with a menu entry and icon,
   and `./install.sh --uninstall`.
@@ -91,7 +91,6 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
   follows PipeWire when outputs appear and disappear.
 - `sleeve --play-pause`, `--next`, `--previous` and `--toggle`, and launcher actions. Works with KDE Connect,
   PlasMusic Toolbar and Maid BT. Build number in the version (`sleeve --version`, Settings).
-
 - Library: genre folders, instant search, a sortable song table with a cached tag scan, and a tag editor for title,
   artist, album and genre.
 - Health page: missing title or artist, no genre, low bitrate, same artist and title, and files `dl.py` parked as
@@ -103,20 +102,19 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 - Gapless playback with two players and a hand-over before each song ends, queue, shuffle, repeat and seeking.
 - Same-volume levelling from ReplayGain tags or `ffmpeg` loudness measurement, and a volume ceiling setting.
 - Media keys and desktop media widgets through MPRIS.
-- Liked songs.
+- Stash: keep the songs you love (first called liked songs); the diamond button and the Stashed Songs folder.
 - Playlists of your own as `.m3u8` files in `Playlists/My Playlists`: create, rename, reorder, remove songs, save the
   queue, add from the Library menu, add the playing song from the player bar, and import by dragging `.m3u8` files
   onto the page. Playlists with music-relative paths or Windows-style separators are understood.
 - Playlists made by `dl.py` from Spotify, hidden until you press Show Spotify playlists, and copyable to your own.
 - Downloads page: a front end for `dl.py` with fixed actions, a plain-English activity feed, progress, and following of
   downloads started elsewhere. Sleeve asks you to trust `dl.py` (path and SHA-256 fingerprint) before running it.
-- Settings: volume ceiling, gapless and same-volume switches, and fifteen accent colours.
-- A user guide inside the app (Docs page).
+- Settings: volume ceiling, gapless and same-volume switches, and sixteen accent colours.
+- A user guide (since moved to `docs/guide/`).
 - Packaging files for a Fedora RPM (not published), a desktop entry and AppStream metadata.
-- Continuous integration: ruff, tests on Linux and Windows, a package build, bandit, pip-audit and CodeQL. Release
+- Continuous integration: ruff, tests on Linux, a package build, bandit, pip-audit and CodeQL. Release
   builds carry build provenance attestations.
 
 ### Not included
 
-First-run download setup, quick search (Ctrl+K), album view, volume above 100%, a Windows build and a Fedora package are
-planned and are not part of this release.
+A Windows build, a Fedora package and publishing to PyPI are planned and are not part of this release.

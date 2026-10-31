@@ -33,13 +33,13 @@ It runs when a tag matching `v*` is pushed. On Ubuntu with Python 3.12 it:
 update, and so is the same version with a higher build number. So to ship a new build of 0.2.0, tag it
 `v0.2.0+build.N` with N higher than the last one.
 
-It does not run the tests, publish to PyPI, or attach a checksum file.
+It does not run the tests (CI does that on the pull request and on `main`), publish to PyPI, or attach a checksum file.
 
 ## Steps
 
 1. Make sure `main` is green: CI and the Security workflow pass.
 2. Bump the version in `pyproject.toml` and `sleeve/__init__.py` (both say `0.2.0` today and must match).
-3. In `CHANGELOG.md`, change the heading `[0.2.0] - Unreleased (...)` to `[0.2.0] - <release date>`. For later
+3. In `CHANGELOG.md`, change the heading `[0.2.0] - Unreleased` to `[0.2.0] - <release date>`. For later
    releases, add a new `[Unreleased]` section above the previous one and rename it when you release.
 4. Merge those changes to `main` through a pull request.
 5. Check a clean install of the built package starts:
