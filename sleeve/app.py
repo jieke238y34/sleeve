@@ -126,7 +126,7 @@ from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
 from .textfold import fold
-from .themedialog import ThemeDialog
+from .themedialog import GradientEditor, ThemeDialog
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -458,7 +458,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
         Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
-        root.set_fixed(theme.look_backdrop(self._look))
+        root.set_fixed(self._backdrop_colours(self._look))
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -506,6 +506,12 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
         self.status = self.statusBar()
+        self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
+        self.bar_fold_btn.setObjectName("barfold")
+        self.bar_fold_btn.clicked.connect(lambda: self._set_bar_hidden(self.bar.isVisible()))
+        self.status.addPermanentWidget(self.bar_fold_btn)
+        QShortcut(QKeySequence("Ctrl+B"), self, lambda: self._set_bar_hidden(self.bar.isVisible()))
+        self._set_bar_hidden(self.settings.player_bar_hidden, save=False)
         if self.settings.library_view == "albums":
             self.view_albums_btn.setChecked(True)
         names = [self.nav.item(i).text() for i in range(self.nav.count())]
@@ -920,15 +926,14 @@ class MainWindow(QMainWindow):
                                (self.tab_queue, self.expand_btn, self.full_btn, self.tab_lyrics))   # ride on the cover
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
-        lay.addWidget(side)
-        lay.addLayout(right, 1)
-        lyrics_side = self.np_lyrics_side = QWidget()               # the open side of the page: the lyrics
+        lyrics_side = self.np_lyrics_side = QWidget()               # the lyrics panel (right side unless moved)
         lyrics_side.setMinimumWidth(self.NP_PANEL_MIN)
         lyrics_side.setMaximumWidth(self.NP_PANEL)
         QVBoxLayout(lyrics_side).addWidget(lyrics_page)
         lyrics_side.layout().setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(lyrics_side)
+        self._np_lay, self._np_cover_box = lay, right
         self.np_page = page
+        self._np_arrange()                                   # the panels on the sides the user chose, the art between
         self._np_apply_panels()                              # panels and the centering are right from the first paint
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
@@ -1328,9 +1333,10 @@ class MainWindow(QMainWindow):
         row.addWidget(self.theme_make_btn)
         row.addStretch(1)
         lay.addLayout(row)
-        lay.addWidget(hint("Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. "
-                           "Picking a theme replaces your own colour choice and the seasonal looks below until you "
-                           "go back to Sleeve."))
+        lay.addWidget(hint("A theme keeps its own colours and background whatever is playing (Dusk is peach on warm "
+                           "brown, "
+                           "Frog is bright green on deep green, and there are more), or make your own. Picking one "
+                           "replaces your own colour choice and the seasonal looks below until you go back to Sleeve."))
 
         section("Look")
         row = QHBoxLayout()
@@ -1348,6 +1354,29 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        row = QHBoxLayout()
+        self.queue_side_box, self.lyrics_side_box = QuietCombo(), QuietCombo()
+        for box, current, label in ((self.queue_side_box, self.settings.np_queue_side, "Playlist panel"),
+                                    (self.lyrics_side_box, self.settings.np_lyrics_side, "Lyrics panel")):
+            box.addItem("Left", "left")
+            box.addItem("Right", "right")
+            box.setCurrentIndex(max(box.findData(current), 0))
+            box.currentIndexChanged.connect(self._np_sides_changed)
+            row.addWidget(QLabel(label))
+            row.addWidget(box)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("Which side of Now Playing the playlist and the lyrics sit on. Both can share a side."))
+        self.gradient_box = Switch("My own background: a 5-point gradient")
+        self.gradient_box.setChecked(self.settings.gradient is not None)
+        self.gradient_editor = GradientEditor(self.settings.gradient)
+        self.gradient_editor.setVisible(self.settings.gradient is not None)
+        self.gradient_box.toggled.connect(self._gradient_toggled)
+        self.gradient_editor.changed.connect(self._gradient_changed)
+        lay.addWidget(self.gradient_box)
+        lay.addWidget(self.gradient_editor)
+        lay.addWidget(hint("Five colours from the top left corner to the bottom right replace the background that "
+                           "follows the cover. A theme with its own background still wins. Off: the cover decides."))
         lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
         row = QHBoxLayout()
         self.scroll_slider = ClickSlider(Qt.Horizontal)
@@ -1936,7 +1965,7 @@ class MainWindow(QMainWindow):
             return                                                  # nothing changed since the last repaint
         self._look = look
         self._accent_shown = colour
-        self.backdrop.set_fixed(theme.look_backdrop(look))
+        self.backdrop.set_fixed(self._backdrop_colours(look))
         self.backdrop.set_art(self._cover_expanded, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
@@ -3432,6 +3461,62 @@ class MainWindow(QMainWindow):
         "The width Now Playing has or will have: a page that is not on show does not follow the window by itself."
         return self.np_page.width() if self.np_page.isVisible() else self.stack.width()
 
+    def _backdrop_colours(self, look):
+        "The colours that fix the background: a theme's own, else your 5-point gradient if you made one, else None."
+        return theme.look_backdrop(look) or self.settings.gradient
+
+    def _gradient_toggled(self, on):
+        self._set_setting("gradient", self.gradient_editor.colours() if on else None)
+        self.gradient_editor.setVisible(on)
+        self.backdrop.set_fixed(self._backdrop_colours(self._look))
+
+    def _gradient_changed(self):
+        if self.gradient_box.isChecked():
+            self._set_setting("gradient", self.gradient_editor.colours())
+            self.backdrop.set_fixed(self._backdrop_colours(self._look))
+
+    def _set_bar_hidden(self, hidden, save=True):
+        "Fold the player bar away (more room for the page; the media keys still work) or bring it back."
+        self.bar.setVisible(not hidden)
+        self.bar_fold_btn.setText("⌃  Show player" if hidden else "⌄  Hide player")
+        self.bar_fold_btn.setToolTip("Show the player bar again (Ctrl+B)" if hidden
+                                     else "Hide the player bar for more room (Ctrl+B)")
+        self.bar_fold_btn.setAccessibleName("Show the player bar" if hidden else "Hide the player bar")
+        if save:
+            self._set_setting("player_bar_hidden", bool(hidden))
+
+    def _np_arrange(self):
+        "Put the playlist and lyrics panels on the sides the settings name, and the art between them."
+        lay = self._np_lay
+        lay.removeWidget(self.np_side)
+        lay.removeWidget(self.np_lyrics_side)
+        lay.removeItem(self._np_cover_box)
+        panels = ((self.np_side, self.settings.np_queue_side), (self.np_lyrics_side, self.settings.np_lyrics_side))
+        for widget, side in panels:
+            if side == "left":
+                lay.addWidget(widget)
+        lay.addLayout(self._np_cover_box, 1)
+        for widget, side in panels:
+            if side == "right":
+                lay.addWidget(widget)
+
+    def _np_side_width(self, side):
+        "Room taken by the panels shown on one side (each with the gap beside it)."
+        gap = 20
+        total = 0
+        for widget, where in ((self.np_side, self.settings.np_queue_side), (self.np_lyrics_side,
+                                                                           self.settings.np_lyrics_side)):
+            if where == side and not widget.isHidden():
+                total += widget.width() + gap
+        return total
+
+    def _np_sides_changed(self):
+        self.settings.set("np_queue_side", self.queue_side_box.currentData())
+        self.settings.set("np_lyrics_side", self.lyrics_side_box.currentData())
+        self._save_settings()
+        self._np_arrange()
+        self._np_apply_panels()
+
     def _np_room_for_both(self):
         "Whether the page is wide enough for the playlist, the art and the lyrics side by side."
         return self._np_width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
@@ -3597,9 +3682,7 @@ class MainWindow(QMainWindow):
         " square and its words avert to that line by mirroring half of the panel's width (spacing and margins"
         " included); nothing when hidden."
         " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
-        gap = 20
-        left = 0 if self.np_side.isHidden() else self.np_side.width() + gap
-        right = 0 if self.np_lyrics_side.isHidden() else self.np_lyrics_side.width() + gap
+        left, right = self._np_side_width("left"), self._np_side_width("right")
         limit = max(0, (self.np_cover.width() - 360) // 2)
         sidebar = self.nav.width() + self.splitter.handleWidth()
         wanted = (left - right) // 2 + sidebar // 2        # over the window's middle, where the transport buttons are
@@ -3674,10 +3757,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
     def _open_lyrics_window(self):
-        win = self.lyrics_win
-        win.show()
-        win.raise_()
-        win.activateWindow()
+        self.lyrics_win.show_beside(self)                 # a window on the right of this one, not on top of it
 
     def _on_sync_running(self, running):
         for b in self.sync_buttons:

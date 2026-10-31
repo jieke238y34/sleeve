@@ -52,7 +52,7 @@ def test_the_dialog_blocks_saving_unreadable_colours(qapp):  # noqa: F811
     dlg.own_back.setChecked(True)
     dlg._refresh()
     out = dlg.result_theme()
-    assert dlg.save_btn.isEnabled() and out["text"] == "#ffffff" and len(out["backdrop"]) == 3
+    assert dlg.save_btn.isEnabled() and out["text"] == "#ffffff" and len(out["backdrop"]) == 5
     dlg.own_back.setChecked(False)
     assert dlg.result_theme()["backdrop"] is None and dlg.result_theme()["name"] == "Night bus"
 

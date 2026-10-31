@@ -51,8 +51,10 @@ The screenshots and the tour show a small made-up demo library with generated co
 
 ### Colours
 
-Pick one of 16 accent colours, wear a season or holiday, use the Dusk theme, or make a theme of your own in Settings.
-These are six of the accents, every season and holiday, Dusk and a made-up theme:
+Pick one of 16 accent colours, wear a season or holiday, use one of the built-in themes, paint the background with your
+own 5-point gradient, or make a theme of your own in Settings.
+These are six of the accents, every season and holiday, the themes that come with Sleeve (Dusk, Frog, Midnight,
+Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
 
 ![Accents, seasons, holidays, Dusk and a theme of your own](docs/screenshots/colours.png)
 
