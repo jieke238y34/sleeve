@@ -376,47 +376,90 @@ class Bars(QWidget):
 
 
 class Gauge(QWidget):
-    "One rounded bar cut into coloured segments, with a legend underneath."
-    SHADES = (255, 190, 125, 70)
+    """The sound quality of the library, readable at a glance: a verdict on top, one bar cut into four clearly different
+    colours (cool is better, warm is worse), and under it each tier with what it means, its share and its count."""
+
+    COLOURS = {"lossless": "#6ee7b7", "high": "#7dd3fc", "ok": "#fcd34d", "low": "#fb7185"}
+    MEANING = {"lossless": "FLAC and WAV", "high": "256 kbps and up", "ok": "128 to 255 kbps", "low": "under 128 kbps"}
+    NAME = {"lossless": "Lossless", "high": "High", "ok": "OK", "low": "Low"}
 
     def __init__(self):
         super().__init__()
         self.parts, self.accent = [], LAVENDER
-        self.setFixedHeight(88)
+        self.setFixedHeight(150)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def set_parts(self, parts, accent):
-        "parts: [(label, count)] in order from best to worst."
+        "parts: [(tier, count)] in order from best to worst."
         self.parts, self.accent = list(parts), accent
         self.update()
+
+    def verdict(self):
+        "('Mostly OK', '100% of 4,738 songs are OK') for the biggest tier, or a mix when none has half."
+        total = sum(c for _, c in self.parts)
+        if not total:
+            return "Nothing measured yet", ""
+        tier, count = max(self.parts, key=lambda part: part[1])
+        share = count / total
+        name = self.NAME.get(tier, tier)
+        head = f"Mostly {name}" if share >= 0.5 else "A mix of qualities"
+        return head, f"{share:.0%} of {total:,} songs are {name}"
 
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         total = sum(c for _, c in self.parts)
-        bar = QRectF(0, 4, self.width(), 18)
+        head, sub = self.verdict()
+        big = QFont(self.font())
+        big.setPointSizeF(big.pointSizeF() + 3)
+        big.setBold(True)
+        p.setFont(big)
+        p.setPen(QColor(TEXT))
+        hh = p.fontMetrics().height()
+        p.drawText(QRectF(0, 0, self.width(), hh), Qt.AlignLeft | Qt.AlignVCenter, head)
+        small = QFont(self.font())
+        p.setFont(small)
+        p.setPen(QColor(MUTED))
+        sh = p.fontMetrics().height()
+        p.drawText(QRectF(0, hh, self.width(), sh), Qt.AlignLeft | Qt.AlignVCenter, sub)
+        top = hh + sh + 10
+        bar = QRectF(0, top, self.width(), 16)
         clip = QPainterPath()
-        clip.addRoundedRect(bar, 9, 9)
+        clip.addRoundedRect(bar, 8, 8)
         p.setClipPath(clip)
         p.fillRect(bar, QColor(255, 255, 255, 14))
-        x = 0.0
-        for (_, c), a in zip(self.parts, self.SHADES, strict=True):
-            w = self.width() * c / total if total else 0
-            p.fillRect(QRectF(x, 4, w, 18), _rgba(self.accent, a))
+        gap, x = 2.0, 0.0
+        shown = [(t, c) for t, c in self.parts if c > 0]
+        for tier, c in shown:
+            w = max(self.width() * c / total, 5.0) if total else 0
+            width = max(w - (gap if len(shown) > 1 else 0), 1.0)
+            p.fillRect(QRectF(x, top, width, 16), QColor(self.COLOURS.get(tier, "#aaaaaa")))
             x += w
         p.setClipping(False)
-        h = p.fontMetrics().height() + 2
         col = self.width() / max(len(self.parts), 1)
-        for i, ((name, c), a) in enumerate(zip(self.parts, self.SHADES, strict=True)):
-            x, y = i * col, 38
+        y0 = top + 16 + 14
+        line = p.fontMetrics().height() + 1
+        for i, (tier, c) in enumerate(self.parts):
+            x = i * col
+            live = c > 0
+            colour = QColor(self.COLOURS.get(tier, "#aaaaaa"))
+            colour.setAlpha(255 if live else 90)
             p.setPen(Qt.NoPen)
-            p.setBrush(_rgba(self.accent, a))
-            p.drawEllipse(QRectF(x, y + 4, 9, 9))
+            p.setBrush(colour)
+            p.drawEllipse(QRectF(x, y0 + 3, 12, 12))
+            name = QFont(self.font())
+            name.setBold(True)
+            p.setFont(name)
+            p.setPen(QColor(TEXT) if live else QColor(MUTED))
+            p.drawText(QRectF(x + 20, y0, col - 20, line), Qt.AlignLeft | Qt.AlignVCenter, self.NAME.get(tier, tier))
+            p.setFont(small)
             p.setPen(QColor(MUTED))
-            p.drawText(QRectF(x + 16, y, col - 16, h), Qt.AlignLeft | Qt.AlignVCenter, name)
-            p.setPen(QColor(TEXT))
+            p.drawText(QRectF(x + 20, y0 + line, col - 20, line), Qt.AlignLeft | Qt.AlignVCenter,
+                       self.MEANING.get(tier, ""))
             share = f"{c / total:.0%}" if total else "-"
-            p.drawText(QRectF(x + 16, y + h, col - 16, h), Qt.AlignLeft | Qt.AlignVCenter, f"{share}  ({c:,})")
+            p.setPen(QColor(TEXT) if live else QColor(MUTED))
+            p.drawText(QRectF(x + 20, y0 + 2 * line, col - 20, line), Qt.AlignLeft | Qt.AlignVCenter,
+                       f"{share}  ·  {c:,} songs" if c != 1 else f"{share}  ·  1 song")
 
 
 class Ring(QWidget):
@@ -1051,7 +1094,7 @@ class IdentityPage(QWidget):
         self.gauge.set_parts(list(p.quality.items()), a)
         known = sum(p.quality.values())
         self.quality_note.setText(
-            f"{known / p.songs:.0%} of songs have a readable bitrate. High is 256 kbps and up, ok is 128 and up."
+            f"{known / p.songs:.0%} of songs have a bitrate Sleeve can read; the others are left out."
             if p.songs else "Nothing to measure yet.")
         self.ring.set_share(p.liked_share, a)
         self.liked_text.setText(f"{_plural(p.liked, 'song')} stashed, out of {p.songs:,}." if p.songs

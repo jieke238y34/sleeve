@@ -79,14 +79,27 @@ def test_no_lyrics_says_so(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
         win.close()
 
 
-def test_the_lyrics_tab_opens_from_the_player(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_lyrics_panel_opens_from_the_player_and_both_panels_hide(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
+        win.resize(1500, 800)
+        win.show()
+        win.tab_lyrics.setChecked(False)
+        qapp.processEvents()
+        assert not win.np_lyrics_side.isVisible()
         win.show_page("Library")
         win._show_lyrics()                                  # the bar has no lyrics button; the song itself opens them
-        assert win.nav.currentItem().text() == "Now Playing" and win.np_tabs.currentIndex() == 1 and win.tab_lyrics.isChecked()
-        win.tab_queue.click()
-        assert win.np_tabs.currentIndex() == 0
+        qapp.processEvents()
+        assert win.nav.currentItem().text() == "Now Playing" and win.tab_lyrics.isChecked()
+        assert win.np_lyrics_side.isVisible() and win.np_side.isVisible()
+        win.tab_queue.click()                               # the button under the cover hides the playlist ...
+        qapp.processEvents()
+        assert not win.np_side.isVisible() and win.np_lyrics_side.isVisible()
+        win.tab_queue.click()                               # ... and brings it back
+        win.tab_lyrics.click()
+        qapp.processEvents()
+        assert win.np_side.isVisible() and not win.np_lyrics_side.isVisible()
+        assert win.settings.np_queue_shown and not win.settings.np_lyrics_shown          # remembered
     finally:
         win.close()
 
@@ -520,9 +533,20 @@ def test_the_backdrop_is_drawn_once_and_then_copied(qapp):  # noqa: F811
     for _ in range(20):
         back.grab()                                      # a repaint
     assert len(drawn) == 1
+    time.sleep(0.2)                                      # a resize that is not part of a drag is drawn at once
     back.resize(900, 500)                                # a new size is a new picture
     back.grab()
     assert len(drawn) == 2
+    back.resize(920, 500)                                # in a drag the last picture is only stretched, which is cheap
+    back.resize(940, 500)
+    back.grab()
+    assert len(drawn) == 2
+    time.sleep(0.2)
+    for _ in range(10):
+        qapp.processEvents()                             # the drag paused: the real picture is made once
+        time.sleep(0.02)
+    back.grab()
+    assert len(drawn) == 3
     pix = QPixmap(8, 8)
     pix.fill(theme.QColor("#ff0000"))
     back.set_cover(pix)                                  # the fade changes the colours: pictures are made again
@@ -530,7 +554,7 @@ def test_the_backdrop_is_drawn_once_and_then_copied(qapp):  # noqa: F811
         qapp.processEvents()
         time.sleep(0.02)
     back.grab()
-    assert len(drawn) > 2
+    assert len(drawn) > 3
     count = len(drawn)
     for _ in range(10):
         back.grab()

@@ -1,7 +1,9 @@
 """How the window looks: a dark lavender default, optional seasonal and holiday palettes, and a backdrop made from
 the playing song's cover."""
 
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QVariantAnimation
+import time
+
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, QVariantAnimation
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QMenu, QWidget
 
@@ -121,10 +123,10 @@ QSlider::groove:horizontal {{ height: 6px; background: rgba(255, 255, 255, 40); 
 QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {CREAM}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }}
 
-QScrollBar:vertical {{ background: transparent; width: 10px; margin: 12px 2px; }}
+QScrollBar:vertical {{ background: transparent; width: 14px; margin: 12px 3px; }}
 QScrollBar::handle:vertical {{ background: rgba(255, 255, 255, 50); border-radius: 4px; min-height: 28px; }}
 QScrollBar::handle:vertical:hover {{ background: rgba(255, 255, 255, 90); }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 12px; }}
+QScrollBar:horizontal {{ background: transparent; height: 14px; margin: 3px 12px; }}
 QScrollBar::handle:horizontal {{ background: rgba(255, 255, 255, 50); border-radius: 4px; min-width: 28px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
@@ -375,6 +377,28 @@ class Backdrop(QWidget):
         self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
         self._pix, self._fixed = None, None                  # the cover now playing; fixed colours from a theme, if any
         self._art, self._glow = False, QColor(LAVENDER)      # show a blurred copy of the cover behind everything
+        self._last_resize, self._dragging = 0.0, False       # while the window is being dragged the picture is only
+        self._last_size = None
+        self._cache_kind = None                              # stretched; the real one is made when the drag pauses
+        self._settle = QTimer(self)
+        self._settle.setSingleShot(True)
+        self._settle.setInterval(90)
+        self._settle.timeout.connect(self._drag_over)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if e.size() == self._last_size:
+            return                                           # nothing changed (a grab says it again)
+        self._last_size = e.size()
+        now = time.monotonic()
+        self._dragging = now - self._last_resize < 0.12      # the first event of a resize is drawn properly at once
+        self._last_resize = now
+        if self._dragging:
+            self._settle.start()
+
+    def _drag_over(self):
+        self._dragging = False
+        self.update()
 
     def set_cover(self, pix):
         self._pix = pix
@@ -424,7 +448,11 @@ class Backdrop(QWidget):
         key = (self.width(), self.height(), ratio, tuple(c.rgb() for c in self._now), self._art, self._glow.rgb(),
                self._pix.cacheKey() if self._art and self._pix is not None and not self._pix.isNull() else 0)
         if key != self._cache_key:
-            self._cache, self._cache_key = self._render(ratio), key
+            if self._dragging and self._cache is not None and self._cache_kind == key[2:]:
+                p = QPainter(self)                           # a drag: the last picture, stretched (cheap), no re-render
+                p.drawPixmap(self.rect(), self._cache)
+                return
+            self._cache, self._cache_key, self._cache_kind = self._render(ratio), key, key[2:]
         p = QPainter(self)
         r = event.rect()
         p.drawPixmap(r.topLeft(), self._cache, QRect(round(r.x() * ratio), round(r.y() * ratio),

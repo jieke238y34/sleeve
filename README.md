@@ -74,8 +74,8 @@ The screenshots and the tour show a small made-up demo library with generated co
 - Now Playing: the cover with a gradient background drawn from its colours, the queue with thumbnails, and a cover you
   can expand. Now Playing names what is playing (the playlist, album, folder or search). Full-screen cover view with a
   seek bar (F11; Esc or a click to leave).
-- Lyrics tab: synced lyrics from `.lrc` files scroll with the song and can be clicked to seek, plain `.txt` lyrics are
-  shown unsynced, and the tab says "No imported lyrics found" otherwise.
+- Lyrics panel (the right side of Now Playing, with a Hide button; ♪ under the art brings it back): synced lyrics from `.lrc` files scroll with the song and can be clicked to seek, plain `.txt` lyrics are
+  shown unsynced, and the panel says "No imported lyrics found" otherwise.
 - The small cover in the player bar opens Now Playing with one click.
 - The volume is a bare slider; a small bubble above it shows the number while you change it.
 
