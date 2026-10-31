@@ -85,6 +85,7 @@ class Player(QObject):
         self.queue, self.index = [], -1
         self.shuffle, self.repeat = False, REPEAT_OFF
         self._played, self._back, self._new_queue = [], False, False     # what was played, for Previous
+        self._resume_ms = 0                     # where a restored song goes to once it has loaded (see restore)
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
@@ -208,6 +209,9 @@ class Player(QObject):
             return
         self.duration = ms / 1000
         self.durationChanged.emit(self.duration)
+        if self._resume_ms and ms > 0:                      # a restored song has loaded: go to where it was left
+            self._media.setPosition(min(self._resume_ms, max(ms - 1000, 0)))
+            self._resume_ms = 0
         self._arm_switch()
 
     def _on_state(self, state):
@@ -408,9 +412,41 @@ class Player(QObject):
         self._played.append(self.queue[self.index])
         del self._played[:-PLAYED_KEEP]
 
+    def restore(self, paths, index=0, position=0.0):
+        """Open a queue with song `index` loaded but not playing, `position` seconds in: what was open when the app
+        was closed. Files that are gone are left out. Returns True when a song was loaded."""
+        paths = [str(p) for p in paths]
+        want = paths[index] if 0 <= index < len(paths) else ""
+        good = [p for p in paths if is_playable(p)]
+        if not good:
+            return False
+        i = good.index(want) if want in good else 0
+        self.queue = good
+        self._played, self._new_queue = [], True
+        self.queueChanged.emit()
+        self._remember(i)                                   # a new queue: nothing to remember yet
+        self.index = i
+        self.position = self.duration = 0.0
+        self.positionChanged.emit(0.0)
+        self.durationChanged.emit(0.0)
+        self._switch_timer.stop()
+        if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
+            self._idle.media.stop()
+        slot = self._slots[self._cur]
+        slot.media.setSource(QUrl.fromLocalFile(good[i]))
+        slot.path, slot.failed = good[i], False
+        self._apply_volume()
+        self._resume_ms = int(max(0.0, float(position)) * 1000) if want in good else 0
+        slot.media.pause()                                  # loads the file and shows its first moment, silently
+        self._set_playing(False)
+        self.trackChanged.emit(i, good[i])
+        self._plan_next()
+        return True
+
     def play_index(self, i):
         if not 0 <= i < len(self.queue):
             return
+        self._resume_ms = 0                                 # something else was asked for: forget where to resume
         self._remember(i)
         self.index = i
         self.position = self.duration = 0.0

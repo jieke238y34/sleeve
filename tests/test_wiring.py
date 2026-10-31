@@ -171,7 +171,7 @@ def test_health_buttons_play_open_and_fix(qapp, cfg, monkeypatch, tmp_path):  # 
 def test_album_art_size_is_a_saved_setting(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        assert win.settings.cover_size == 520
+        assert win.settings.cover_size == 760
         win.cover_slider.setValue(700)
         assert win.settings.cover_size == 700 and win.cover_label.text() == "700 px"
         assert settings.Settings(win.settings.file).cover_size == 700

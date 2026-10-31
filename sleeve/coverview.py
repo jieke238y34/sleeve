@@ -30,7 +30,7 @@ class CoverView(QWidget):
         self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
         self.top_inset = 0                    # the art never starts above this many pixels from the top
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
-        self.setMinimumSize(120, 120)
+        self.setMinimumSize(200, 120)      # wide enough for the round buttons under the art
         self.setCursor(Qt.PointingHandCursor)
 
     def set_pixmap(self, pix):
@@ -94,7 +94,8 @@ class CoverView(QWidget):
             y += h
         if self._btns:
             widest = max(b.minimumSizeHint().width() for b in self._btns)
-            x = cx - (widest * len(self._btns) + 8 * (len(self._btns) - 1)) // 2
+            row = widest * len(self._btns) + 8 * (len(self._btns) - 1)
+            x = max(0, min(cx - row // 2, wid - row))      # the row never leaves the column, even a squeezed one
             for b in self._btns:
                 b.setGeometry(x, y + 8, widest, b.minimumSizeHint().height())
                 x += widest + 8

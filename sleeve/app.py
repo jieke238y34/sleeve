@@ -51,7 +51,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -114,10 +113,12 @@ from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .mpris import Mpris
+from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .presence import Presence
 from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
+from .session import Session
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
@@ -397,6 +398,19 @@ class MainWindow(QMainWindow):
         self.scrobbler = lastfm.Scrobbler(lastfm.Account(), parent=self)
         self.scrobbler.active = self.settings.lastfm_on
         self.scrobbler.status.connect(lambda text: self.status.showMessage(text, 10000))
+        self.session = Session()                          # the queue and song that were open last time
+        self._session_wanted = self.session.load() if self.settings.remember_session else None   # until it is restored
+        self._session_saved = None                        # what the file holds now: (song, queue length, position)
+        self._session_timer = QTimer(self)                # a burst of changes is written once
+        self._session_timer.setSingleShot(True)
+        self._session_timer.setInterval(1500)
+        self._session_timer.timeout.connect(self._save_session)
+        self._session_tick = QTimer(self)                 # how far into the song, kept up to date while it plays
+        self._session_tick.setInterval(10_000)
+        self._session_tick.timeout.connect(self._save_session)
+        self._session_tick.start()
+        self.player.trackChanged.connect(lambda *_: self._session_timer.start())
+        self.player.queueChanged.connect(self._session_timer.start)
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
@@ -470,7 +484,7 @@ class MainWindow(QMainWindow):
         def _late_restore():
             self._restore_size()
             self.splitter.setSizes([self.settings.nav_width, 10_000])
-        QTimer.singleShot(0, _late_restore)
+            QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
@@ -683,8 +697,30 @@ class MainWindow(QMainWindow):
         self.pl_look_btn.setToolTip("Change this playlist's cover picture and title colour")
         self.pl_look_btn.clicked.connect(self._edit_current_playlist)
         info_row.addWidget(self.pl_look_btn)
-        info_row.addWidget(self.pl_info, 1)
+        info_row.addStretch(1)
         info_row.addWidget(self.pl_like_all)
+        self.pl_title = QLabel("")
+        self.pl_title.setObjectName("title")
+        self.pl_title.setTextFormat(Qt.PlainText)
+        self.pl_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.pl_play_btn = QPushButton("▶  Play")
+        self.pl_play_btn.setObjectName("primary")
+        self.pl_play_btn.setToolTip("Play this playlist from the top")
+        self.pl_play_btn.clicked.connect(lambda: self._play_current_playlist())
+        self.pl_shuffle_play_btn = QPushButton("Shuffle")
+        self.pl_shuffle_play_btn.setToolTip("Play this playlist in a random order")
+        self.pl_shuffle_play_btn.clicked.connect(lambda: self._play_current_playlist(shuffle=True))
+        self.pl_queue_btn = QPushButton("Add to queue")
+        self.pl_queue_btn.setToolTip("Put this playlist after what is playing now")
+        self.pl_queue_btn.clicked.connect(self._queue_current_playlist)
+        hero = QHBoxLayout()
+        words = QVBoxLayout()
+        words.setSpacing(2)
+        words.addWidget(self.pl_title)
+        words.addWidget(self.pl_info)
+        hero.addLayout(words, 1)
+        for b in (self.pl_play_btn, self.pl_shuffle_play_btn, self.pl_queue_btn):
+            hero.addWidget(b)
         self.pl_empty = QLabel("You have no playlists yet.\n\nDrag playlist files (.m3u8) onto this page to import "
                                "them,\npress “＋ New playlist”, or right-click songs and choose Add to playlist.")
         self.pl_empty.setAlignment(Qt.AlignCenter)
@@ -717,6 +753,7 @@ class MainWindow(QMainWindow):
 
         right = QVBoxLayout()
         right.addLayout(info_row)
+        right.addLayout(hero)
         right.addWidget(self.pl_empty, 1)
         right.addWidget(self.pl_table, 1)
         right.addLayout(edit_row)
@@ -1272,8 +1309,8 @@ class MainWindow(QMainWindow):
         section("Look")
         row = QHBoxLayout()
         self.cover_slider = ClickSlider(Qt.Horizontal)
-        self.cover_slider.setRange(240, 900)
-        self.cover_slider.setSingleStep(20)
+        self.cover_slider.setRange(240, 1400)
+        self.cover_slider.setSingleStep(40)
         self.cover_slider.setValue(self.settings.cover_size)
         self.cover_slider.setMaximumWidth(280)
         self.cover_label = QLabel(f"{self.settings.cover_size} px")
@@ -1413,6 +1450,14 @@ class MainWindow(QMainWindow):
                            "file and go later. Nothing is sent until you connect, and Disconnect forgets the key."))
         self.scrobbler.changed.connect(self._lastfm_refresh)
         self._lastfm_refresh()
+
+        section("Startup")
+        self.session_box = Switch("Remember what was playing")
+        self.session_box.setChecked(self.settings.remember_session)
+        self.session_box.toggled.connect(self._remember_session_toggled)
+        lay.addWidget(self.session_box)
+        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
+                           "spot; press play to carry on. Kept in a file on this computer only."))
 
         section("Listening")
         self.listening_box = Switch("Remember what I listen to")
@@ -1822,6 +1867,46 @@ class MainWindow(QMainWindow):
         self.lyrics.style().polish(self.lyrics)
         self.lyrics.viewport().update()
 
+    def _restore_session(self):
+        "Once, when the library is first known: bring back the queue and song from last time, paused where they were."
+        data, self._session_wanted = self._session_wanted, None
+        if data is None or self.player.queue or self.player.index >= 0:
+            return                                          # nothing saved, or something is already playing: leave it
+        self._queue_source = data.source
+        if self.player.restore(data.queue, data.index, data.position):
+            self.status.showMessage(f"Back where you were: {data.source or 'your queue'}", 6000)
+        else:
+            self._queue_source = ""
+        self._session_saved = None
+
+    def _save_session(self):
+        "Write the queue, the song and how far in it is. Only when something changed; never before the old one is back."
+        if not self.settings.remember_session or self._session_wanted is not None:
+            return
+        player = self.player
+        if not player.queue or player.index < 0:
+            if self._session_saved is not None:
+                self.session.clear()                        # the queue was emptied on purpose: nothing to come back to
+                self._session_saved = None
+            return
+        mark = (player.current(), len(player.queue), int(player.position // 5))
+        if mark == self._session_saved:
+            return
+        try:
+            self.session.save(player.queue, player.index, player.position, self._queue_source)
+            self._session_saved = mark
+        except OSError as e:
+            self.status.showMessage(f"Could not save what was playing: {e}", 6000)
+
+    def _remember_session_toggled(self, on):
+        self._set_setting("remember_session", on)
+        if on:
+            self._session_saved = None
+            self._save_session()
+        else:
+            self.session.clear()                            # switched off: the file goes too
+            self._session_saved = None
+
     MIN_WINDOW = (800, 600)             # the smallest the window can be made: every page is checked at this size
 
     def _screen_size(self, available=False):
@@ -2038,6 +2123,7 @@ class MainWindow(QMainWindow):
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
+        self._restore_session()
         try:
             self._load_playlists()
             self._load_health()
@@ -2590,6 +2676,7 @@ class MainWindow(QMainWindow):
         self.pl_grid = plgrid.PlaylistGrid(parent=page)
         self.pl_grid.openAlbum.connect(self._open_playlist_tile)
         self.pl_grid.playAlbum.connect(self._play_tile_paths)
+        self.pl_grid.playRequested.connect(self._play_tile)
         self.pl_grid.editRequested.connect(self._playlist_edit_menu)
         self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
@@ -2802,7 +2889,11 @@ class MainWindow(QMainWindow):
             return
         self._playlist_entries = entries
         have = sum(1 for e in entries if e.exists)
-        self.pl_info.setText(f"{len(entries)} songs, {have} in the library, {len(entries) - have} missing")
+        self.pl_title.setText(name)
+        missing = len(entries) - have
+        self.pl_info.setText(f"{len(entries)} songs" + (f" · {missing} missing from your library" if missing else ""))
+        for b in (self.pl_play_btn, self.pl_shuffle_play_btn, self.pl_queue_btn):
+            b.setEnabled(have > 0)
         self.pl_table.clearSelection()
         self.pl_table.setRowCount(len(entries))
         for r, e in enumerate(entries):
@@ -2830,8 +2921,10 @@ class MainWindow(QMainWindow):
 
     # --- playlists of your own ------------------------------------------------
     def _ask_name(self, title, default=""):
-        name, ok = QInputDialog.getText(self, title, "Name:", text=default)
-        return name.strip() if ok and myplaylists.clean_name(name) else None
+        renaming = bool(default)
+        hint = "Pick a new name for this playlist." if renaming else "Give it a name. You can add songs next."
+        name = NameDialog.ask(self, title, hint, default, "Rename" if renaming else "Create")
+        return name if name and myplaylists.clean_name(name) else None
 
     def _playlist_error(self, e):
         self.status.showMessage(f"Could not change the playlist: {e}", 8000)
@@ -3065,6 +3158,25 @@ class MainWindow(QMainWindow):
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
+    def _current_playlist_paths(self):
+        return [e.path for e in self._playlist_entries if e.exists]
+
+    def _play_current_playlist(self, shuffle=False):
+        "The Play and Shuffle buttons of the open playlist."
+        paths = self._current_playlist_paths()
+        if not paths:
+            self.status.showMessage("Nothing in this playlist is in the library", 5000)
+            return
+        if self.shuffle_btn.isChecked() != shuffle:
+            self.shuffle_btn.setChecked(shuffle)             # the bar's button follows, and the player with it
+        self._play_queue(paths, 0, self._playlist_source())
+
+    def _queue_current_playlist(self):
+        paths = self._current_playlist_paths()
+        if paths:
+            self.player.enqueue(paths)
+            self.status.showMessage(f"Added {len(paths)} songs to the queue", 4000)
+
     def _play_playlist_from(self, row, _col):
         if not 0 <= row < len(self._playlist_entries) or not self._playlist_entries[row].exists:
             return
@@ -3091,6 +3203,13 @@ class MainWindow(QMainWindow):
 
     def _playlist_source(self):
         return self._pl_current[0] if self._pl_current else "Playlist"
+
+    def _play_tile(self, tile):
+        "The play button on a playlist cover: one click and it plays."
+        if tile.songs:
+            self._play_queue(tile.paths, 0, tile.name)
+        else:
+            self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
     def _play_tile_paths(self, paths):
         tile = self.pl_grid.current_album()
@@ -3181,6 +3300,10 @@ class MainWindow(QMainWindow):
         expanded = getattr(self, "_cover_expanded", False)
         queue = self.tab_queue.isChecked() and not expanded
         lyrics = self.tab_lyrics.isChecked() and not expanded and (not queue or self._np_room_for_both())
+        if self.np_page.isVisible() and self.tab_lyrics.isChecked() and not expanded and not lyrics:
+            self.tab_lyrics.blockSignals(True)               # no room: the button says so; the saved choice is kept
+            self.tab_lyrics.setChecked(False)
+            self.tab_lyrics.blockSignals(False)
         shown = int(queue) + int(lyrics)
         if shown:                                            # equal panels, so the art sits in the middle of the page
             spare = self.np_page.width() - 24 - 20 * shown - self.NP_COVER_MIN
@@ -3835,7 +3958,8 @@ class MainWindow(QMainWindow):
             return
         self.now.setText(f"{s.name}\n{s.artist}")
         self._started_at = int(time.time())
-        self.scrobbler.now_playing(s)
+        if getattr(self.player, "playing", False):          # a song brought back paused is not being played
+            self.scrobbler.now_playing(s)
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
         try:
             data = art.cover_bytes(path)
@@ -3931,6 +4055,7 @@ class MainWindow(QMainWindow):
             return
         self._closing = True                         # no new scans from here on
         self._finish_listen()
+        self._save_session()                         # the song and how far in it is, for the next start
         self._boost.reset()                          # leave no stream louder than it found it
         self.presence.configure(False, "")           # clear the song from Discord
         self._remember_window()
