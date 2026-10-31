@@ -48,10 +48,20 @@ if [ -n "${SLEEVE_SOURCE:-}" ]; then SOURCE="$SLEEVE_SOURCE"
 elif [ -n "$HERE" ] && [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/sleeve" ]; then SOURCE="$HERE"
 else SOURCE="$REPO_URL"; fi
 
+# Installing from the web: fetch the repository (history only, no old file contents) so the build number can be counted
+# and stamped, exactly as for a checkout. Without git the install still works, it just shows the version alone.
+WORK=""
+trap '[ -z "$WORK" ] || rm -rf "$WORK"' EXIT
+if [ "$SOURCE" = "$REPO_URL" ] && command -v git >/dev/null 2>&1; then
+    WORK=$(mktemp -d)
+    if git clone -q --filter=blob:none "${REPO_URL#git+}" "$WORK/sleeve" 2>/dev/null; then SOURCE="$WORK/sleeve"
+    else say "note: could not fetch the repository with git; the build number will not be shown"; fi
+fi
+
 say "Installing Sleeve from $SOURCE"
 say "(this downloads Qt, about 200 MB, the first time)"
-# Stamp the build number when installing from a checkout, so --version and the updater report a truth. A source
-# that is not a git checkout (a tarball) is left alone.
+# Stamp the build number when the source is a git checkout (a local one, or the clone above), so --version, Settings
+# and the updater all know it. A source that is not a git checkout (a tarball) is left alone.
 if [ "$SOURCE" != "$REPO_URL" ] && [ -d "$SOURCE/.git" ]; then
     "$PY" "$SOURCE/tools/stamp_build.py" || say "note: could not stamp the build number into the copy"
 fi
