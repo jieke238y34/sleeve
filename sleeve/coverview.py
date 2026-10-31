@@ -85,7 +85,8 @@ class CoverView(QWidget):
         room = max(0, hei - self.top_inset)                 # the height below the line the art may not cross
         side = max(0, min(span, room - info, self.max_side))
         cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
-        self._art_y = self.top_inset + max(0, (room - side - info) // 2)
+        # beside a panel the art starts level with the top of its list; with no panel it is centered in the page
+        self._art_y = self.top_inset if self.top_inset > 0 else max(0, (room - side - info) // 2)
         y = self._art_y + side + 26
         span -= 12                                          # the words keep the same edge room as before
         for w in self._rows:

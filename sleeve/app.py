@@ -129,6 +129,7 @@ from .switch import Switch
 from .tagsuggest import TagSuggestions
 from .textfold import fold
 from .themedialog import GradientEditor, ThemeDialog
+from .waveform import WaveSeek, WaveWorker
 
 CACHE_FILE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "sleeve" / "library.json"
 ALL = "All songs"
@@ -529,6 +530,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
+        self.wave_strip = self._wave_strip()                  # shown instead of the bar while it is folded away
+        outer.addWidget(self.wave_strip)
         self.setCentralWidget(root)
         self.status = self.statusBar()
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
@@ -2007,6 +2010,7 @@ class MainWindow(QMainWindow):
         self.backdrop.set_art(self._cover_expanded, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
+        self.wave.set_accent(colour)
         self.identity_page.set_accent(colour)
         self._vol_bubble.set_accent(colour)
         for switch in self.findChildren(Switch):
@@ -3561,9 +3565,66 @@ class MainWindow(QMainWindow):
             self._set_setting("gradient", self.gradient_editor.colours())
             self.backdrop.set_fixed(self._backdrop_colours(self._look))
 
+    def _wave_strip(self):
+        "The strip under the page while the player bar is hidden: time, the waveform (click or drag to seek), time."
+        strip = QWidget()
+        strip.setObjectName("wavestrip")
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(16, 4, 16, 4)
+        self.wave_pos, self.wave_dur = QLabel("0:00"), QLabel("0:00")
+        self.wave = WaveSeek()
+        self.wave.seekRequested.connect(self._wave_seek)
+        row.addWidget(self.wave_pos)
+        row.addWidget(self.wave, 1)
+        row.addWidget(self.wave_dur)
+        self._wave_peaks, self._wave_worker, self._wave_wanted = {}, None, ""
+        strip.setVisible(False)
+        return strip
+
+    def _wave_seek(self, fraction):
+        if self._dur > 0:
+            self._seek_now(fraction * self._dur)
+
+    def _wave_request(self):
+        "Work out (once per song, in the background) the waveform of the song now playing, if the strip is on show."
+        path = self._current_path
+        if not self.wave_strip.isVisibleTo(self) or not path:
+            return
+        if not Path(path).is_file():                          # a server track, say: no file to read
+            self.wave.set_peaks([])                           # the even stand-in
+            return
+        if path in self._wave_peaks:
+            self.wave.set_peaks(self._wave_peaks[path])
+            return
+        self.wave.set_peaks([])
+        self._wave_wanted = path
+        if self._wave_worker is None:
+            self._wave_worker = WaveWorker(path, self)
+            self._wave_worker.ready.connect(self._wave_ready)
+            self._wave_worker.finished.connect(self._wave_idle)
+            self._wave_worker.start()
+
+    def _wave_ready(self, path, peaks):
+        if len(self._wave_peaks) >= 24:
+            self._wave_peaks.pop(next(iter(self._wave_peaks)))
+        self._wave_peaks[path] = peaks
+        if path == self._current_path:
+            self.wave.set_peaks(peaks)
+
+    def _wave_idle(self):
+        worker, self._wave_worker = self._wave_worker, None
+        if worker is not None:
+            worker.deleteLater()
+        wanted = self._wave_wanted
+        if wanted and wanted not in self._wave_peaks and wanted == self._current_path:
+            self._wave_request()                               # the song changed while it was working: do that one now
+
     def _set_bar_hidden(self, hidden, save=True):
         "Fold the player bar away (more room for the page; the media keys still work) or bring it back."
         self.bar.setVisible(not hidden)
+        self.wave_strip.setVisible(hidden)
+        if hidden:
+            self._wave_request()
         self.bar_fold_btn.setText("⌃  Show player" if hidden else "⌄  Hide player")
         self.bar_fold_btn.setToolTip("Show the player bar again (Ctrl+B)" if hidden
                                      else "Hide the player bar for more room (Ctrl+B)")
@@ -4166,6 +4227,10 @@ class MainWindow(QMainWindow):
         if not seeked:
             self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
+        if self.wave_strip.isVisible():
+            self.wave.set_progress(pos, self._dur)
+            if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
+                self.wave_pos.setText(fmt_time(pos))
         if self._cover_screen is not None:
             self._cover_screen.set_progress(pos, self._dur)
         if jumped:
@@ -4183,6 +4248,8 @@ class MainWindow(QMainWindow):
 
     def _on_duration(self, dur):
         self._dur = dur
+        self.wave_dur.setText(fmt_time(dur))
+        self.wave.set_progress(self._pos, dur)
         if self._cover_screen is not None:
             self._cover_screen.set_progress(self._pos, dur)
         self.dur_label.setText(fmt_time(dur))
@@ -4200,6 +4267,7 @@ class MainWindow(QMainWindow):
         self._finish_listen()
         self._current_path = path
         self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
+        self._wave_request()
         self._update_presence()
         self._seeking = False                               # a new song starts a fresh listen, not a seek
         self._update_like_button()
@@ -4319,6 +4387,8 @@ class MainWindow(QMainWindow):
             super().closeEvent(event)
             return
         self._closing = True                         # no new scans from here on
+        if self._wave_worker is not None:             # a waveform being worked out: it is short, let it end
+            self._wave_worker.wait(3000)
         self._finish_listen()
         self._save_session()                         # the song and how far in it is, for the next start
         self._boost.reset()                          # leave no stream louder than it found it
