@@ -59,6 +59,18 @@ class StubPlayer:
                   "queueChanged", "volumeChanged", "error"):
             setattr(self, n, getattr(self._s, n))
         self.queue, self.index, self.volume, self.calls = [], -1, 80, []
+        self.position, self.playing = 0.0, False
+
+    def current(self):
+        return self.queue[self.index] if 0 <= self.index < len(self.queue) else ""
+
+    def restore(self, paths, index=0, position=0.0):
+        "Like Player.restore: the queue and the song loaded, paused."
+        self.queue, self.index, self.position, self.playing = list(paths), index, position, False
+        self.calls.append(("restore", (list(paths), index, position)))
+        self.queueChanged.emit()
+        self.trackChanged.emit(index, self.queue[index])
+        return True
 
     def __getattr__(self, name):
         def record(*a, **k):

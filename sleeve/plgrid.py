@@ -4,8 +4,18 @@ a generated cover with the first letter of its name. The title can have its own 
 
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPoint, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import QListWidgetItem, QStyle
 
 from . import theme
@@ -49,23 +59,32 @@ class PlaylistTile:
 
 
 def new_tile_pixmap(size):
-    "The first tile: a dashed rounded square with a plus."
+    "The first tile: a solid accent-coloured square with a soft light, and a plus in a glass circle."
     pix = QPixmap(size, size)
     pix.fill(Qt.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.Antialiasing)
-    inset = size * 0.04
-    p.setBrush(QColor(255, 255, 255, 14))
-    pen = QPen(QColor(theme.LAVENDER), max(2.0, size / 90))
-    pen.setStyle(Qt.DashLine)
+    accent = QColor(theme.LAVENDER)
+    clip = QPainterPath()
+    clip.addRoundedRect(QRectF(0, 0, size, size), max(8, size // 14), max(8, size // 14))
+    p.setClipPath(clip)
+    base = QLinearGradient(0, 0, size, size)
+    base.setColorAt(0, accent.lighter(112))
+    base.setColorAt(1, accent.darker(170))
+    p.fillRect(QRectF(0, 0, size, size), base)
+    glow = QRadialGradient(size * 0.3, size * 0.25, size * 0.7)
+    glow.setColorAt(0, QColor(255, 255, 255, 70))
+    glow.setColorAt(1, QColor(255, 255, 255, 0))
+    p.fillRect(QRectF(0, 0, size, size), glow)
+    centre, radius = QPointF(size / 2, size * 0.4), size * 0.17          # above the glass band, where the eye lands
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(255, 255, 255, 235))
+    p.drawEllipse(centre, radius, radius)
+    pen = QPen(accent.darker(220), max(3.0, size / 45), Qt.SolidLine, Qt.RoundCap)
     p.setPen(pen)
-    p.drawRoundedRect(QRectF(inset, inset, size - 2 * inset, size - 2 * inset), size / 12, size / 12)
-    font = QFont()
-    font.setPixelSize(int(size * 0.5))
-    font.setBold(True)
-    p.setFont(font)
-    p.setPen(QColor(theme.LAVENDER))
-    p.drawText(QRect(0, 0, size, size), Qt.AlignCenter, "+")
+    arm = radius * 0.5
+    p.drawLine(QPointF(centre.x() - arm, centre.y()), QPointF(centre.x() + arm, centre.y()))
+    p.drawLine(QPointF(centre.x(), centre.y() - arm), QPointF(centre.x(), centre.y() + arm))
     p.end()
     return pix
 
@@ -269,16 +288,18 @@ class PlaylistGrid(AlbumGrid):
 
     def tile_pixmap(self, tile):
         "The tile picture: cover, glass band and the name written on it, made once and kept until something changes."
-        sig = (tile.name, tile.colour, tile.artist, self.font().key(), self.tile)
+        sig = (tile.name, tile.colour, tile.artist, self.font().key(), self.tile, theme.LAVENDER if tile.new else 0)
         pix = self._tiles.get(tile.key)
         if pix is None or self._signs.get(tile.key) != sig:
             src = self._sources.get(tile.key)
             side = self.tile
-            if src is None:
-                src = placeholder_pixmap(tile.name, SOURCE_SIDE)
-            pix = theme.rounded_pixmap(src, side, max(8, side // 14))
-            if not tile.new:
-                pix = glass(pix, band_height(side))
+            if tile.new:
+                pix = new_tile_pixmap(side)                   # drawn at the tile size in today's accent colour
+            else:
+                if src is None:
+                    src = placeholder_pixmap(tile.name, SOURCE_SIDE)
+                pix = theme.rounded_pixmap(src, side, max(8, side // 14))
+            pix = glass(pix, band_height(side))
             write_names(pix, tile, self.font(), band_height(side), side)
             self._tiles[tile.key], self._signs[tile.key] = pix, sig
             self._trim()

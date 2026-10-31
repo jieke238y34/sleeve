@@ -4,11 +4,12 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest  # noqa: E402
-from PySide6.QtWidgets import QInputDialog, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QMessageBox  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
 from test_likes import make_window  # noqa: E402
 
 from sleeve import library, myplaylists, playlists  # noqa: E402
+from sleeve.namedialog import NameDialog  # noqa: E402
 
 
 def song(tmp_path, name, artist="Band", title=None):
@@ -77,7 +78,7 @@ def test_dl_py_lists_do_not_see_ours(tmp_path):
 
 
 def make(qapp, cfg, monkeypatch, tmp_path, name="Road trip"):  # noqa: F811
-    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: (name, True)))
+    monkeypatch.setattr(NameDialog, "ask", classmethod(lambda *a, **k: name))
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
     return make_window(qapp, cfg, monkeypatch, tmp_path)
 
@@ -125,7 +126,7 @@ def test_make_add_save_edit_and_delete_in_the_window(qapp, cfg, monkeypatch, tmp
         win._save_queue_as_playlist()
         assert win._pl_current[0] == "Road trip (2)" and len(win._playlist_entries) == 3
         # rename and delete
-        monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Chill", True)))
+        monkeypatch.setattr(NameDialog, "ask", classmethod(lambda *a, **k: "Chill"))
         win._rename_playlist()
         assert win._pl_current[0] == "Chill"
         win._delete_playlist()
@@ -141,11 +142,11 @@ def test_a_declined_name_or_dialog_changes_nothing(qapp, cfg, monkeypatch, tmp_p
     win = make(qapp, cfg, monkeypatch, tmp_path, name="   ")
     try:
         assert win._new_playlist() is None
-        monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Fine", False)))
+        monkeypatch.setattr(NameDialog, "ask", classmethod(lambda *a, **k: None))
         assert win._new_playlist() is None
         assert win.my_playlists.names() == []
         monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.No))
-        monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Keep", True)))
+        monkeypatch.setattr(NameDialog, "ask", classmethod(lambda *a, **k: "Keep"))
         win._new_playlist()
         win._delete_playlist()                                            # answered No: still there
         assert [n for n, _ in win.my_playlists.names()] == ["Keep"]

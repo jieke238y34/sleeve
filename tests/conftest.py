@@ -55,6 +55,14 @@ def private_playlist_style_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def private_session_file(tmp_path, monkeypatch):
+    "No test may read or write the real ~/.config/sleeve/session.json (what was playing last time)."
+    from sleeve import session
+
+    monkeypatch.setattr(session, "SESSION_FILE", tmp_path / "session-for-tests.json")
+
+
+@pytest.fixture(autouse=True)
 def private_settings_file(tmp_path, monkeypatch):
     "No test may read or write the real ~/.config/sleeve/settings.json."
     from sleeve import settings

@@ -37,7 +37,7 @@ DEFAULTS = {
     "nav_width": 190,                  # width of the sidebar, which can be dragged
     "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
     "scroll_speed": 150,               # percent: how far one wheel notch scrolls (100 is the old speed)
-    "cover_size": 520,                 # the biggest the cover gets on the Now Playing page, in pixels
+    "cover_size": 760,                 # the biggest the cover gets on the Now Playing page, in pixels
     "track_listening": True,           # remember what was played (stays on this computer); feeds the Identity panel
     "identity_period": "week",         # "week" or "month": which top songs the Identity page shows
     "identity_tab": "identity",        # "identity" or "listening": which tab of the Identity page was open
@@ -45,6 +45,7 @@ DEFAULTS = {
     "update_check_ok": False,          # the user agreed that Sleeve may ask GitHub for the newest release
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
+    "remember_session": True,          # open again with the queue and song that were playing, paused where they were
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
     "lastfm_on": False,                # send what is played to last.fm (needs a connected account, see lastfm.py)
@@ -73,7 +74,7 @@ def _valid(key, value):
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
-                "np_queue_shown", "np_lyrics_shown"):
+                "np_queue_shown", "np_lyrics_shown", "remember_session"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
@@ -95,7 +96,7 @@ def _valid(key, value):
     if key == "scroll_speed":
         return isinstance(value, int) and not isinstance(value, bool) and 50 <= value <= 500
     if key == "cover_size":
-        return isinstance(value, int) and not isinstance(value, bool) and 240 <= value <= 900
+        return isinstance(value, int) and not isinstance(value, bool) and 240 <= value <= 1400
     if key == "discord_client_id":
         return isinstance(value, str) and (value == "" or (value.isdigit() and len(value) <= 25))
     if key == "output_device":

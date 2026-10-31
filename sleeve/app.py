@@ -41,7 +41,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -104,10 +103,12 @@ from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .mpris import Mpris
+from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .presence import Presence
 from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
+from .session import Session
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
@@ -387,6 +388,19 @@ class MainWindow(QMainWindow):
         self.scrobbler = lastfm.Scrobbler(lastfm.Account(), parent=self)
         self.scrobbler.active = self.settings.lastfm_on
         self.scrobbler.status.connect(lambda text: self.status.showMessage(text, 10000))
+        self.session = Session()                          # the queue and song that were open last time
+        self._session_wanted = self.session.load() if self.settings.remember_session else None   # until it is restored
+        self._session_saved = None                        # what the file holds now: (song, queue length, position)
+        self._session_timer = QTimer(self)                # a burst of changes is written once
+        self._session_timer.setSingleShot(True)
+        self._session_timer.setInterval(1500)
+        self._session_timer.timeout.connect(self._save_session)
+        self._session_tick = QTimer(self)                 # how far into the song, kept up to date while it plays
+        self._session_tick.setInterval(10_000)
+        self._session_tick.timeout.connect(self._save_session)
+        self._session_tick.start()
+        self.player.trackChanged.connect(lambda *_: self._session_timer.start())
+        self.player.queueChanged.connect(self._session_timer.start)
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
         self._tick.start()
@@ -460,6 +474,7 @@ class MainWindow(QMainWindow):
         def _late_restore():
             self._restore_size()
             self.splitter.setSizes([self.settings.nav_width, 10_000])
+            self._balance_bar()
         QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
@@ -1262,8 +1277,8 @@ class MainWindow(QMainWindow):
         section("Look")
         row = QHBoxLayout()
         self.cover_slider = ClickSlider(Qt.Horizontal)
-        self.cover_slider.setRange(240, 900)
-        self.cover_slider.setSingleStep(20)
+        self.cover_slider.setRange(240, 1400)
+        self.cover_slider.setSingleStep(40)
         self.cover_slider.setValue(self.settings.cover_size)
         self.cover_slider.setMaximumWidth(280)
         self.cover_label = QLabel(f"{self.settings.cover_size} px")
@@ -1403,6 +1418,14 @@ class MainWindow(QMainWindow):
                            "file and go later. Nothing is sent until you connect, and Disconnect forgets the key."))
         self.scrobbler.changed.connect(self._lastfm_refresh)
         self._lastfm_refresh()
+
+        section("Startup")
+        self.session_box = Switch("Remember what was playing")
+        self.session_box.setChecked(self.settings.remember_session)
+        self.session_box.toggled.connect(self._remember_session_toggled)
+        lay.addWidget(self.session_box)
+        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
+                           "spot; press play to carry on. Kept in a file on this computer only."))
 
         section("Listening")
         self.listening_box = Switch("Remember what I listen to")
@@ -1812,6 +1835,46 @@ class MainWindow(QMainWindow):
         self.lyrics.style().polish(self.lyrics)
         self.lyrics.viewport().update()
 
+    def _restore_session(self):
+        "Once, when the library is first known: bring back the queue and song from last time, paused where they were."
+        data, self._session_wanted = self._session_wanted, None
+        if data is None or self.player.queue or self.player.index >= 0:
+            return                                          # nothing saved, or something is already playing: leave it
+        self._queue_source = data.source
+        if self.player.restore(data.queue, data.index, data.position):
+            self.status.showMessage(f"Back where you were: {data.source or 'your queue'}", 6000)
+        else:
+            self._queue_source = ""
+        self._session_saved = None
+
+    def _save_session(self):
+        "Write the queue, the song and how far in it is. Only when something changed; never before the old one is back."
+        if not self.settings.remember_session or self._session_wanted is not None:
+            return
+        player = self.player
+        if not player.queue or player.index < 0:
+            if self._session_saved is not None:
+                self.session.clear()                        # the queue was emptied on purpose: nothing to come back to
+                self._session_saved = None
+            return
+        mark = (player.current(), len(player.queue), int(player.position // 5))
+        if mark == self._session_saved:
+            return
+        try:
+            self.session.save(player.queue, player.index, player.position, self._queue_source)
+            self._session_saved = mark
+        except OSError as e:
+            self.status.showMessage(f"Could not save what was playing: {e}", 6000)
+
+    def _remember_session_toggled(self, on):
+        self._set_setting("remember_session", on)
+        if on:
+            self._session_saved = None
+            self._save_session()
+        else:
+            self.session.clear()                            # switched off: the file goes too
+            self._session_saved = None
+
     def _restore_size(self):
         "The size the window had last time, but never bigger than the screen it opens on."
         width, height = self.settings.window_size
@@ -1934,8 +1997,13 @@ class MainWindow(QMainWindow):
         self.volume.sliderReleased.connect(self._volume_tip_done)
         # left: the song; middle: the buttons with the seek bar under them; right: the volume alone (lyrics live on
         # the Now Playing page, where the words are big enough to read)
+        self.bar_left, self.bar_right = QWidget(), QWidget()   # equal, plus the sidebar: buttons centered
+        left = QHBoxLayout(self.bar_left)
+        left.setContentsMargins(0, 0, 0, 0)
         for w in (self.cover, self.now):
-            lay.addWidget(w)
+            left.addWidget(w)
+        self.now.setMinimumWidth(0)
+        lay.addWidget(self.bar_left)
         middle = QVBoxLayout()
         middle.setSpacing(4)
         buttons = QHBoxLayout()
@@ -1950,9 +2018,23 @@ class MainWindow(QMainWindow):
         middle.addLayout(buttons)
         middle.addLayout(seek_row)
         lay.addLayout(middle, 1)
-        for w in (self.volume,):
-            lay.addWidget(w)
+        right = QHBoxLayout(self.bar_right)
+        right.setContentsMargins(0, 0, 0, 0)
+        right.addStretch(1)
+        right.addWidget(self.volume)
+        lay.addWidget(self.bar_right)
         return bar
+
+    BAR_SIDE_MIN, BAR_SIDE_MAX, BAR_MIDDLE_MIN = 150, 340, 330
+
+    def _balance_bar(self):
+        """The bar spans the window, the pages only the part right of the sidebar. The left block gets the sidebar's
+        width on top of the same width as the right block, so the transport buttons sit exactly under the album art."""
+        nav = self.nav.width() + self.splitter.handleWidth()
+        room = self.bar.width() - nav - 2 * self.bar.layout().spacing() - 24
+        side = max(self.BAR_SIDE_MIN, min(self.BAR_SIDE_MAX, (room - self.BAR_MIDDLE_MIN) // 2))
+        self.bar_left.setFixedWidth(side + nav)
+        self.bar_right.setFixedWidth(side)
 
     # --- library ------------------------------------------------------------
     def rescan(self):
@@ -1994,6 +2076,7 @@ class MainWindow(QMainWindow):
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
+        self._restore_session()
         try:
             self._load_playlists()
             self._load_health()
@@ -2784,8 +2867,10 @@ class MainWindow(QMainWindow):
 
     # --- playlists of your own ------------------------------------------------
     def _ask_name(self, title, default=""):
-        name, ok = QInputDialog.getText(self, title, "Name:", text=default)
-        return name.strip() if ok and myplaylists.clean_name(name) else None
+        renaming = bool(default)
+        hint = "Pick a new name for this playlist." if renaming else "Give it a name. You can add songs next."
+        name = NameDialog.ask(self, title, hint, default, "Rename" if renaming else "Create")
+        return name if name and myplaylists.clean_name(name) else None
 
     def _playlist_error(self, e):
         self.status.showMessage(f"Could not change the playlist: {e}", 8000)
@@ -3135,6 +3220,10 @@ class MainWindow(QMainWindow):
         expanded = getattr(self, "_cover_expanded", False)
         queue = self.tab_queue.isChecked() and not expanded
         lyrics = self.tab_lyrics.isChecked() and not expanded and (not queue or self._np_room_for_both())
+        if self.np_page.isVisible() and self.tab_lyrics.isChecked() and not expanded and not lyrics:
+            self.tab_lyrics.blockSignals(True)               # no room: the button says so; the saved choice is kept
+            self.tab_lyrics.setChecked(False)
+            self.tab_lyrics.blockSignals(False)
         shown = int(queue) + int(lyrics)
         if shown:                                            # equal panels, so the art sits in the middle of the page
             spare = self.np_page.width() - 24 - 20 * shown - self.NP_COVER_MIN
@@ -3257,6 +3346,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._balance_bar()
         QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
 
     def _toggle_cover(self):
@@ -3664,6 +3754,7 @@ class MainWindow(QMainWindow):
         return False
 
     def _nav_resized(self, *_):
+        self._balance_bar()
         if self.settings.set("nav_width", self.nav.width()):
             self._vol_timer.start()                       # saved a moment after the dragging stops
 
@@ -3789,7 +3880,8 @@ class MainWindow(QMainWindow):
             return
         self.now.setText(f"{s.name}\n{s.artist}")
         self._started_at = int(time.time())
-        self.scrobbler.now_playing(s)
+        if getattr(self.player, "playing", False):          # a song brought back paused is not being played
+            self.scrobbler.now_playing(s)
         self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
         try:
             data = art.cover_bytes(path)
@@ -3885,6 +3977,7 @@ class MainWindow(QMainWindow):
             return
         self._closing = True                         # no new scans from here on
         self._finish_listen()
+        self._save_session()                         # the song and how far in it is, for the next start
         self._boost.reset()                          # leave no stream louder than it found it
         self.presence.configure(False, "")           # clear the song from Discord
         self._remember_window()
