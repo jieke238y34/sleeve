@@ -23,6 +23,10 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - A **5-point background gradient** (Settings > Look > My own background): five colours from the top left corner to
   the bottom right replace the background that follows the cover. Your own themes can use one too, and the older
   3-colour backdrops fade into it.
+- The 5-point gradient follows the accent colour (a gradient in its hue that moves when the accent does); turn off
+  *Follow the accent colour* to pick the five yourself. Any theme, your own included, brings its own background instead.
+- The theme creator can **sync** parts of your theme: the quiet text follows the text colour, the background gradient
+  follows the accent, and the accent follows the colours of the playing song.
 - The Library folder list shows how many songs each entry has, including **Stashed Songs** and Recently played; the
   stashed count changes as you stash and unstash.
 - The playlist and lyrics buttons under the album art sit on the side of the panel they open, wherever you put it.

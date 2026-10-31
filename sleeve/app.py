@@ -1395,13 +1395,19 @@ class MainWindow(QMainWindow):
         self.gradient_box = Switch("My own background: a 5-point gradient")
         self.gradient_box.setChecked(self.settings.gradient is not None)
         self.gradient_editor = GradientEditor(self.settings.gradient)
-        self.gradient_editor.setVisible(self.settings.gradient is not None)
+        self.gradient_follow_box = Switch("Follow the accent colour")
+        self.gradient_follow_box.setChecked(self.settings.gradient_follow_accent)
+        self.gradient_editor.setVisible(self.settings.gradient is not None and not self.settings.gradient_follow_accent)
+        self.gradient_follow_box.setVisible(self.settings.gradient is not None)
+        self.gradient_follow_box.toggled.connect(self._gradient_follow_toggled)
         self.gradient_box.toggled.connect(self._gradient_toggled)
         self.gradient_editor.changed.connect(self._gradient_changed)
         lay.addWidget(self.gradient_box)
+        lay.addWidget(self.gradient_follow_box)
         lay.addWidget(self.gradient_editor)
         lay.addWidget(hint("Five colours from the top left corner to the bottom right replace the background that "
-                           "follows the cover. A theme with its own background still wins. Off: the cover decides."))
+                           "follows the cover. They are made from the accent colour and move with it; turn that off to "
+                           "choose the five yourself. A theme (yours too) brings its own background and wins."))
         lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
         row = QHBoxLayout()
         self.scroll_slider = ClickSlider(Qt.Horizontal)
@@ -1917,12 +1923,19 @@ class MainWindow(QMainWindow):
         """The accent to show: a theme picked by hand (Dusk, your own) keeps its own accent whatever is playing; else
         the cover's hue if asked, else a seasonal look's accent, else the chosen one."""
         if self._look in theme.CUSTOM_THEMES and self.settings.theme == self._look:
+            if self._accent_synced() and self._np_pix is not None:          # your theme ties its accent to the song
+                return theme.accent_from_cover(self._np_pix) or theme.look_accent(self._look)
             return theme.look_accent(self._look)
         if self.settings.accent_from_cover and self._np_pix is not None:
             return theme.accent_from_cover(self._np_pix) or self.settings.accent_color
         if self._look:
             return theme.look_accent(self._look)
         return self.settings.accent_color
+
+    def _accent_synced(self):
+        "True while your own theme is worn and it ties its accent to the playing song (Theme creator > Sync)."
+        custom = self.settings.custom_theme
+        return bool(custom) and self.settings.theme == "custom" and "accent" in (custom.get("sync") or ())
 
     def _look_name(self):
         "The look to wear: the theme picked by hand, else the seasonal or holiday look for today, else None."
@@ -3520,12 +3533,27 @@ class MainWindow(QMainWindow):
         return self.np_page.width() if self.np_page.isVisible() else self.stack.width()
 
     def _backdrop_colours(self, look):
-        "The colours that fix the background: a theme's own, else your 5-point gradient if you made one, else None."
-        return theme.look_backdrop(look) or self.settings.gradient
+        """The colours that fix the background. A theme picked by hand (Dusk, your own...) decides for itself, and None
+        there means the cover. Otherwise your 5-point gradient if you turned it on: made from the accent colour while
+        'Follow the accent colour' is on, else the five colours you set. Otherwise None: the cover decides."""
+        if look in theme.CUSTOM_THEMES and self.settings.theme == look:
+            return theme.look_backdrop(look)
+        fixed = theme.look_backdrop(look)
+        if fixed or self.settings.gradient is None:
+            return fixed
+        if self.settings.gradient_follow_accent:
+            return theme.accent_gradient(self._accent_shown)
+        return self.settings.gradient
 
     def _gradient_toggled(self, on):
         self._set_setting("gradient", self.gradient_editor.colours() if on else None)
-        self.gradient_editor.setVisible(on)
+        self.gradient_follow_box.setVisible(on)
+        self.gradient_editor.setVisible(on and not self.settings.gradient_follow_accent)
+        self.backdrop.set_fixed(self._backdrop_colours(self._look))
+
+    def _gradient_follow_toggled(self, on):
+        self._set_setting("gradient_follow_accent", on)
+        self.gradient_editor.setVisible(self.gradient_box.isChecked() and not on)
         self.backdrop.set_fixed(self._backdrop_colours(self._look))
 
     def _gradient_changed(self):
@@ -3722,7 +3750,7 @@ class MainWindow(QMainWindow):
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
-        if self.settings.accent_from_cover:
+        if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
         self.np_title.setText(title or "Nothing playing")
         self.np_artist.setText(artist)
