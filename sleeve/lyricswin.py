@@ -33,6 +33,22 @@ KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN:
               activity.STEP: "#b7afe0"}
 
 
+def side_position(main, screen, size, gap=8):
+    """Where a window of `size` (width, height) goes next to the main window: just right of it, level with its top;
+    on the left when the screen has no room on the right; and tucked against the screen's right edge when it fits on
+    neither side. `main` and `screen` are (x, y, width, height). Returns (x, y)."""
+    mx, my, mw, mh = main
+    sx, sy, sw, sh = screen
+    width, height = size
+    x = mx + mw + gap
+    if x + width > sx + sw:
+        x = mx - width - gap
+        if x < sx:
+            x = sx + sw - width
+    y = min(max(my, sy), sy + max(0, sh - height))
+    return max(x, sx), y
+
+
 class LyricsWindow(QWidget):
     "Start, watch and stop the lyrics job. `songs` is a function giving the library's songs when it is asked."
 
@@ -99,6 +115,21 @@ class LyricsWindow(QWidget):
             b.setAccessibleName(b.toolTip() or b.text())
             b.setCursor(Qt.PointingHandCursor)
             b.setFocusPolicy(Qt.TabFocus)
+
+    def show_beside(self, main):
+        "Open as a second window on the right of `main` (not on top of it), as tall as it is. Already open: just raise."
+        if not self.isVisible():
+            frame = main.frameGeometry()
+            screen = main.screen()
+            area = screen.availableGeometry() if screen is not None else frame
+            height = min(frame.height(), area.height())
+            self.resize(self.width(), height)
+            x, y = side_position((frame.x(), frame.y(), frame.width(), frame.height()),
+                                 (area.x(), area.y(), area.width(), area.height()), (self.width(), height))
+            self.move(x, y)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     @property
     def running(self):

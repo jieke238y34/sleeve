@@ -3757,10 +3757,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
     def _open_lyrics_window(self):
-        win = self.lyrics_win
-        win.show()
-        win.raise_()
-        win.activateWindow()
+        self.lyrics_win.show_beside(self)                 # a window on the right of this one, not on top of it
 
     def _on_sync_running(self, running):
         for b in self.sync_buttons:

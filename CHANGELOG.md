@@ -23,6 +23,8 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   3-colour backdrops fade into it.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
+- The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on
+  top of it (on the left if the screen has no room; some Wayland desktops place windows themselves).
 - Library > **Recently played**: the songs you played last, newest first, each once (needs "Remember what I listen to").
 - Settings > **Backup**: *Back up my data* saves your settings, stashed songs, listening history, playlist covers and
   title colours as one zip; *Restore from a backup* puts them back. The zip never holds your music, your Last.fm
