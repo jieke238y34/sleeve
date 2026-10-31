@@ -15,6 +15,8 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - Now Playing says what the file really is: `FLAC · 96 kHz · 24-bit · lossless`, `MP3 · 44.1 kHz · lossy`, and for DSD
   `DSD64 · 2.822 MHz · played as PCM · lossless`. Sleeve plays through FFmpeg, which decodes to PCM first, so it never
   claims a bit-perfect or native DSD path it does not have.
+- Settings > Discord says what is missing when the album cover does not show: no album name, still looking it up,
+  no match on MusicBrainz, or found and sent (then it is Discord that could not fetch the picture).
 - Settings > Listening: **Clear cached artwork** forgets the cover addresses looked up online.
 - Seven more themes come with Sleeve, next to Dusk: Frog, Midnight, Sakura, Ocean, Ember, Graphite and Sunset. Each
   keeps its own colours and background whatever is playing, and a test checks every one is readable.
@@ -25,6 +27,9 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   *Follow the accent colour* to pick the five yourself. Any theme, your own included, brings its own background instead.
 - The theme creator can **sync** parts of your theme: the quiet text follows the text colour, the background gradient
   follows the accent, and the accent follows the colours of the playing song.
+- The Library folder list shows how many songs each entry has, including **Stashed Songs** and Recently played; the
+  stashed count changes as you stash and unstash.
+- The playlist and lyrics buttons under the album art sit on the side of the panel they open, wherever you put it.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on

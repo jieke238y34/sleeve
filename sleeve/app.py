@@ -65,7 +65,9 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStyle,
+    QStyledItemDelegate,
     QStyleOptionSlider,
+    QStyleOptionViewItem,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -171,6 +173,29 @@ RECENT = "Recently played"
 def fmt_time(seconds):
     s = int(max(0, seconds))
     return f"{s // 60}:{s % 60:02d}"
+
+
+COUNT_ROLE = Qt.UserRole + 1                     # a folder's song count, drawn at the right edge of its row
+
+
+class FolderDelegate(QStyledItemDelegate):
+    "A folder row with its song count on the right, in the quiet colour; the name is shortened to leave room for it."
+
+    def paint(self, painter, option, index):
+        count = index.data(COUNT_ROLE)
+        if count is None:
+            super().paint(painter, option, index)
+            return
+        text = f"{count:,}"
+        room = option.fontMetrics.horizontalAdvance(text) + 14
+        narrow = QStyleOptionViewItem(option)
+        narrow.rect = option.rect.adjusted(0, 0, -room, 0)
+        super().paint(painter, narrow, index)
+        painter.save()
+        painter.setPen(option.palette.placeholderText().color())
+        painter.setFont(option.font)
+        painter.drawText(option.rect.adjusted(0, 0, -10, 0), Qt.AlignRight | Qt.AlignVCenter, text)
+        painter.restore()
 
 
 class ElidedLabel(QLabel):
@@ -559,6 +584,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(12, 12, 12, 12)
         self.folders = QListWidget()
         self.folders.setMaximumWidth(190)
+        self.folders.setItemDelegate(FolderDelegate(self.folders))
         self.folders.currentTextChanged.connect(self._folder_changed)
         self.folders.itemDoubleClicked.connect(self._play_folder)
         right = QVBoxLayout()
@@ -922,8 +948,7 @@ class MainWindow(QMainWindow):
         self.full_btn.setObjectName("round")
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
-        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album),
-                               (self.tab_queue, self.expand_btn, self.full_btn, self.tab_lyrics))   # ride on the cover
+        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lyrics_side = self.np_lyrics_side = QWidget()               # the lyrics panel (right side unless moved)
@@ -2268,6 +2293,7 @@ class MainWindow(QMainWindow):
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
+        self._fill_folder_counts()
         names = [ALL, LIKED, RECENT, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
@@ -2535,6 +2561,7 @@ class MainWindow(QMainWindow):
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
             self._listen_counted = True
             self.history.record(self._current_path, self._listened)
+            self._fill_folder_counts()                       # Recently played has one more song, maybe
             self._listen_event, self._listen_saved = self.history.events[-1], self._listened
             self._save_history()
             self._refresh_listening()
@@ -2585,7 +2612,8 @@ class MainWindow(QMainWindow):
         else:
             text = {"ready": "Connected to Discord.", "connecting": "Connecting…",
                     "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
-        self.discord_status.setText(text)
+        note = getattr(self, "_cover_note", "")
+        self.discord_status.setText(f"{text} {note}".strip() if s.discord_presence and self.presence.enabled else text)
 
     def _discord_art_toggled(self, on):
         if on and not self._confirm_online():                # the cover lookup also uses the internet: ask first
@@ -2603,12 +2631,24 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(self._current_path) if self._current_path else None
         title = song.name if song else (Path(self._current_path).stem if self._current_path else "")
         artist = song.artist if song else ""
-        cover = ""
-        if song is not None and song.album and self.settings.discord_art and self._is_playing:
+        cover, note = "", ""
+        if not self.settings.discord_art:
+            note = "Cover: off."
+        elif song is not None and self._is_playing and not song.album:
+            note = "Cover: this song has no album name, so there is nothing to look up."
+        elif song is not None and song.album and self._is_playing:
             known, cover = self._art_cache.get(song.album, artist)
             if not known:
                 self._want_art(song.album, artist)
+                note = "Cover: looking it up on MusicBrainz…"
+            elif cover:
+                note = "Cover: found and sent to Discord. If it does not show, Discord could not fetch the picture."
+            else:
+                note = "Cover: MusicBrainz has no match for this album."
             self._prefetch_art()
+        if note != getattr(self, "_cover_note", None):
+            self._cover_note = note
+            self._show_presence_state()
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
@@ -2781,7 +2821,25 @@ class MainWindow(QMainWindow):
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
+    def _fill_folder_counts(self):
+        "The number of songs beside each folder in the list: all, stashed, recently played, and each genre folder."
+        per_folder = Counter(s.folder for s in self.songs)
+        for i in range(self.folders.count()):
+            item = self.folders.item(i)
+            name = item.text()
+            if name == ALL:
+                count = len(self.songs)
+            elif name == LIKED:
+                count = sum(1 for s in self.songs if s.path in self.likes)
+            elif name == RECENT:
+                count = sum(1 for p in self.history.recent() if p in self.by_path)
+            else:
+                count = per_folder.get(name, 0)
+            item.setData(COUNT_ROLE, count)
+        self.folders.viewport().update()
+
     def _likes_changed(self):
+        self._fill_folder_counts()
         self._refresh_identity()
         if self.folder == LIKED:
             self._apply_filter()                    # an unliked song leaves this list
@@ -3527,6 +3585,15 @@ class MainWindow(QMainWindow):
         for widget, side in panels:
             if side == "right":
                 lay.addWidget(widget)
+        if hasattr(self, "np_cover"):
+            self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())
+
+    def _np_buttons(self):
+        """The round buttons under the art, in the order of the panels: the button of a panel on the left sits on the
+        left, of one on the right on the right, so each button is on the side of the panel it opens."""
+        mine = ((self.tab_queue, self.settings.np_queue_side), (self.tab_lyrics, self.settings.np_lyrics_side))
+        return ([b for b, side in mine if side == "left"] + [self.expand_btn, self.full_btn]
+                + [b for b, side in mine if side == "right"])
 
     def _np_side_width(self, side):
         "Room taken by the panels shown on one side (each with the gap beside it)."
