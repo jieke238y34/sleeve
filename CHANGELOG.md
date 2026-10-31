@@ -17,6 +17,12 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   claims a bit-perfect or native DSD path it does not have.
 - Settings > Discord says what is missing when the album cover does not show: no album name, still looking it up,
   no match on MusicBrainz, or found and sent (then it is Discord that could not fetch the picture).
+- **Navidrome** (a new page and Settings > Navidrome): connect to a Navidrome or other Subsonic server, search it, open
+  albums and stream songs. Your password is turned into a login token on this computer and not kept. Covers from the
+  server and stashing server songs are not there yet.
+- Settings > **APIs**: every outside service Sleeve can talk to (Discord, Last.fm, Navidrome, MusicBrainz and the Cover
+  Art Archive, GitHub updates, dl.py) with whether it is on, what is sent and where. No passwords or keys are shown,
+  and a button copies the list.
 - Settings > Listening: **Clear cached artwork** forgets the cover addresses looked up online.
 - Seven more themes come with Sleeve, next to Dusk: Frog, Midnight, Sakura, Ocean, Ember, Graphite and Sunset. Each
   keeps its own colours and background whatever is playing, and a test checks every one is readable.

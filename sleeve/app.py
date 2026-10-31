@@ -77,6 +77,7 @@ from PySide6.QtWidgets import (
 
 from . import (
     activity,
+    apis,
     art,
     audioinfo,
     backup,
@@ -98,6 +99,7 @@ from . import (
     lrc,
     musicbrainz,
     myplaylists,
+    navidrome,
     playlists,
     plgrid,
     plstyle,
@@ -366,6 +368,25 @@ class SongModel(QAbstractTableModel):
         self.endResetModel()
 
 
+class NavWorker(QThread):
+    "Runs one call to the Navidrome server off the window's thread and says how it went."
+
+    done = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self):
+        try:
+            self.done.emit(self._fn())
+        except navidrome.NavidromeError as e:
+            self.failed.emit(str(e))
+        except Exception:                                    # a bug must not leave the page waiting for ever
+            self.failed.emit("Something went wrong talking to the server.")
+
+
 class ScanWorker(QThread):
     progress = Signal(int, int)
     done = Signal(list)
@@ -507,7 +528,8 @@ class MainWindow(QMainWindow):
         self.identity_page.set_tab(self.settings.identity_tab)
         self.identity_page.tabChanged.connect(lambda key: self._set_setting("identity_tab", key))
         for name, page in (("Now Playing", self._now_playing_page()), ("Playlists", self._playlists_page()),
-                           ("Library", self._library_page()), ("Identity", self.identity_page),
+                           ("Library", self._library_page()), ("Navidrome", self._navidrome_page()),
+                           ("Identity", self.identity_page),
                            ("Downloads", self._downloads_page()), ("Health", self._health_page()),
                            ("Settings", self._settings_page())):
             self.nav.addItem(name)
@@ -571,6 +593,8 @@ class MainWindow(QMainWindow):
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.lyrics_win = LyricsWindow(cfg, lambda: self.songs, self)      # its own runner: downloads keep going
         self.lyrics_win.finishedJob.connect(self.rescan)
+        self.player.resolver = self._nd_stream               # lets the player stream `navidrome:<id>` tracks
+        self.scrobbler.changed.connect(self._refresh_apis)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -1568,6 +1592,57 @@ class MainWindow(QMainWindow):
         row.addWidget(art_clear)
         lay.addLayout(row)
 
+        section("Navidrome")
+        lay.addWidget(hint("Play your own library from a Navidrome server (or any server that speaks the Subsonic "
+                           "API). Your password is turned into a login token on this computer and is not kept."))
+        self.nd_url = QLineEdit((self.settings.navidrome or {}).get("url", ""))
+        self.nd_url.setPlaceholderText("https://music.example.org  or  http://192.168.1.20:4533")
+        self.nd_url.setAccessibleName("Navidrome server address")
+        self.nd_user = QLineEdit((self.settings.navidrome or {}).get("user", ""))
+        self.nd_user.setPlaceholderText("User name")
+        self.nd_user.setAccessibleName("Navidrome user name")
+        self.nd_password = QLineEdit()
+        self.nd_password.setEchoMode(QLineEdit.Password)
+        self.nd_password.setPlaceholderText("Password (not kept)")
+        self.nd_password.setAccessibleName("Navidrome password")
+        self.nd_password.returnPressed.connect(self._nd_connect)
+        for label, box in (("Server", self.nd_url), ("User", self.nd_user), ("Password", self.nd_password)):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            row.addWidget(box, 1)
+            box.setMaximumWidth(460)
+            lay.addLayout(row)
+        connect_btn = QPushButton("Connect")
+        connect_btn.clicked.connect(self._nd_connect)
+        self.nd_disconnect_btn = QPushButton("Disconnect")
+        self.nd_disconnect_btn.setEnabled(self.settings.navidrome is not None)
+        self.nd_disconnect_btn.clicked.connect(self._nd_disconnect)
+        row = FlowLayout()
+        row.addWidget(connect_btn)
+        row.addWidget(self.nd_disconnect_btn)
+        lay.addLayout(row)
+        login = self.settings.navidrome
+        self.nd_status = hint(f"Connected to {login['url']} as {login['user']}." if login else "Not connected.")
+        lay.addWidget(self.nd_status)
+        lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Covers from the "
+                           "server are not shown yet."))
+
+        section("APIs")
+        lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
+                           "here runs until you switch it on; no passwords or keys are shown."))
+        self.api_holder = QWidget()                          # one widget, so the page's sections can adopt it whole
+        self.api_box = QVBoxLayout(self.api_holder)
+        self.api_box.setContentsMargins(0, 0, 0, 0)
+        self.api_box.setSpacing(8)
+        lay.addWidget(self.api_holder)
+        copy_btn = QPushButton("Copy this list")
+        copy_btn.setToolTip("Put the list of connections on the clipboard as plain text")
+        copy_btn.clicked.connect(self._copy_apis)
+        row = FlowLayout()
+        row.addWidget(copy_btn)
+        lay.addLayout(row)
+        self._refresh_apis()
+
         section("Backup")
         lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
                            "covers and title colours. It never holds your music, your Last.fm sign-in or your dl.py "
@@ -1847,6 +1922,8 @@ class MainWindow(QMainWindow):
     def _set_setting(self, key, value):
         if self.settings.set(key, value):
             self._save_settings()
+            if key in ("online_lookup_ok", "update_check_ok", "discord_presence", "discord_client_id", "lastfm_on"):
+                self._refresh_apis()
 
     def _save_settings(self):
         try:
@@ -2041,6 +2118,8 @@ class MainWindow(QMainWindow):
         if not self.settings.remember_session or self._session_wanted is not None:
             return
         player = self.player
+        if any(navidrome.is_remote(p) for p in player.queue):
+            return                                           # a queue from a server is not brought back after a restart
         if not player.queue or player.index < 0:
             if self._session_saved is not None:
                 self.session.clear()                        # the queue was emptied on purpose: nothing to come back to
@@ -2111,6 +2190,244 @@ class MainWindow(QMainWindow):
     def _match_toggled(self, on):
         self._set_setting("accent_from_cover", on)
         self._apply_accent()
+
+    # --- Navidrome: your library on a server --------------------------------------------------------------------
+    def _navidrome_page(self):
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 12)
+        title = QLabel("Navidrome")
+        title.setObjectName("heading")
+        self.nd_hint = QLabel("")
+        self.nd_hint.setObjectName("muted")
+        self.nd_hint.setWordWrap(True)
+        self.nd_search = QLineEdit()
+        self.nd_search.setPlaceholderText("Search your server…")
+        self.nd_search.setClearButtonEnabled(True)
+        self.nd_search.returnPressed.connect(self._nd_search)
+        self.nd_back_btn = QPushButton("‹  Back")
+        self.nd_back_btn.setToolTip("Back to the list you came from")
+        self.nd_back_btn.clicked.connect(self._nd_back)
+        row = QHBoxLayout()
+        row.addWidget(self.nd_search, 1)
+        self.nd_buttons = []
+        for text, kind in (("Newest", "newest"), ("Random", "random"), ("A–Z", "alphabeticalByName")):
+            b = QPushButton(text)
+            b.setToolTip(f"Show albums: {text.lower()}")
+            b.clicked.connect(lambda _=False, k=kind: self._nd_albums(k))
+            row.addWidget(b)
+            self.nd_buttons.append(b)
+        row.addWidget(self.nd_back_btn)
+        self.nd_table = QTableWidget(0, 4)
+        self.nd_table.setHorizontalHeaderLabels(["Title", "Artist", "Album", "Time"])
+        self._style_table(self.nd_table)
+        head = self.nd_table.horizontalHeader()
+        head.setStretchLastSection(False)
+        head.setSectionResizeMode(0, QHeaderView.Stretch)
+        head.setSectionResizeMode(1, QHeaderView.Interactive)
+        head.setSectionResizeMode(2, QHeaderView.Interactive)
+        head.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        head.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.nd_table.setColumnWidth(1, 180)
+        self.nd_table.setColumnWidth(2, 200)
+        self.nd_table.setWordWrap(False)
+        self.nd_table.setTextElideMode(Qt.ElideRight)
+        self.nd_table.verticalHeader().setDefaultSectionSize(36)
+        self.nd_table.cellDoubleClicked.connect(self._nd_activate)
+        SmoothScroll.attach(self.nd_table)
+        lay.addWidget(title)
+        lay.addWidget(self.nd_hint)
+        lay.addLayout(row)
+        lay.addWidget(self.nd_table, 1)
+        self._nd_rows, self._nd_stack, self._nd_workers = [], [], set()
+        self._nd_refresh_state()
+        return page
+
+    def _api_rows(self):
+        a = self.scrobbler.account
+        return apis.summary(self.settings, self.presence.state, a.user, a.ready, self.scrobbler.active, len(a.queue))
+
+    def _refresh_apis(self):
+        "Redraw the list in Settings > APIs from the current settings."
+        if not hasattr(self, "api_box"):
+            return
+        while self.api_box.count():
+            item = self.api_box.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        for r in self._api_rows():
+            card = QFrame()
+            card.setObjectName("apicard")
+            box = QVBoxLayout(card)
+            box.setContentsMargins(12, 8, 12, 8)
+            box.setSpacing(2)
+            head = QLabel(f"{'●' if r['on'] else '○'}  {r['name']}  ·  {r['state']}")
+            head.setObjectName("heading")
+            head.setTextFormat(Qt.PlainText)
+            head.setWordWrap(True)
+            box.addWidget(head)
+            for label, text in (("What", r["what"]), ("Sends", r["sends"]), ("Where", r["where"])):
+                line = QLabel(f"{label}: {text}")
+                line.setObjectName("muted")
+                line.setTextFormat(Qt.PlainText)
+                line.setWordWrap(True)
+                box.addWidget(line)
+            self.api_box.addWidget(card)
+
+    def _copy_apis(self):
+        QApplication.clipboard().setText(apis.as_text(self._api_rows()))
+        self.status.showMessage("Copied the list of connections", 4000)
+
+    def _nd_scrobble(self, path):
+        client = self._nd_client()
+        if client is not None:
+            self._nd_run(lambda: client.scrobble(navidrome.remote_id(path)), lambda _done: None)
+
+    def _nd_client(self):
+        "The client for the server in Settings, or None when there is none."
+        login = self.settings.navidrome
+        if not login:
+            return None
+        try:
+            return navidrome.Client(login)
+        except navidrome.NavidromeError:
+            return None
+
+    def _nd_stream(self, path):
+        "A `navidrome:<id>` queue entry as a stream address (the player calls this at the moment it plays the track)."
+        client = self._nd_client()
+        if client is None:
+            return ""                                        # not connected: there is nothing to play it from
+        return client.stream_url(navidrome.remote_id(path))
+
+    def _nd_refresh_state(self):
+        connected = self._nd_client() is not None
+        self.nd_hint.setText("Your music on your Navidrome server. Double-click an album to open it, a song to play it."
+                             if connected else "Not connected. Add your server in Settings > Navidrome.")
+        for w in (self.nd_search, self.nd_back_btn, *self.nd_buttons):
+            w.setEnabled(connected)
+        self.nd_back_btn.setVisible(bool(self._nd_stack))
+        if not connected:
+            self._nd_rows, self._nd_stack = [], []
+            self.nd_table.setRowCount(0)
+
+    def _nd_run(self, fn, done):
+        "Run a server call in the background and hand its answer to `done` on the window's thread."
+        worker = NavWorker(fn, self)
+        self._nd_workers.add(worker)
+        worker.done.connect(done)
+        worker.failed.connect(self._nd_failed)
+        worker.finished.connect(lambda w=worker: (self._nd_workers.discard(w), w.deleteLater()))
+        worker.start()
+
+    def _nd_failed(self, message):
+        self.status.showMessage(message, 8000)
+        self.nd_hint.setText(message)
+
+    def _nd_albums(self, kind):
+        client = self._nd_client()
+        if client is None:
+            return
+        self.status.showMessage("Asking the server…", 3000)
+        self._nd_run(lambda: client.albums(kind),
+                     lambda albums: self._nd_show([("album", a) for a in albums], root=True))
+
+    def _nd_search(self):
+        client, text = self._nd_client(), self.nd_search.text().strip()
+        if client is None or not text:
+            return
+        self.status.showMessage("Searching…", 3000)
+
+        def found(result):
+            albums, songs = result
+            self._nd_show([("album", a) for a in albums] + [("song", s) for s in songs], root=True)
+        self._nd_run(lambda: client.search(text), found)
+
+    def _nd_show(self, rows, root=False):
+        "Show (kind, item) rows: albums, then songs. `root` starts a fresh trail for Back; else this one is kept."
+        if root:
+            self._nd_stack = []
+        elif self._nd_rows:
+            self._nd_stack.append(self._nd_rows)
+        self._nd_render(rows)
+
+    def _nd_render(self, rows):
+        self._nd_rows = list(rows)
+        self.nd_table.setRowCount(len(rows))
+        for r, (kind, item) in enumerate(rows):
+            if kind == "album":
+                cells = (f"▸  {item['name']}", item["artist"], f"{item['year'] or ''}  ·  {item['songs']} songs", "")
+            else:
+                mins, secs = divmod(int(item.length), 60)
+                cells = (item.name, item.artist, item.album, f"{mins}:{secs:02d}" if item.length else "")
+            for c, text in enumerate(cells):
+                cell = QTableWidgetItem(text)
+                cell.setToolTip(text)
+                if c == 3:
+                    cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.nd_table.setItem(r, c, cell)
+        self._nd_refresh_state()
+
+    def _nd_back(self):
+        if self._nd_stack:
+            self._nd_render(self._nd_stack.pop())
+
+    def _nd_activate(self, row, _col):
+        if not 0 <= row < len(self._nd_rows):
+            return
+        kind, item = self._nd_rows[row]
+        client = self._nd_client()
+        if client is None:
+            return
+        if kind == "album":
+            self._nd_run(lambda: client.album(item["id"]),
+                         lambda result: self._nd_show([("song", s) for s in result[1]]))
+            return
+        songs = [s for k, s in self._nd_rows if k == "song"]
+        self._nd_play(songs, songs.index(item), item.album)
+
+    def _nd_play(self, songs, index, source):
+        "Queue these server tracks and play from `index`. Their details are kept for the queue and Now Playing."
+        for song in songs:
+            self.by_path[song.path] = song
+        self.player.resolver = self._nd_stream
+        self._play_queue([s.path for s in songs], index, source or "Navidrome")
+        self.status.showMessage("Playing from your server", 4000)
+
+    # --- Navidrome in Settings ----------------------------------------------------------------------------------
+    def _nd_connect(self):
+        url, user = navidrome.clean_url(self.nd_url.text()), self.nd_user.text().strip()
+        password = self.nd_password.text()
+        if not url or not user or not password:
+            self.nd_status.setText("Fill in the server address, your user name and your password.")
+            return
+        salt, token = navidrome.make_login(password)
+        self.nd_password.clear()                              # the password is not kept: only the pair made from it is
+        login = {"url": url, "user": user, "salt": salt, "token": token}
+        try:
+            client = navidrome.Client(login)
+        except navidrome.NavidromeError as e:
+            self.nd_status.setText(str(e))
+            return
+        self.nd_status.setText("Connecting…")
+        self._nd_run(client.ping, lambda version: self._nd_connected(login, version))
+
+    def _nd_connected(self, login, version):
+        self.settings.set("navidrome", login)
+        self._save_settings()
+        self.nd_status.setText(f"Connected to {login['url']} as {login['user']} (API {version}).")
+        self.nd_disconnect_btn.setEnabled(True)
+        self.player.resolver = self._nd_stream
+        self._nd_refresh_state()
+        self._refresh_apis()
+
+    def _nd_disconnect(self):
+        self.settings.set("navidrome", None)
+        self._save_settings()
+        self.nd_status.setText("Not connected.")
+        self.nd_disconnect_btn.setEnabled(False)
+        self._nd_refresh_state()
+        self._refresh_apis()
 
     def _health_page(self):
         page = QWidget()
@@ -2565,6 +2882,8 @@ class MainWindow(QMainWindow):
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
             self._listen_counted = True
             self.history.record(self._current_path, self._listened)
+            if navidrome.is_remote(self._current_path):
+                self._nd_scrobble(self._current_path)        # the server counts the play too
             self._fill_folder_counts()                       # Recently played has one more song, maybe
             self._listen_event, self._listen_saved = self.history.events[-1], self._listened
             self._save_history()
@@ -2617,6 +2936,7 @@ class MainWindow(QMainWindow):
             text = {"ready": "Connected to Discord.", "connecting": "Connecting…",
                     "unavailable": "Discord or arRPC was not found. Sleeve keeps looking."}.get(self.presence.state, "")
         note = getattr(self, "_cover_note", "")
+        self._refresh_apis()
         self.discord_status.setText(f"{text} {note}".strip() if s.discord_presence and self.presence.enabled else text)
 
     def _discord_art_toggled(self, on):
@@ -2853,7 +3173,7 @@ class MainWindow(QMainWindow):
 
     def _update_like_button(self):
         on = self._current_path in self.likes
-        self.like_btn.setEnabled(bool(self._current_path))
+        self.like_btn.setEnabled(bool(self._current_path) and not navidrome.is_remote(self._current_path))
         self.add_pl_btn.setEnabled(self._current_path in self.by_path)
         accent = getattr(self, "_accent_shown", theme.LAVENDER)        # the diamond follows the accent colour
         self.like_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
@@ -4389,6 +4709,8 @@ class MainWindow(QMainWindow):
         self._closing = True                         # no new scans from here on
         if self._wave_worker is not None:             # a waveform being worked out: it is short, let it end
             self._wave_worker.wait(3000)
+        for worker in list(self._nd_workers):         # a call to the server in flight: let it end (it times out)
+            worker.wait(3000)
         self._finish_listen()
         self._save_session()                         # the song and how far in it is, for the next start
         self._boost.reset()                          # leave no stream louder than it found it
