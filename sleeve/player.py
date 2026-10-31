@@ -13,6 +13,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer, QtAu
 
 from . import loudness
 from .library import AUDIO_EXT
+from .navidrome import is_remote
 
 REPEAT_OFF, REPEAT_ALL, REPEAT_ONE = 0, 1, 2
 LEAD_MS = 60          # the next song starts this long before the current one ends
@@ -88,6 +89,7 @@ class Player(QObject):
         self._resume_ms = 0                     # where a restored song goes to once it has loaded (see restore)
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
+        self.resolver = None                    # maps a `navidrome:<id>` entry to its stream address (the app sets it)
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
         self.same_volume = True
         self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
@@ -172,8 +174,8 @@ class Player(QObject):
 
     def _norm_for(self, path):
         "dB to add to this song (0 until it is known): from its loudness tags, or an earlier measurement."
-        if not self.same_volume or not path:
-            return 0.0
+        if not self.same_volume or not path or is_remote(path):
+            return 0.0                          # a server track has no file here to read loudness tags from
         if path not in self.norm_db and path not in self._norm_checked:
             self._norm_checked.add(path)
             found = loudness.gain_for(path, self.loudness_cache)
@@ -296,7 +298,7 @@ class Player(QObject):
             idle.unload()
         if idle.path != path:
             idle.path = path
-            idle.media.setSource(QUrl.fromLocalFile(path))
+            idle.media.setSource(self._url(path))
             self._apply_volume()
 
     def _replan(self):
@@ -348,8 +350,18 @@ class Player(QObject):
     def current(self):
         return self.queue[self.index] if 0 <= self.index < len(self.queue) else ""
 
+    def _ok(self, path):
+        "A local audio file, or a `navidrome:<id>` track once the app has said how to stream one (see `resolver`)."
+        return is_playable(path) or (self.resolver is not None and is_remote(path))
+
+    def _url(self, path):
+        "Where to load a queue entry from: the file, or the stream address the resolver makes for a server track."
+        if self.resolver is not None and is_remote(path):
+            return QUrl(self.resolver(path))
+        return QUrl.fromLocalFile(path)
+
     def _playable(self, paths):
-        good = [str(p) for p in paths if is_playable(p)]
+        good = [str(p) for p in paths if self._ok(p)]
         if len(good) < len(list(paths)):
             self.error.emit(f"skipped {len(list(paths)) - len(good)} files that are not playable audio files")
         return good
@@ -358,7 +370,7 @@ class Player(QObject):
         paths = [str(p) for p in paths]
         good, before = [], 0  # before: playable songs ahead of the clicked one
         for i, p in enumerate(paths):
-            if is_playable(p):
+            if self._ok(p):
                 good.append(p)
                 if i < start:
                     before += 1
@@ -417,7 +429,7 @@ class Player(QObject):
         was closed. Files that are gone are left out. Returns True when a song was loaded."""
         paths = [str(p) for p in paths]
         want = paths[index] if 0 <= index < len(paths) else ""
-        good = [p for p in paths if is_playable(p)]
+        good = [p for p in paths if self._ok(p)]
         if not good:
             return False
         i = good.index(want) if want in good else 0
@@ -433,7 +445,7 @@ class Player(QObject):
         if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
             self._idle.media.stop()
         slot = self._slots[self._cur]
-        slot.media.setSource(QUrl.fromLocalFile(good[i]))
+        slot.media.setSource(self._url(good[i]))
         slot.path, slot.failed = good[i], False
         self._apply_volume()
         self._resume_ms = int(max(0.0, float(position)) * 1000) if want in good else 0
@@ -456,7 +468,7 @@ class Player(QObject):
         if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
             self._idle.media.stop()        # the tail of a song that was handed over from, still ringing
         slot = self._slots[self._cur]
-        url = QUrl.fromLocalFile(self.queue[i])
+        url = self._url(self.queue[i])
         if slot.media.source() == url:     # setSource ignores the same file, so repeat-one needs a rewind instead
             slot.media.setPosition(0)
         else:
