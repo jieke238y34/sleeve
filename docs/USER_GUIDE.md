@@ -23,7 +23,7 @@ topic. The topic files are the source of truth and live in
 Stash, Add to playlist, Edit tags and Show in file manager. Edit tags is the only way Sleeve changes your music files,
 and only when you press Save.
 
-**Now Playing.** The cover, a background drawn from its colours, the queue and a lyrics tab (synced `.lrc` lyrics that
+**Now Playing.** The cover, a background drawn from its colours, the queue and a lyrics panel on the right (synced `.lrc` lyrics that
 you can click to seek, or plain `.txt` lyrics). Expand the cover, or use fullscreen album art (Esc or a click to
 leave). The small cover in the player bar opens this page.
 

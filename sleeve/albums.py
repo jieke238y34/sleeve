@@ -2,6 +2,7 @@
 
 import hashlib
 import html
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -166,22 +167,7 @@ class _TileDelegate(QStyledItemDelegate):
             p.setPen(QPen(QColor(theme.LAVENDER), 2))
             p.setBrush(Qt.NoBrush)
             p.drawRoundedRect(QRectF(x, y, side, side), 10, 10)
-        font = QFont(option.font)
-        font.setBold(True)
-        fm = QFontMetrics(font)
-        top = y + side + 6
-        p.setFont(font)
-        wanted = getattr(album, "colour", "")                            # a playlist can have a title colour of its own
-        p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor(theme.TEXT))
-        p.drawText(QRect(x, top, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
-                   fm.elidedText(album.name, Qt.ElideRight, side))
-        small = QFont(option.font)
-        small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
-        fm2 = QFontMetrics(small)
-        p.setFont(small)
-        p.setPen(QColor(theme.MUTED))
-        p.drawText(QRect(x, top + fm.height(), side, fm2.height()), Qt.AlignLeft | Qt.AlignVCenter,
-                   fm2.elidedText(album.artist, Qt.ElideRight, side))
+        p.drawPixmap(x, y + side + 6, grid.label_pixmap(album, option.font))
         p.restore()
 
 
@@ -204,6 +190,7 @@ class AlbumGrid(QListWidget):
         self._albums = []
         self._sources = {}            # album key -> QPixmap of the real cover, or None (use the placeholder)
         self._tiles = {}              # album key -> rounded pixmap at the current tile size
+        self._labels = {}             # (album key, tile size, ...) -> the drawn name and line under a tile
         self.loads = 0                # how many covers were asked from the loader (for tests)
         self.setViewMode(QListView.IconMode)
         self.setMovement(QListView.Static)
@@ -217,7 +204,11 @@ class AlbumGrid(QListWidget):
         self.setMouseTracking(True)
         self.setItemDelegate(_TileDelegate(self))
         SmoothScroll.attach(self)
-        self._apply_size(self.width() - self.verticalScrollBar().sizeHint().width() - 4)
+        self._settle = QTimer(self)
+        self._settle.setSingleShot(True)
+        self._settle.setInterval(90)
+        self._settle.timeout.connect(self._settled)
+        self._apply_size(self._usable())
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(20)
@@ -301,6 +292,38 @@ class AlbumGrid(QListWidget):
             while len(cache) > limit:
                 cache.pop(next(iter(cache)))
 
+    def label_pixmap(self, album, base_font):
+        "The name and the line under it of a tile, drawn once and kept (a repaint then only copies the picture)."
+        side = self.tile
+        wanted = getattr(album, "colour", "")                            # a playlist can have a title colour of its own
+        key = (album.key, side, wanted, album.name, album.artist, base_font.key())
+        pix = self._labels.get(key)
+        if pix is None:
+            font = QFont(base_font)
+            font.setBold(True)
+            fm = QFontMetrics(font)
+            small = QFont(base_font)
+            small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
+            fm2 = QFontMetrics(small)
+            ratio = self.devicePixelRatioF()
+            pix = QPixmap(round(side * ratio), round((fm.height() + fm2.height()) * ratio))
+            pix.setDevicePixelRatio(ratio)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setFont(font)
+            p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor(theme.TEXT))
+            p.drawText(QRect(0, 0, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
+                       fm.elidedText(album.name, Qt.ElideRight, side))
+            p.setFont(small)
+            p.setPen(QColor(theme.MUTED))
+            p.drawText(QRect(0, fm.height(), side, fm2.height()), Qt.AlignLeft | Qt.AlignVCenter,
+                       fm2.elidedText(album.artist, Qt.ElideRight, side))
+            p.end()
+            self._labels[key] = pix
+            while len(self._labels) > 2 * KEEP_TILES:
+                self._labels.pop(next(iter(self._labels)))
+        return pix
+
     def _apply_size(self, width):
         cols = max(1, width // (TILE_WANT + GAP))
         side = max(TILE_MIN, min(TILE_MAX, width // cols - GAP))
@@ -314,9 +337,30 @@ class AlbumGrid(QListWidget):
                 self.item(i).setSizeHint(size)
 
     def resizeEvent(self, ev):
+        """The tiles are made again for the new width. While a window is being dragged that would happen at every pixel
+        (every visible tile redrawn each time), so only the first event of a resize is applied at once and the rest
+        wait until the drag pauses."""
         super().resizeEvent(ev)
-        self._apply_size(self.width() - 2 * self.frameWidth() - self.verticalScrollBar().sizeHint().width() - 4)
+        if ev.size() == getattr(self, "_last_size", None):
+            return
+        self._last_size = ev.size()
+        now = time.monotonic()
+        dragging = now - getattr(self, "_last_resize", 0.0) < 0.12
+        self._last_resize = now
+        if dragging:
+            self._settle.start()
+            return
+        self._apply_size(self._usable())
         self._kick()
+
+    def _settled(self):
+        self._apply_size(self._usable())
+        self._kick()
+
+    def _usable(self):
+        """The width the tiles may fill. The scrollbar's room is kept twice: Qt's icon layout holds it back inside a
+        viewport that is already narrower, and a cell that does not fit on top of that drops a whole column."""
+        return self.width() - 2 * self.frameWidth() - 2 * self.verticalScrollBar().sizeHint().width()
 
     def showEvent(self, ev):
         super().showEvent(ev)

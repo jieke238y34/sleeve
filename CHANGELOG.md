@@ -10,6 +10,21 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
 
 ### Fixed
 
+- Grids of covers (Playlists, Library albums) lost a whole column at some window widths: Qt keeps the scrollbar's room
+  reserved inside a viewport that is already narrower, and the tile size did not allow for it. A sweep test over window
+  widths guards it.
+- Resizing the window was laggy: every pixel of a drag rebuilt every visible tile and re-rendered (and re-blurred) the
+  background. A drag now stretches what is there and does the real work once it pauses; the names on tiles are drawn
+  once into the tile instead of at every repaint.
+- The scroll speed setting did nothing for touchpads and other devices that report pixels; it now scales those too (the
+  default still moves 1:1 with the finger). A test checks it on lists, tables, scroll areas and the cover grid.
+- Now Playing: the album art could start above the top of the playlist beside it; it now never starts above the lists,
+  and stays centered over the whole page whichever panels are open.
+- The scrollbar handle is a pill (it was a barely rounded rectangle).
+- The updater says "newer than the newest published release" for a copy that is ahead of GitHub's releases, instead of
+  "you have the newest version".
+- The test suite no longer publishes a fake media player on the desktop's own session bus (it uses a private one).
+
 - Memory: the album and playlist grids kept a full-size cover for every tile ever drawn (a library of 3,600 albums
   reached gigabytes); they now keep a few hundred and draw the rest again when needed.
 - A click no longer leaves a dashed ring on the Identity tabs or a frame around the sliders; Tab still shows one.
@@ -46,6 +61,12 @@ Alpha, Linux. Version 0.2.0; every build also shows its build number, for exampl
   read before installing. The Docs page is gone from the sidebar.
 
 ### Added
+
+- Now Playing has the playlist on the left, the art in the middle and the lyrics on the right, each with a Hide button;
+  the round ☰ and ♪ buttons under the art bring them back (remembered). A narrow window shows one panel at a time.
+- Sound quality on the Identity page reads at a glance: a verdict ("Mostly OK"), four clearly different colours, and what
+  each tier means with its share and count.
+- Settings reads as a form: one label column, each hint under its own row.
 
 - Last.fm scrobbling (Settings > Last.fm, off until you connect): your own API key and secret, a two-step browser sign-in, scrobbles by Last.fm's rule (half the song or four minutes), "now playing", and an offline queue that is sent later. The key, secret and session live in `~/.config/sleeve/lastfm.json` (mode 0600); Disconnect forgets them.
 

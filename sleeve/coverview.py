@@ -28,6 +28,7 @@ class CoverView(QWidget):
         self._pix = None
         self._cache = None                    # ((cache key, side), the rounded, scaled picture)
         self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
+        self.top_inset = 0                    # the art never starts above this many pixels from the top
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
         self.setMinimumSize(120, 120)
         self.setCursor(Qt.PointingHandCursor)
@@ -52,8 +53,14 @@ class CoverView(QWidget):
         self.update()
 
     def set_shift(self, shift):
-        "Shift the whole group sideways so its center sits over the page, not just over this column."
+        """Shift the whole group sideways (left when positive) so its center sits over the page, not just over this
+        column: a panel on one side pushes the column off the page center, panels on both sides cancel out."""
         self.x_shift = shift
+        self._place_info()
+
+    def set_top_inset(self, inset):
+        "The art and its words sit below this line (the top of the playlist beside it), centered in what is left."
+        self.top_inset = max(0, int(inset))
         self._place_info()
 
     def sizeHint(self):
@@ -61,7 +68,7 @@ class CoverView(QWidget):
 
     def _info_height(self):
         "The height of the words and buttons below the art, all of them at the width the group may use now."
-        span = self.width() - 2 * self.x_shift
+        span = self.width() - 2 * abs(self.x_shift)
         if not self._rows or span <= 8:
             return 0
         total = 26                                          # the gap between the art and the words
@@ -74,10 +81,11 @@ class CoverView(QWidget):
         "Put the square and the words where the group is centered (over the page when it is shifted out), and say"
         " where the art will be drawn."
         info, wid, hei = self._info_height(), self.width(), self.height()
-        span = max(0, wid - 2 * self.x_shift)               # the width the panel leaves on both sides when balanced
-        side = max(0, min(span, hei - info, self.max_side))
+        span = max(0, wid - 2 * abs(self.x_shift))          # the width the panel leaves on both sides when balanced
+        room = max(0, hei - self.top_inset)                 # the height below the line the art may not cross
+        side = max(0, min(span, room - info, self.max_side))
         cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
-        self._art_y = max(0, (hei - side - info) // 2)
+        self._art_y = self.top_inset + max(0, (room - side - info) // 2)
         y = self._art_y + side + 26
         span -= 12                                          # the words keep the same edge room as before
         for w in self._rows:
@@ -94,8 +102,8 @@ class CoverView(QWidget):
 
     def side(self):
         "The length of the square that is drawn now."
-        span = self.width() - 2 * self.x_shift
-        return max(0, min(span, self.height() - self._info_height(), self.max_side))
+        span = self.width() - 2 * abs(self.x_shift)
+        return max(0, min(span, self.height() - self.top_inset - self._info_height(), self.max_side))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

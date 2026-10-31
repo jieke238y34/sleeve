@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QAbstractItemView
 ROWS_PER_NOTCH = 2.5          # one wheel notch scrolls this many rows, in every list and table, always
 FALLBACK_PIXELS = 75          # for views with no rows (a page): about the same distance
 GLIDE_MS = 170
+DEFAULT_SPEED = 1.5          # the speed at which a touchpad swipe moves the view exactly as far as the finger
 
 
 class SmoothScroll(QObject):
@@ -35,7 +36,8 @@ class SmoothScroll(QObject):
 
     def eventFilter(self, obj, ev):
         if ev.type() == QEvent.Wheel and obj is self.view.viewport() and not ev.modifiers() & Qt.ControlModifier:
-            dy = ev.pixelDelta().y() or ev.angleDelta().y() / 120 * self.notch_pixels()
+            # a touchpad reports pixels: the setting scales those too, and the default speed moves 1:1 with the finger
+            dy = ev.pixelDelta().y() * self.speed / DEFAULT_SPEED or ev.angleDelta().y() / 120 * self.notch_pixels()
             if dy:
                 running = self.anim.state() == QVariantAnimation.State.Running and self.target is not None
                 self.scroll_to((self.target if running else self.bar.value()) - dy)

@@ -157,6 +157,34 @@ def fmt_time(seconds):
     return f"{s // 60}:{s % 60:02d}"
 
 
+class ElidedLabel(QLabel):
+    "A one-line label that ends in … when its text does not fit, and shows all of it as a tooltip."
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setMinimumWidth(20)
+        self.setTextFormat(Qt.PlainText)
+        self.setText(text)
+
+    def setText(self, text):
+        self._full = text or ""
+        self._fit()
+
+    def _fit(self):
+        shown = self.fontMetrics().elidedText(self._full, Qt.ElideRight, max(20, self.width()))
+        super().setText(shown)
+        self.setToolTip(self._full if shown != self._full else "")
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._fit()
+
+    def full_text(self):
+        return self._full
+
+
 class ClickLabel(QLabel):
     "A label that says when it was clicked once, or double-clicked (a double click does not also count as a click)."
 
@@ -709,34 +737,39 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(20)
         left = QVBoxLayout()
-        head = QHBoxLayout()
-        titles = QVBoxLayout()
-        titles.setSpacing(0)
+        head = QVBoxLayout()                       # two rows: the title and Hide, then the count with Save and Clear
+        head.setSpacing(2)
         self.queue_heading = heading = QLabel("Queue")
         heading.setObjectName("heading")
-        self.queue_label = QLabel("Nothing queued")
+        self.queue_label = ElidedLabel("Nothing queued")
         self.queue_label.setObjectName("muted")
-        titles.addWidget(heading)
-        titles.addWidget(self.queue_label)
         save_pl = QPushButton("Save")
         save_pl.setToolTip("Save this queue as a playlist")
         save_pl.clicked.connect(self._save_queue_as_playlist)
         clear = QPushButton("Clear")
         clear.setToolTip("Empty the queue; the song that is playing keeps playing")
         clear.clicked.connect(self.player.clear_queue)
-        head.addLayout(titles, 1)
-        head.addWidget(save_pl)
-        head.addWidget(clear)
-        tabs = QHBoxLayout()
-        tabs.setSpacing(4)
-        self.tab_queue, self.tab_lyrics = QPushButton("Playlist"), QPushButton("Lyrics")
-        for b in (self.tab_queue, self.tab_lyrics):
-            b.setObjectName("seg")
+        hide_queue = QPushButton("Hide")
+        hide_queue.setToolTip("Hide the playlist (the ☰ button under the cover brings it back)")
+        hide_queue.clicked.connect(lambda: self.tab_queue.setChecked(False))
+        row = QHBoxLayout()
+        row.addWidget(heading, 1)
+        row.addWidget(hide_queue)
+        head.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(self.queue_label, 1)
+        row.addWidget(save_pl)
+        row.addWidget(clear)
+        head.addLayout(row)
+        self.queue_label.setMinimumHeight(save_pl.sizeHint().height())
+        self.tab_queue, self.tab_lyrics = QPushButton("☰"), QPushButton("♪")      # under the cover: show a panel again
+        for b, tip, on in ((self.tab_queue, "Show or hide the playlist", self.settings.np_queue_shown),
+                           (self.tab_lyrics, "Show or hide the lyrics", self.settings.np_lyrics_shown)):
+            b.setObjectName("round")
             b.setCheckable(True)
-            b.setAutoExclusive(True)
-            tabs.addWidget(b)
-        tabs.addStretch(1)
-        self.tab_queue.setChecked(True)
+            b.setChecked(on)
+            b.setToolTip(tip)
+            b.setAccessibleName(tip)
         self.queue_list = QListWidget()
         self.queue_list.setObjectName("queue")
         self.queue_list.setIconSize(QSize(44, 44))
@@ -769,22 +802,35 @@ class MainWindow(QMainWindow):
         lyrics_page = QWidget()
         ll = QVBoxLayout(lyrics_page)
         ll.setContentsMargins(0, 0, 0, 0)
+        lyrics_head = QVBoxLayout()                                  # the same two rows as the playlist's header
+        lyrics_head.setSpacing(2)
+        lyrics_heading = QLabel("Lyrics")
+        lyrics_heading.setObjectName("heading")
+        self.lyrics_sub = QLabel("Nothing playing")
+        self.lyrics_sub.setObjectName("muted")
+        self.lyrics_sub.setMinimumHeight(save_pl.sizeHint().height())
+        hide_lyrics = QPushButton("Hide")
+        hide_lyrics.setToolTip("Hide the lyrics (the ♪ button under the cover brings them back)")
+        hide_lyrics.clicked.connect(lambda: self.tab_lyrics.setChecked(False))
+        row = QHBoxLayout()
+        row.addWidget(lyrics_heading, 1)
+        row.addWidget(hide_lyrics)
+        lyrics_head.addLayout(row)
+        lyrics_head.addWidget(self.lyrics_sub)
+        ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
         ll.addWidget(self.lyrics_empty, 1)
         ll.addWidget(self.lyrics_note)
-        self.np_tabs = QStackedWidget()
-        self.np_tabs.addWidget(queue_page)
-        self.np_tabs.addWidget(lyrics_page)
-        self.tab_queue.toggled.connect(lambda on: on and self._open_tab(0))
-        self.tab_lyrics.toggled.connect(lambda on: on and self._open_tab(1))
+        self.tab_queue.toggled.connect(lambda on: self._np_panel_toggled("queue", on))
+        self.tab_lyrics.toggled.connect(lambda on: self._np_panel_toggled("lyrics", on))
         for view in (self.queue_list, self.lyrics):
             SmoothScroll.attach(view)
         self._lyric_synced, self._lyric_row = False, -1
         self._set_lyrics_state()
-        left.addLayout(tabs)
-        left.addWidget(self.np_tabs, 1)
+        left.addWidget(queue_page, 1)
         side = self.np_side = QWidget()
-        side.setFixedWidth(360)
+        side.setMinimumWidth(self.NP_PANEL_MIN)
+        side.setMaximumWidth(self.NP_PANEL)
         side.setLayout(left)
         left.setContentsMargins(0, 0, 0, 0)
 
@@ -806,12 +852,19 @@ class MainWindow(QMainWindow):
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album),
-                               (self.expand_btn, self.full_btn))     # the words and buttons ride on the cover
+                               (self.tab_queue, self.expand_btn, self.full_btn, self.tab_lyrics))   # ride on the cover
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
-        self._np_balance()                                   # centered over the whole page from the first paint
         lay.addWidget(side)
         lay.addLayout(right, 1)
+        lyrics_side = self.np_lyrics_side = QWidget()               # the open side of the page: the lyrics
+        lyrics_side.setMinimumWidth(self.NP_PANEL_MIN)
+        lyrics_side.setMaximumWidth(self.NP_PANEL)
+        QVBoxLayout(lyrics_side).addWidget(lyrics_page)
+        lyrics_side.layout().setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(lyrics_side)
+        self.np_page = page
+        self._np_apply_panels()                              # panels and the centering are right from the first paint
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
@@ -1135,6 +1188,7 @@ class MainWindow(QMainWindow):
         self.ceiling_slider.setValue(self.settings.max_volume)
         self.ceiling_slider.setMaximumWidth(280)
         self.ceiling_label = QLabel(f"{self.settings.max_volume}%")
+        self.ceiling_label.setMinimumWidth(56)
         self.ceiling_slider.valueChanged.connect(self._ceiling_changed)
         row.addWidget(QLabel("Loudest volume"))
         row.addWidget(self.ceiling_slider)
@@ -1213,12 +1267,14 @@ class MainWindow(QMainWindow):
         self.cover_slider.setValue(self.settings.cover_size)
         self.cover_slider.setMaximumWidth(280)
         self.cover_label = QLabel(f"{self.settings.cover_size} px")
+        self.cover_label.setMinimumWidth(56)
         self.cover_slider.valueChanged.connect(self._cover_size_changed)
         row.addWidget(QLabel("Album art size"))
         row.addWidget(self.cover_slider)
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
         row = QHBoxLayout()
         self.scroll_slider = ClickSlider(Qt.Horizontal)
         self.scroll_slider.setRange(50, 500)
@@ -1227,6 +1283,7 @@ class MainWindow(QMainWindow):
         self.scroll_slider.setValue(self.settings.scroll_speed)
         self.scroll_slider.setMaximumWidth(280)
         self.scroll_label = QLabel(f"{self.settings.scroll_speed}%")
+        self.scroll_label.setMinimumWidth(56)
         self.scroll_slider.valueChanged.connect(self._scroll_speed_changed)
         row.addWidget(QLabel("Scroll speed"))
         row.addWidget(self.scroll_slider)
@@ -1234,7 +1291,6 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(hint("How far one turn of the mouse wheel moves a list. Higher is faster."))
-        lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
         row = QHBoxLayout()
         self.accent_box = QComboBox()
         for name, colour in settings.ACCENTS.items():
@@ -1412,8 +1468,31 @@ class MainWindow(QMainWindow):
 
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
+        self._align_settings(lay)
         self._group_settings(lay)
         return page
+
+    LABEL_COLUMN = 190
+
+    def _align_settings(self, lay):
+        """Make the rows read as a form: one label column, the controls in line, and under each row its own hint,
+        inset to start where the controls start, with room before the next row."""
+        for i in range(lay.count()):
+            item = lay.itemAt(i)
+            row, widget = item.layout(), item.widget()
+            if row is not None:
+                first = row.itemAt(0).widget() if row.count() else None
+                is_form = isinstance(first, QLabel) and not first.objectName() and not first.wordWrap()
+                if is_form:
+                    first.setMinimumWidth(self.LABEL_COLUMN)
+                row.setSpacing(14)
+                self._after_form_row = is_form
+            elif isinstance(widget, QLabel) and widget.objectName() == "muted":
+                inset = self.LABEL_COLUMN + 14 if getattr(self, "_after_form_row", False) else 0
+                widget.setContentsMargins(inset, 2, 0, 10)
+                self._after_form_row = False
+            else:
+                self._after_form_row = False
 
     def _check_update(self):
         "Ask GitHub for the newest release, after asking the user once."
@@ -3002,8 +3081,8 @@ class MainWindow(QMainWindow):
             self.queue_label.setText("Nothing queued")
         else:
             m = round(left / 60)
-            span = f"{m // 60} h {m % 60} min" if m >= 60 else (f"{m} minutes" if m > 1 else "about a minute")
-            self.queue_label.setText(f"{n} songs, {span} remaining")
+            span = f"{m // 60} h {m % 60} min" if m >= 60 else (f"{m} min" if m > 1 else "about a minute")
+            self.queue_label.setText(f"{n:,} songs · {span} left")
         self._queue_pending = True
         QTimer.singleShot(0, self._queue_catch_up)
         self._thumb_timer.start()
@@ -3035,9 +3114,40 @@ class MainWindow(QMainWindow):
         if self._lyric_row >= 0 and self.lyrics.isVisible():
             self.lyrics._smooth.center_on(self._lyric_row, animate=False)
 
-    def _open_tab(self, index):
-        self.np_tabs.setCurrentIndex(index)
-        QTimer.singleShot(0, self._queue_catch_up if index == 0 else self._lyrics_catch_up)
+    NP_PANEL, NP_PANEL_MIN, NP_COVER_MIN = 360, 280, 340  # widest and narrowest side panel; least for the art
+
+    def _np_room_for_both(self):
+        "Whether the page is wide enough for the playlist, the art and the lyrics side by side."
+        return self.np_page.width() - 24 - 40 >= 2 * self.NP_PANEL_MIN + self.NP_COVER_MIN
+
+    def _np_panel_toggled(self, which, on):
+        "The playlist or lyrics panel was shown or hidden. On a narrow page asking for one puts the other away."
+        self._set_setting("np_queue_shown" if which == "queue" else "np_lyrics_shown", on)
+        if on and not self._np_room_for_both():
+            other = self.tab_lyrics if which == "queue" else self.tab_queue
+            other.blockSignals(True)                          # only for now: what the user chose is kept
+            other.setChecked(False)
+            other.blockSignals(False)
+        self._np_apply_panels()
+
+    def _np_apply_panels(self):
+        "Show the panels the user asked for, as far as the page has room (the art keeps its share), then re-center."
+        expanded = getattr(self, "_cover_expanded", False)
+        queue = self.tab_queue.isChecked() and not expanded
+        lyrics = self.tab_lyrics.isChecked() and not expanded and (not queue or self._np_room_for_both())
+        shown = int(queue) + int(lyrics)
+        if shown:                                            # equal panels, so the art sits in the middle of the page
+            spare = self.np_page.width() - 24 - 20 * shown - self.NP_COVER_MIN
+            width = max(self.NP_PANEL_MIN, min(self.NP_PANEL, spare // shown))
+            self.np_side.setFixedWidth(width)
+            self.np_lyrics_side.setFixedWidth(width)
+        self.np_side.setVisible(queue)
+        self.np_lyrics_side.setVisible(lyrics)
+        if queue:
+            QTimer.singleShot(0, self._queue_catch_up)
+        if lyrics:
+            QTimer.singleShot(0, self._lyrics_catch_up)
+        QTimer.singleShot(0, self._np_balance)
 
     def _plan_thumbs(self):
         "Which covers to load next: the ones nearest the playing song first."
@@ -3147,13 +3257,12 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        QTimer.singleShot(0, self._np_balance)               # after the layout settles: the balance needs real widths
+        QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
 
     def _toggle_cover(self):
         "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
-        self.np_side.setVisible(not self._cover_expanded)
-        self._np_balance()
+        self._np_apply_panels()
         self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
         self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
@@ -3163,9 +3272,17 @@ class MainWindow(QMainWindow):
         "Keep the cover centered over the whole page: while the queue panel shows, the square and its words avert to"
         " the page center by mirroring half of the panel's width (spacing and margins included); nothing when hidden."
         " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
-        shift = 0 if self.np_side.isHidden() else 190
-        shift = max(0, min(shift, (self.np_cover.width() - 360) // 2))
-        self.np_cover.set_shift(shift)
+        gap = 20
+        left = 0 if self.np_side.isHidden() else self.np_side.width() + gap
+        right = 0 if self.np_lyrics_side.isHidden() else self.np_lyrics_side.width() + gap
+        limit = max(0, (self.np_cover.width() - 360) // 2)
+        self.np_cover.set_shift(max(-limit, min(limit, (left - right) // 2)))
+        inset = 0                                            # the art never starts above the top of the list beside it
+        for panel, view in ((self.np_side, self.queue_list), (self.np_lyrics_side, self.lyrics)):
+            if not panel.isHidden() and view.isVisible():
+                inset = view.mapToGlobal(QPoint(0, 0)).y() - self.np_cover.mapToGlobal(QPoint(0, 0)).y()
+                break
+        self.np_cover.set_top_inset(inset)
 
     def _toggle_fullscreen(self):
         "A separate full-screen window of the album art. Esc, F11, Enter or a click closes it; this one is untouched."
@@ -3716,6 +3833,9 @@ class MainWindow(QMainWindow):
     def _set_lyrics_state(self):
         "The lyrics list when there are lyrics, otherwise a plain message."
         has = self.lyrics.count() > 0
+        if hasattr(self, "lyrics_sub"):
+            self.lyrics_sub.setText(("Synced to the song" if self._lyric_synced else "Not synced") if has
+                                    else "No lyrics found")
         self.lyrics.setVisible(has)
         self.lyrics_empty.setVisible(not has)
         self.lyrics_note.setVisible(has and not self._lyric_synced)

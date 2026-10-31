@@ -124,6 +124,29 @@ def band_height(side):
     return max(46, int(side * 0.30))
 
 
+def write_names(pix, tile, font, band, side):
+    "The name and the song count of a playlist on the glass band of its tile picture."
+    bold = QFont(font)
+    bold.setBold(True)
+    fm = QFontMetrics(bold)
+    small = QFont(font)
+    small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
+    fm2 = QFontMetrics(small)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.TextAntialiasing)
+    p.setFont(bold)
+    wanted = tile.colour
+    p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor("#ffffff"))
+    top = side - band + 7
+    p.drawText(QRect(12, top, side - 24, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
+               fm.elidedText(tile.name, Qt.ElideRight, side - 24))
+    p.setFont(small)
+    p.setPen(QColor(255, 255, 255, 200))
+    p.drawText(QRect(12, top + fm.height(), side - 24, fm2.height()), Qt.AlignLeft | Qt.AlignVCenter,
+               fm2.elidedText(tile.artist, Qt.ElideRight, side - 24))
+    p.end()
+
+
 def glass(pix, band):
     """The tile with a frosted-glass band over its lower part: the cover under it blurred and tinted, darker towards the
     bottom so white text reads, and a thin light line along its top edge. The blur is a shrink and a stretch, which is
@@ -167,23 +190,9 @@ class GlassDelegate(_TileDelegate):
             p.setPen(QPen(QColor(theme.LAVENDER if selected else QColor(255, 255, 255, 90)), 2))
             p.setBrush(Qt.NoBrush)
             p.drawRoundedRect(QRectF(x + 1, y + 1, side - 2, side - 2), max(8, side // 14), max(8, side // 14))
-        band = band_height(side)
-        font = QFont(option.font)
-        font.setBold(True)
-        fm = QFontMetrics(font)
-        wanted = tile.colour
-        p.setFont(font)
-        p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor("#ffffff"))
-        p.drawText(QRect(x + 12, y + side - band + 7, side - 24, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
-                   fm.elidedText(tile.name, Qt.ElideRight, side - 24))
-        small = QFont(option.font)
-        small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
-        fm2 = QFontMetrics(small)
-        p.setFont(small)
-        p.setPen(QColor(255, 255, 255, 200))
-        p.drawText(QRect(x + 12, y + side - band + 7 + fm.height(), side - 24, fm2.height()),
-                   Qt.AlignLeft | Qt.AlignVCenter, fm2.elidedText(tile.artist, Qt.ElideRight, side - 24))
-        if hovered and not tile.new:
+        if hovered and not tile.new:                          # the name and count are part of the tile picture
+            small = QFont(option.font)
+            small.setPointSizeF(max(7.0, small.pointSizeF() - 1))
             r = edit_rect(x, y, side)
             p.setPen(QPen(QColor(255, 255, 255, 130), 1))
             p.setBrush(QColor(20, 17, 28, 190))
@@ -208,6 +217,7 @@ class PlaylistGrid(AlbumGrid):
     def __init__(self, cover_loader=None, parent=None):
         super().__init__(cover_loader, parent)
         self.setItemDelegate(GlassDelegate(self))
+        self._signs = {}                            # tile key -> what its picture was drawn with (name, colour, ...)
 
     def mousePressEvent(self, e):
         "A press on a tile's Edit pill asks for the edit menu instead of opening the playlist."
@@ -258,15 +268,19 @@ class PlaylistGrid(AlbumGrid):
         return theme.rounded_pixmap(src, size, size // 14)
 
     def tile_pixmap(self, tile):
+        "The tile picture: cover, glass band and the name written on it, made once and kept until something changes."
+        sig = (tile.name, tile.colour, tile.artist, self.font().key(), self.tile)
         pix = self._tiles.get(tile.key)
-        if pix is None:
+        if pix is None or self._signs.get(tile.key) != sig:
             src = self._sources.get(tile.key)
             side = self.tile
             if src is None:
                 src = placeholder_pixmap(tile.name, SOURCE_SIDE)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
-            self._tiles[tile.key] = glass(pix, band_height(side)) if not tile.new else pix
-            pix = self._tiles[tile.key]
+            if not tile.new:
+                pix = glass(pix, band_height(side))
+            write_names(pix, tile, self.font(), band_height(side), side)
+            self._tiles[tile.key], self._signs[tile.key] = pix, sig
             self._trim()
         return pix
 
