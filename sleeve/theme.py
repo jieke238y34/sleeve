@@ -37,6 +37,37 @@ for _name, (_label, *_colours, _backdrop) in themes.BUILTIN.items():      # the 
     BACKDROPS[_name] = _backdrop
 
 
+SYNCS = ("muted", "backdrop", "accent")       # what a custom theme can tie to something else (see synced_colours)
+
+
+def accent_gradient(accent):
+    """Five dark colours, top left to bottom right, in the hue of `accent`: a background that follows the accent. A grey
+    accent gives a grey gradient. Dark enough that the light text of the window stays readable on every colour."""
+    base = QColor(accent)
+    hue, sat = max(0.0, base.hslHueF()), base.hslSaturationF()
+    sat = min(0.55, sat * 0.62)
+    out = []
+    for shift, light in ((-0.03, 0.30), (-0.012, 0.36), (0.0, 0.30), (0.016, 0.22), (0.034, 0.14)):
+        out.append(QColor.fromHslF((hue + shift) % 1.0, sat, light).name())
+    return out
+
+
+def derived_muted(text, bg):
+    "The quiet text colour that goes with a text and background colour: the text, a good way towards the background."
+    t, b = QColor(text), QColor(bg)
+    mix = lambda x, y: round(x * 0.62 + y * 0.38)  # noqa: E731
+    return QColor(mix(t.red(), b.red()), mix(t.green(), b.green()), mix(t.blue(), b.blue())).name()
+
+
+def synced_colours(custom):
+    """(muted, backdrop) of a custom theme with what it ties together worked out: 'muted' follows the text and
+    background, 'backdrop' is a gradient in the accent's hue. Anything not tied keeps the colours the user picked."""
+    sync = custom.get("sync") or ()
+    muted = derived_muted(custom["text"], custom["bg"]) if "muted" in sync else custom["muted"]
+    backdrop = accent_gradient(custom["accent"]) if "backdrop" in sync else custom.get("backdrop")
+    return muted, backdrop
+
+
 def set_custom(custom):
     "Make the user's own theme (a dict from Settings, or None) one of the looks. It is called 'custom'."
     if not custom:
@@ -44,10 +75,11 @@ def set_custom(custom):
         BACKDROPS.pop("custom", None)
         CUSTOM_THEMES.pop("custom", None)
         return
-    LOOKS["custom"] = (custom["bg"], custom["text"], custom["muted"], custom["accent"])
+    muted, backdrop = synced_colours(custom)
+    LOOKS["custom"] = (custom["bg"], custom["text"], muted, custom["accent"])
     CUSTOM_THEMES["custom"] = custom.get("name") or "My theme"
-    if custom.get("backdrop"):
-        BACKDROPS["custom"] = tuple(custom["backdrop"])
+    if backdrop:
+        BACKDROPS["custom"] = tuple(backdrop)
     else:
         BACKDROPS.pop("custom", None)
 

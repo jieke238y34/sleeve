@@ -49,6 +49,7 @@ DEFAULTS = {
     "discord_presence": False,         # show the playing song on Discord (via Discord or arRPC); off until asked
     "discord_art": True,               # also show the album cover (only once Discord is on and lookups are agreed to)
     "remember_session": True,          # open again with the queue and song that were playing, paused where they were
+    "gradient_follow_accent": True,    # the gradient is made from the accent colour (off: the five colours you set)
     "gradient": None,                  # your own 5-colour background (a list of #rrggbb), or None: follow the cover
     "np_queue_side": "left",           # Now Playing: which side the playlist panel is on
     "np_lyrics_side": "right",         # Now Playing: which side the lyrics panel is on
@@ -74,11 +75,14 @@ def legible(colour):
 def _valid_custom_theme(value):
     "{name, bg, text, muted, accent, backdrop?}: four #rrggbb colours, a short name, and three more colours or None."
     if not isinstance(value, dict) or not {"bg", "text", "muted", "accent"} <= set(value) <= {
-            "name", "bg", "text", "muted", "accent", "backdrop"}:
+            "name", "bg", "text", "muted", "accent", "backdrop", "sync"}:
         return False
     if not all(isinstance(value[k], str) and _HEX.fullmatch(value[k]) for k in ("bg", "text", "muted", "accent")):
         return False
     if not isinstance(value.get("name", ""), str) or len(value.get("name", "")) > 24:
+        return False
+    sync = value.get("sync", [])
+    if not isinstance(sync, list) or len(sync) > 3 or not all(s in ("muted", "backdrop", "accent") for s in sync):
         return False
     back = value.get("backdrop")
     return back is None or (isinstance(back, list) and len(back) in (3, 5)
@@ -95,7 +99,8 @@ def _valid(key, value):
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
-                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden"):
+                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden",
+                "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM

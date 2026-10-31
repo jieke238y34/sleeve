@@ -21,6 +21,10 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - A **5-point background gradient** (Settings > Look > My own background): five colours from the top left corner to
   the bottom right replace the background that follows the cover. Your own themes can use one too, and the older
   3-colour backdrops fade into it.
+- The 5-point gradient follows the accent colour (a gradient in its hue that moves when the accent does); turn off
+  *Follow the accent colour* to pick the five yourself. Any theme, your own included, brings its own background instead.
+- The theme creator can **sync** parts of your theme: the quiet text follows the text colour, the background gradient
+  follows the accent, and the accent follows the colours of the playing song.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on

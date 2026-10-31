@@ -153,6 +153,16 @@ class ThemeDialog(QDialog):
         self.own_back.toggled.connect(self._refresh)
         self.back_box = GradientEditor([c.name() for c in theme.resample(back, 5)])       # a 3-colour glow becomes 5
         self.back_box.changed.connect(self._refresh)
+        sync = current.get("sync") or []
+        self.sync_muted = QCheckBox("Sync: the quiet text follows the text colour")
+        self.sync_back = QCheckBox("Sync: the background gradient follows the accent colour")
+        self.sync_accent = QCheckBox("Sync: the accent follows the colours of the playing song")
+        for box, name in ((self.sync_muted, "muted"), (self.sync_back, "backdrop"), (self.sync_accent, "accent")):
+            box.setChecked(name in sync)
+            box.toggled.connect(self._refresh)
+        self.sync_muted.setToolTip("Quiet text is worked out from the text and background, so it always matches")
+        self.sync_back.setToolTip("A 5-point gradient in the hue of the accent, redone whenever the accent changes")
+        self.sync_accent.setToolTip("The accent changes with each song's cover; the other colours stay yours")
         self.warning = QLabel("")
         self.warning.setObjectName("muted")
         self.warning.setWordWrap(True)
@@ -175,6 +185,9 @@ class ThemeDialog(QDialog):
         for w in (heading, sub, self.name, self.preview):
             lay.addWidget(w)
         lay.addLayout(grid)
+        lay.addWidget(self.sync_muted)
+        lay.addWidget(self.sync_back)
+        lay.addWidget(self.sync_accent)
         lay.addWidget(self.own_back)
         lay.addWidget(self.back_box)
         lay.addWidget(self.warning)
@@ -201,23 +214,37 @@ class ThemeDialog(QDialog):
         self.removed = True
         self.accept()
 
+    def _effective(self):
+        "The four colours as they will be worn: the synced ones worked out, the others as picked."
+        colours = {k: self._colours[k] for k, _ in FIELDS}
+        if self.sync_muted.isChecked():
+            colours["muted"] = theme.derived_muted(colours["text"], colours["bg"])
+        return colours
+
     def _refresh(self, *_):
+        shown = self._effective()
+        self._swatches["muted"].setEnabled(not self.sync_muted.isChecked())        # worked out, so not picked by hand
+        self.own_back.setEnabled(not self.sync_back.isChecked())
         for key, b in self._swatches.items():
-            colour = self._colours[key]
+            colour = shown[key]
             b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 1px solid rgba(255,255,255,90); "
                             f"border-radius: 15px; }}")
-        self.back_box.setVisible(self.own_back.isChecked())
-        self.preview.show_colours(self._colours, self._backdrop())
-        found = theme.problems(*(self._colours[k] for k, _ in FIELDS))
+        self.back_box.setVisible(self.own_back.isChecked() and not self.sync_back.isChecked())
+        self.preview.show_colours(shown, self._backdrop())
+        found = theme.problems(*(shown[k] for k, _ in FIELDS))
         self.warning.setText("\n".join(found))
         self.warning.setVisible(bool(found))
         self.save_btn.setEnabled(not found)
 
     def _backdrop(self):
+        if self.sync_back.isChecked():
+            return theme.accent_gradient(self._colours["accent"])
         return self.back_box.colours() if self.own_back.isChecked() else None
 
     def result_theme(self):
         out = {k: self._colours[k] for k, _ in FIELDS}
         out["name"] = self.name.text().strip() or "My theme"
-        out["backdrop"] = self._backdrop()
+        out["backdrop"] = self.back_box.colours() if self.own_back.isChecked() else None
+        out["sync"] = [name for box, name in ((self.sync_muted, "muted"), (self.sync_back, "backdrop"),
+                                              (self.sync_accent, "accent")) if box.isChecked()]
         return out
