@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSlider,
+    QSpacerItem,
     QSplitter,
     QStackedWidget,
     QStyle,
@@ -814,6 +815,10 @@ class MainWindow(QMainWindow):
         right.addLayout(cover_btns)
         right.addStretch(1)                            # the bottom stretch balances the top one
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
+        self._np_lay = lay
+        self._np_balancer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        lay.addItem(self._np_balancer)
+        self._np_balance()                                   # centered over the whole page from the first paint
         lay.addWidget(side)
         lay.addLayout(right, 1)
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
@@ -3059,10 +3064,18 @@ class MainWindow(QMainWindow):
         "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
         self.np_side.setVisible(not self._cover_expanded)
+        self._np_balance()
         self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
         self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
+
+    def _np_balance(self):
+        "Keep the cover group centered over the whole page: a spacer on the right mirrors the width of the queue panel "
+        "(and its keep-clear gaps) on the left, and collapses to nothing when the panel is hidden."
+        spacer = 0 if self.np_side.isHidden() else self.np_side.width()
+        self._np_balancer.changeSize(max(0, spacer), 0, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self._np_lay.invalidate()
 
     def _toggle_fullscreen(self):
         "A separate full-screen window of the album art. Esc, F11, Enter or a click closes it; this one is untouched."
