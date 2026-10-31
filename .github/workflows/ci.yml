@@ -52,7 +52,7 @@ jobs:
       - name: Find the crash (Python 3.10 aborts after test_glass_lists_insights.py)
         if: matrix.python == '3.10'
         continue-on-error: true
-        run: pytest -s -x tests/test_grid_fills.py 2>&1 | tail -60
+        run: timeout 200 pytest -o faulthandler_timeout=60 -s -x tests/test_grid_fills.py 2>&1 || true
       - run: pytest -v
       - name: Run the desktop-integration tests on a session bus (Linux)
         run: dbus-run-session -- pytest tests/test_mpris.py tests/test_singleton.py -q
