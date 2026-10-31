@@ -36,6 +36,10 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - The Library folder list shows how many songs each entry has, including **Stashed Songs** and Recently played; the
   stashed count changes as you stash and unstash.
 - The playlist and lyrics buttons under the album art sit on the side of the panel they open, wherever you put it.
+- **Waveform seek**: while the player bar is hidden, a strip under the page shows the song as a waveform with the played
+  part in the accent colour; click or drag on it to seek. It is worked out in the background with ffmpeg, once per song.
+- Now Playing: the album art and the words under it start level with the top of the panel beside them, instead of
+  floating lower.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on
