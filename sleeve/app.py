@@ -792,7 +792,8 @@ class MainWindow(QMainWindow):
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
-        right.addWidget(self.np_cover, 1)
+        right.addStretch(1)                            # the cover and its words sit centered as one group
+        right.addWidget(self.np_cover, 0, Qt.AlignHCenter)
         right.addSpacing(14)
         for lab in (self.np_title, self.np_artist, self.np_album):
             right.addWidget(lab)
@@ -811,6 +812,7 @@ class MainWindow(QMainWindow):
         cover_btns.addStretch(1)
         right.addSpacing(8)
         right.addLayout(cover_btns)
+        right.addStretch(1)                            # the bottom stretch balances the top one
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lay.addWidget(side)
         lay.addLayout(right, 1)

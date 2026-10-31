@@ -7,7 +7,7 @@ Esc, F11, Enter, a click or a double tap, so it is never a place you cannot leav
 
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
@@ -27,7 +27,7 @@ class CoverView(QWidget):
         self.max_side = max_side
         self._pix = None
         self._cache = None                    # ((cache key, side), the rounded, scaled picture)
-        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)       # takes what is left, asks for nothing
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)     # wants max_side, yields to the window
         self.setMinimumSize(120, 120)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -39,6 +39,9 @@ class CoverView(QWidget):
     def set_max_side(self, side):
         self.max_side = side
         self.update()
+
+    def sizeHint(self):
+        return QSize(self.max_side, self.max_side)      # the space it wants; the layout never gives more than fits
 
     def side(self):
         "The length of the square that is drawn now."

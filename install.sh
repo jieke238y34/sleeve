@@ -50,6 +50,11 @@ else SOURCE="$REPO_URL"; fi
 
 say "Installing Sleeve from $SOURCE"
 say "(this downloads Qt, about 200 MB, the first time)"
+# Stamp the build number when installing from a checkout, so --version and the updater report a truth. A source
+# that is not a git checkout (a tarball) is left alone.
+if [ "$SOURCE" != "$REPO_URL" ] && [ -d "$SOURCE/.git" ]; then
+    "$PY" "$SOURCE/tools/stamp_build.py" || say "note: could not stamp the build number into the copy"
+fi
 mkdir -p "$PREFIX" "$BIN" "$APPS" "$ICONS"
 "$PY" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --quiet --upgrade pip

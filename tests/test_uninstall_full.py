@@ -127,6 +127,9 @@ def test_without_a_plan_the_script_keeps_the_users_data(tmp_path):
 
 
 def test_the_app_asks_twice_before_deleting_data_and_once_to_keep_it(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    home, _env, _music, _mine = world(tmp_path / "gui")            # a fake install the updater is pointed at
+    monkeypatch.setenv("SLEEVE_PREFIX", str(home / ".local/share/sleeve"))   # the updater reads the environment itself
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))         # and so do the data folders in the plan
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         ran, quit_calls = [], []
@@ -144,7 +147,8 @@ def test_the_app_asks_twice_before_deleting_data_and_once_to_keep_it(qapp, cfg, 
         win._uninstall()
         assert ran and quit_calls
         script = ran[0][1][1]
-        assert f"kill -0 {os.getpid()}" in script and "/sleeve" in script           # waits for this very process to quit
+        assert f"kill -0 {os.getpid()}" in script and str(home / ".local/share/sleeve/venv") in script
+        # ↑ starts with the whole fake venv inside, which also mentions /sleeve: waits for this very process to quit
         ran.clear()
         win._uninstall()                                                               # "program": data stays
         assert ran and "kill -0" in ran[0][1][1] and "My Playlists" not in ran[0][1][1]
