@@ -42,7 +42,7 @@ TOUR = ["now-playing", "lyrics", "library", "library-search", "playlists", "play
         "np-purple", "np-orange", "dusk"]
 SECONDS_PER_FRAME, FADE = 2.0, 0.6
 FOLDERS = ("Rock", "Pop", "Jazz", "Electronic", "Folk", "Soul")
-RED, ORANGE, TEAL, PURPLE = 0, 2, 12, 18                     # albums with these colours (index = hue / 15 degrees)
+RED, ORANGE, TEAL, PURPLE, DARK = 0, 2, 12, 18, 5  # albums by colour (index = hue / 15 degrees)
 WORDS = ("Velvet", "Harbour", "Paper", "Neon", "Slow", "Glass", "Cinder", "Meadow", "Static", "Lantern", "Ember",
          "Tide", "Orchard", "Signal", "Hollow", "Marble", "Drift", "Copper", "Willow", "Echo", "Saffron", "Pocket",
          "Aurora", "Gravel")
@@ -186,6 +186,78 @@ def build_demo_window(tmp):
     return win, albums
 
 
+SHOWCASE = (("accent", "Crimson"), ("accent", "Tangerine"), ("accent", "Sunflower"), ("accent", "Emerald"),
+            ("accent", "Azure"), ("accent", "Magenta"), ("season", "spring"), ("season", "summer"),
+            ("season", "autumn"), ("season", "winter"), ("holiday", "halloween"), ("holiday", "christmas"),
+            ("holiday", "newyear"), ("theme", "dusk"), ("theme", "custom"))
+CUSTOM_DEMO = {"name": "Night bus", "bg": "#0f1a1c", "text": "#eef6f4", "muted": "#8fb0ab", "accent": "#7fd1ae",
+               "backdrop": ["#1d4e4a", "#12363a", "#0d2230"]}
+SHOWCASE_COLUMNS, SHOWCASE_TILE = 3, 440
+
+
+def colour_showcase(win, s, play):
+    """One picture of the colours Sleeve can wear: some accents, every season and holiday, Dusk and a made-up theme of
+    your own. "Match the colours of the song" is off here, or the cover's colour would hide the look."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+
+    from sleeve import theme
+
+    win.match_box.setChecked(False)
+    win.settings.set("custom_theme", CUSTOM_DEMO)
+    theme.set_custom(CUSTOM_DEMO)
+    win._fill_theme_box()
+    s.page("Now Playing")
+    play(DARK)
+    win.backdrop.set_cover(None)                              # no cover colour in the glow: each look's own shows
+
+    def wear(kind, name):
+        for box, value in ((win.theme_box, "default"), (win.seasonal_box, "off"), (win.season_choice_box, "auto"),
+                           (win.holiday_choice_box, "auto")):
+            box.setCurrentIndex(box.findData(value))
+        win.accent_box.setCurrentText("Violet")
+        if kind == "accent":
+            win.accent_box.setCurrentText(name)
+        elif kind == "theme":
+            win.theme_box.setCurrentIndex(win.theme_box.findData(name))
+        else:
+            box = win.season_choice_box if kind == "season" else win.holiday_choice_box
+            box.setCurrentIndex(box.findData(name))
+            win.seasonal_box.setCurrentIndex(win.seasonal_box.findData("seasons" if kind == "season" else "holidays"))
+        s.settle(40)
+
+    shots = []
+    for kind, name in SHOWCASE:
+        wear(kind, name)
+        label = CUSTOM_DEMO["name"] if name == "custom" else {"newyear": "New Year"}.get(name, name.title())
+        shots.append((label, win.grab().toImage()))
+    wear("accent", "Violet")
+    theme.set_custom(None)
+    win.settings.set("custom_theme", None)
+
+    side = SHOWCASE_TILE
+    height = round(side * shots[0][1].height() / shots[0][1].width())
+    gap, caption = 16, 34
+    rows = -(-len(shots) // SHOWCASE_COLUMNS)
+    sheet = QImage(gap + SHOWCASE_COLUMNS * (side + gap), gap + rows * (height + caption + gap), QImage.Format_ARGB32)
+    sheet.fill(QColor("#15131d"))
+    p = QPainter(sheet)
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
+    p.setRenderHint(QPainter.TextAntialiasing)
+    font = QFont()
+    font.setPixelSize(18)
+    font.setBold(True)
+    p.setFont(font)
+    for n, (label, img) in enumerate(shots):
+        x, y = gap + (n % SHOWCASE_COLUMNS) * (side + gap), gap + (n // SHOWCASE_COLUMNS) * (height + caption + gap)
+        p.drawImage(x, y, img.scaled(side, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+        p.setPen(QColor("#ece9f6"))
+        p.drawText(x, y + height, side, caption, Qt.AlignCenter, label)
+    p.end()
+    sheet.save(str(SHOTS / "colours.png"))
+    print("saved", SHOTS / "colours.png")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--no-video", action="store_true", help="only the screenshots")
@@ -316,6 +388,7 @@ def main():
     s.settle(30)
     play(PURPLE)
     s.shot("dusk")
+    colour_showcase(win, s, play)
     win.close()
 
     if not args.no_video:

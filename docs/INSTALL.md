@@ -19,6 +19,9 @@ To update, press **Check for updates** in Settings, run `sleeve --update`, or pu
 `sleeve --uninstall --full` also deletes Sleeve's own data (add `--yes` to skip the question).
 
 To install without cloning first: `curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | sh`.
+That installs the newest published release, so `sleeve --update` and your copy agree. To try the newest source
+instead: `curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | SLEEVE_FROM=main sh`.
+Running `./install.sh` inside a checkout installs that checkout.
 
 ## Requirements
 

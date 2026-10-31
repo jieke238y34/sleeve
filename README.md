@@ -49,6 +49,13 @@ The screenshots and the tour show a small made-up demo library with generated co
 | ![Downloads](docs/screenshots/downloads.png) | ![Health](docs/screenshots/health.png) |
 | Downloads: the optional front end for dl.py | Health: songs that need attention |
 
+### Colours
+
+Pick one of 16 accent colours, wear a season or holiday, use the Dusk theme, or make a theme of your own in Settings.
+These are six of the accents, every season and holiday, Dusk and a made-up theme:
+
+![Accents, seasons, holidays, Dusk and a theme of your own](docs/screenshots/colours.png)
+
 ## Features
 
 **Library**

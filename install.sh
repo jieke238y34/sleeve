@@ -6,7 +6,8 @@
 #
 # Options:  --uninstall   remove what this script installed (your music, playlists and settings are left alone)
 #           --help
-# Environment: SLEEVE_PREFIX (default ~/.local/share/sleeve), SLEEVE_SOURCE (a folder or git URL to install from)
+# Environment: SLEEVE_PREFIX (default ~/.local/share/sleeve), SLEEVE_SOURCE (a folder or git URL to install from),
+#              SLEEVE_FROM=main (install the newest source, not the newest release)
 set -eu
 
 APP_ID="io.github.jieke238y34.Sleeve"
@@ -21,7 +22,7 @@ say() { printf '%s\n' "$*"; }
 fail() { printf 'Sleeve install: %s\n' "$*" >&2; exit 1; }
 
 case "${1:-}" in
-    --help|-h) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --uninstall)
         rm -rf "$VENV"
         rm -f "$BIN/sleeve" "$APPS/$APP_ID.desktop" "$ICONS/$APP_ID.svg"
@@ -48,6 +49,33 @@ if [ -n "${SLEEVE_SOURCE:-}" ]; then SOURCE="$SLEEVE_SOURCE"
 elif [ -n "$HERE" ] && [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/sleeve" ]; then SOURCE="$HERE"
 else SOURCE="$REPO_URL"; fi
 
+# Straight from the web the default is the newest published release (what `sleeve --update` follows), so a normal
+# install is never ahead of it. SLEEVE_FROM=main installs the newest source instead; no release, no curl or no network
+# falls back to the source too. A checkout, or SLEEVE_SOURCE, is always installed as it is.
+RELEASE_API="https://api.github.com/repos/jieke238y34/sleeve/releases/latest"
+RELEASE_PREFIX="https://github.com/jieke238y34/sleeve/releases/download/"
+latest_wheel() {
+    command -v curl >/dev/null 2>&1 || return 1
+    curl -fsSL --max-time 20 -H "Accept: application/vnd.github+json" "$RELEASE_API" 2>/dev/null | "$PY" -c '
+import json, sys
+try:
+    assets = json.load(sys.stdin).get("assets", [])
+except ValueError:
+    sys.exit(1)
+for a in assets:
+    url = a.get("browser_download_url", "")
+    if url.startswith(sys.argv[1]) and url.endswith(".whl"):
+        print(url)
+        sys.exit(0)
+sys.exit(1)' "$RELEASE_PREFIX"
+}
+RELEASE=""
+if [ "$SOURCE" = "$REPO_URL" ] && [ "${SLEEVE_FROM:-release}" != "main" ]; then
+    RELEASE=$(latest_wheel) || RELEASE=""
+    if [ -n "$RELEASE" ]; then SOURCE="$RELEASE"
+    else say "note: no published release could be fetched; installing the newest source instead"; fi
+fi
+
 # Installing from the web: fetch the repository (history only, no old file contents) so the build number can be counted
 # and stamped, exactly as for a checkout. Without git the install still works, it just shows the version alone.
 WORK=""
@@ -62,7 +90,7 @@ say "Installing Sleeve from $SOURCE"
 say "(this downloads Qt, about 200 MB, the first time)"
 # Stamp the build number when the source is a git checkout (a local one, or the clone above), so --version, Settings
 # and the updater all know it. A source that is not a git checkout (a tarball) is left alone.
-if [ "$SOURCE" != "$REPO_URL" ] && [ -d "$SOURCE/.git" ]; then
+if [ "$SOURCE" != "$REPO_URL" ] && [ -z "$RELEASE" ] && [ -d "$SOURCE/.git" ]; then
     "$PY" "$SOURCE/tools/stamp_build.py" || say "note: could not stamp the build number into the copy"
 fi
 mkdir -p "$PREFIX" "$BIN" "$APPS" "$ICONS"
