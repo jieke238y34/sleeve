@@ -65,7 +65,9 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStyle,
+    QStyledItemDelegate,
     QStyleOptionSlider,
+    QStyleOptionViewItem,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -171,6 +173,29 @@ RECENT = "Recently played"
 def fmt_time(seconds):
     s = int(max(0, seconds))
     return f"{s // 60}:{s % 60:02d}"
+
+
+COUNT_ROLE = Qt.UserRole + 1                     # a folder's song count, drawn at the right edge of its row
+
+
+class FolderDelegate(QStyledItemDelegate):
+    "A folder row with its song count on the right, in the quiet colour; the name is shortened to leave room for it."
+
+    def paint(self, painter, option, index):
+        count = index.data(COUNT_ROLE)
+        if count is None:
+            super().paint(painter, option, index)
+            return
+        text = f"{count:,}"
+        room = option.fontMetrics.horizontalAdvance(text) + 14
+        narrow = QStyleOptionViewItem(option)
+        narrow.rect = option.rect.adjusted(0, 0, -room, 0)
+        super().paint(painter, narrow, index)
+        painter.save()
+        painter.setPen(option.palette.placeholderText().color())
+        painter.setFont(option.font)
+        painter.drawText(option.rect.adjusted(0, 0, -10, 0), Qt.AlignRight | Qt.AlignVCenter, text)
+        painter.restore()
 
 
 class ElidedLabel(QLabel):
@@ -559,6 +584,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(12, 12, 12, 12)
         self.folders = QListWidget()
         self.folders.setMaximumWidth(190)
+        self.folders.setItemDelegate(FolderDelegate(self.folders))
         self.folders.currentTextChanged.connect(self._folder_changed)
         self.folders.itemDoubleClicked.connect(self._play_folder)
         right = QVBoxLayout()
@@ -2255,6 +2281,7 @@ class MainWindow(QMainWindow):
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
+        self._fill_folder_counts()
         names = [ALL, LIKED, RECENT, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
@@ -2522,6 +2549,7 @@ class MainWindow(QMainWindow):
         if not self._listen_counted and counts_as_played(self._listened, self._dur):
             self._listen_counted = True
             self.history.record(self._current_path, self._listened)
+            self._fill_folder_counts()                       # Recently played has one more song, maybe
             self._listen_event, self._listen_saved = self.history.events[-1], self._listened
             self._save_history()
             self._refresh_listening()
@@ -2768,7 +2796,25 @@ class MainWindow(QMainWindow):
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
+    def _fill_folder_counts(self):
+        "The number of songs beside each folder in the list: all, stashed, recently played, and each genre folder."
+        per_folder = Counter(s.folder for s in self.songs)
+        for i in range(self.folders.count()):
+            item = self.folders.item(i)
+            name = item.text()
+            if name == ALL:
+                count = len(self.songs)
+            elif name == LIKED:
+                count = sum(1 for s in self.songs if s.path in self.likes)
+            elif name == RECENT:
+                count = sum(1 for p in self.history.recent() if p in self.by_path)
+            else:
+                count = per_folder.get(name, 0)
+            item.setData(COUNT_ROLE, count)
+        self.folders.viewport().update()
+
     def _likes_changed(self):
+        self._fill_folder_counts()
         self._refresh_identity()
         if self.folder == LIKED:
             self._apply_filter()                    # an unliked song leaves this list

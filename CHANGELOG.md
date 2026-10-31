@@ -21,6 +21,8 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - A **5-point background gradient** (Settings > Look > My own background): five colours from the top left corner to
   the bottom right replace the background that follows the cover. Your own themes can use one too, and the older
   3-colour backdrops fade into it.
+- The Library folder list shows how many songs each entry has, including **Stashed Songs** and Recently played; the
+  stashed count changes as you stash and unstash.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
 - The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on
