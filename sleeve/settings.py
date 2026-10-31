@@ -90,7 +90,8 @@ def _valid(key, value):
         return isinstance(value, str) and bool(_HEX.fullmatch(value))
     if key == "window_size":
         return (isinstance(value, list) and len(value) == 2
-                and all(isinstance(n, int) and not isinstance(n, bool) and 500 <= n <= 10000 for n in value))
+                and all(isinstance(n, int) and not isinstance(n, bool) for n in value)
+                and 800 <= value[0] <= 10000 and 600 <= value[1] <= 10000)         # never under the app's minimum size
     if key == "library_view":
         return value in ("songs", "albums")
     if key == "scroll_speed":

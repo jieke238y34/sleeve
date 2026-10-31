@@ -24,7 +24,17 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -474,8 +484,7 @@ class MainWindow(QMainWindow):
         def _late_restore():
             self._restore_size()
             self.splitter.setSizes([self.settings.nav_width, 10_000])
-            self._balance_bar()
-        QTimer.singleShot(0, _late_restore)
+            QTimer.singleShot(0, _late_restore)
         self.bar = self._player_bar()
         outer.addWidget(self.bar)
         self.setCentralWidget(root)
@@ -1898,14 +1907,39 @@ class MainWindow(QMainWindow):
             self.session.clear()                            # switched off: the file goes too
             self._session_saved = None
 
+    MIN_WINDOW = (800, 600)             # the smallest the window can be made: every page is checked at this size
+
+    def _screen_size(self, available=False):
+        """The resolution of the monitor the window is on (`available`: without the panels and docks). The headless
+        test platform reports a made-up 800 x 600 screen, so there is no limit there."""
+        if QGuiApplication.platformName() == "offscreen":
+            return QSize(16384, 16384)
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return QSize(16384, 16384)
+        return (screen.availableGeometry() if available else screen.geometry()).size()
+
+    def _apply_size_limits(self):
+        "No smaller than the app's minimum, no bigger than the monitor. Run again when the window changes monitor."
+        low, high = QSize(*self.MIN_WINDOW), self._screen_size()
+        self.setMinimumSize(low)
+        self.setMaximumSize(QSize(max(high.width(), low.width()), max(high.height(), low.height())))
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, "_limits_follow_screen", False):
+            self._limits_follow_screen = True
+            handle.screenChanged.connect(lambda _screen: self._apply_size_limits())    # dragged to another monitor
+        self._apply_size_limits()
+
     def _restore_size(self):
-        "The size the window had last time, but never bigger than the screen it opens on."
+        "The size the window had last time, within the app's minimum and the screen it opens on."
+        self._apply_size_limits()
         width, height = self.settings.window_size
-        screen = QApplication.primaryScreen()
-        if screen is not None:
-            room = screen.availableGeometry()
-            width, height = min(width, room.width()), min(height, room.height())
-        self.resize(width, height)
+        room = self._screen_size(available=True)
+        width, height = min(width, room.width()), min(height, room.height())
+        self.resize(max(width, self.MIN_WINDOW[0]), max(height, self.MIN_WINDOW[1]))
 
     def _remember_window(self):
         "Keep the window size and the open page for next time (the size it had before maximizing, if it is)."
@@ -1975,8 +2009,8 @@ class MainWindow(QMainWindow):
         self.cover.doubleClicked.connect(self._cover_double_clicked)
         self.now = QLabel("Nothing playing")
         self.now.setTextFormat(Qt.PlainText)
-        self.now.setMinimumWidth(220)
-        self.now.setMaximumWidth(320)
+        self.now.setMinimumWidth(100)
+        self.now.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # takes what its side block gives it
 
         def button(glyph, tip, slot, name="round", checkable=False):
             b = QPushButton(glyph)
@@ -2020,13 +2054,18 @@ class MainWindow(QMainWindow):
         self.volume.sliderReleased.connect(self._volume_tip_done)
         # left: the song; middle: the buttons with the seek bar under them; right: the volume alone (lyrics live on
         # the Now Playing page, where the words are big enough to read)
-        self.bar_left, self.bar_right = QWidget(), QWidget()   # equal, plus the sidebar: buttons centered
-        left = QHBoxLayout(self.bar_left)
-        left.setContentsMargins(0, 0, 0, 0)
-        for w in (self.cover, self.now):
-            left.addWidget(w)
-        self.now.setMinimumWidth(0)
-        lay.addWidget(self.bar_left)
+        left, right = QWidget(), QWidget()           # equal widths: the buttons sit at the
+        left_lay, right_lay = QHBoxLayout(left), QHBoxLayout(right)      # middle of the window, not of what is left
+        for box in (left_lay, right_lay):
+            box.setContentsMargins(0, 0, 0, 0)
+        left_lay.addWidget(self.cover)
+        left_lay.addWidget(self.now, 1)
+        right_lay.addStretch(1)
+        right_lay.addWidget(self.volume)
+        for side in (left, right):                   # same limits and stretch: kept equal
+            side.setMinimumWidth(190)
+            side.setMaximumWidth(420)
+        lay.addWidget(left, 1)
         middle = QVBoxLayout()
         middle.setSpacing(4)
         buttons = QHBoxLayout()
@@ -2040,24 +2079,9 @@ class MainWindow(QMainWindow):
             seek_row.addWidget(w, 1 if w is self.seek else 0)
         middle.addLayout(buttons)
         middle.addLayout(seek_row)
-        lay.addLayout(middle, 1)
-        right = QHBoxLayout(self.bar_right)
-        right.setContentsMargins(0, 0, 0, 0)
-        right.addStretch(1)
-        right.addWidget(self.volume)
-        lay.addWidget(self.bar_right)
+        lay.addLayout(middle, 4)
+        lay.addWidget(right, 1)
         return bar
-
-    BAR_SIDE_MIN, BAR_SIDE_MAX, BAR_MIDDLE_MIN = 150, 340, 330
-
-    def _balance_bar(self):
-        """The bar spans the window, the pages only the part right of the sidebar. The left block gets the sidebar's
-        width on top of the same width as the right block, so the transport buttons sit exactly under the album art."""
-        nav = self.nav.width() + self.splitter.handleWidth()
-        room = self.bar.width() - nav - 2 * self.bar.layout().spacing() - 24
-        side = max(self.BAR_SIDE_MIN, min(self.BAR_SIDE_MAX, (room - self.BAR_MIDDLE_MIN) // 2))
-        self.bar_left.setFixedWidth(side + nav)
-        self.bar_right.setFixedWidth(side)
 
     # --- library ------------------------------------------------------------
     def rescan(self):
@@ -2132,6 +2156,8 @@ class MainWindow(QMainWindow):
         "Window shortcuts (space, left, right) must not steal those keys from a widget that uses them."
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
+        if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
+            QTimer.singleShot(0, self._np_apply_panels)          # the page has its real width now (it starts hidden)
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
             self._fit_columns()
             self._lib_thumb_timer.start()
@@ -3400,7 +3426,6 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        self._balance_bar()
         QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
 
     def _toggle_cover(self):
@@ -3808,7 +3833,6 @@ class MainWindow(QMainWindow):
         return False
 
     def _nav_resized(self, *_):
-        self._balance_bar()
         if self.settings.set("nav_width", self.nav.width()):
             self._vol_timer.start()                       # saved a moment after the dragging stops
 

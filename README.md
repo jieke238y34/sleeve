@@ -16,6 +16,10 @@ only need it for that page: without it Sleeve is a complete player and library m
 
 ![Now Playing: the cover, a gradient taken from its colours, and the queue](docs/screenshots/now-playing.png)
 
+On a wide window the playlist, the art and the lyrics sit side by side, and each side panel can be hidden:
+
+![Now Playing on a wide window: playlist, art and synced lyrics](docs/screenshots/now-playing-wide.png)
+
 > **Status: alpha (v0.2.0, not yet released).** Linux is the supported platform. Settings shows the version with its build number, for
 > example `0.2.0 · build 104`, so a bug report can name the exact build. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,

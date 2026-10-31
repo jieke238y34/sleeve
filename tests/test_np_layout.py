@@ -130,3 +130,19 @@ def test_the_scrollbar_handle_is_a_pill(qapp):  # noqa: F811
     view.close()
     assert widths[0] < widths[2] and max(widths) >= 8                 # the end of the handle is rounded, not square
     assert widths[0] <= widths[1] <= widths[2]
+
+
+def test_both_panels_show_on_a_window_wide_enough_without_any_further_resize(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1180, 760)                                 # what the demo and many screens start with
+        win.show()
+        win.show_page("Library")                              # the page starts hidden, with a width it never had
+        qapp.processEvents()
+        win.show_page("Now Playing")
+        for _ in range(8):
+            qapp.processEvents()
+        assert win.np_page.width() - 24 - 40 >= 2 * win.NP_PANEL_MIN + win.NP_COVER_MIN
+        assert win.np_side.isVisible() and win.np_lyrics_side.isVisible()
+    finally:
+        win.close()

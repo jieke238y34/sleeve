@@ -225,10 +225,18 @@ def main():
     play(PURPLE)
 
     play(RED)
-    win.tab_lyrics.setChecked(True)
+    win.tab_lyrics.setChecked(False)
+    win.tab_lyrics.setChecked(True)                           # at this width the lyrics ask the playlist to step aside
     win._on_position(25.0)
     s.shot("lyrics")
-    win.tab_queue.setChecked(True)
+    win.tab_queue.setChecked(True)                            # and the playlist asks the lyrics to
+    win.resize(1560, 860)                                     # wide enough for the playlist, the art and the lyrics
+    win.tab_lyrics.setChecked(True)
+    win._on_position(25.0)
+    s.settle(40)
+    s.shot("now-playing-wide")
+    win.resize(1180, 760)
+    s.settle(30)
 
     s.page("Library")
     s.settle(60)                                              # cover thumbnails load in the background
