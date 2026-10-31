@@ -18,6 +18,7 @@ def world(tmp_path):
     home = tmp_path / "home"
     env = {"SLEEVE_PREFIX": str(home / ".local/share/sleeve")}
     (home / ".local/share/sleeve/venv/bin").mkdir(parents=True)
+    (home / ".local/share/sleeve/venv/pyvenv.cfg").write_text("home = /usr/bin\n")
     (home / ".local/bin").mkdir(parents=True)
     (home / ".local/bin/sleeve").symlink_to(home / ".local/share/sleeve/venv/bin/sleeve")
     config = home / ".config/sleeve"

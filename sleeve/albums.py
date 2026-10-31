@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QListView,
     QListWidget,
     QListWidgetItem,
-    QMenu,
     QPushButton,
     QStyle,
     QStyledItemDelegate,
@@ -193,6 +192,7 @@ class AlbumGrid(QListWidget):
     enqueueAlbum = Signal(list)       # song paths: add to the end of the queue
     playNextAlbum = Signal(list)      # song paths: play right after the current song
     openAlbum = Signal(object)        # the Album: a single click
+    text_h = TEXT_H                   # room under the cover for the name; a subclass that draws on the cover needs less
 
     def __init__(self, cover_loader=None, parent=None):
         super().__init__(parent)
@@ -268,7 +268,7 @@ class AlbumGrid(QListWidget):
 
     def album_menu(self, album):
         "A menu for one album (not shown: the caller places it). Its actions emit the signals."
-        menu = QMenu(self)
+        menu = theme.Menu(self)
         menu.addAction("Play").triggered.connect(lambda: self.playAlbum.emit(album.paths))
         menu.addAction("Play next").triggered.connect(lambda: self.playNextAlbum.emit(album.paths))
         menu.addAction("Add to queue").triggered.connect(lambda: self.enqueueAlbum.emit(album.paths))
@@ -306,7 +306,7 @@ class AlbumGrid(QListWidget):
         side = max(TILE_MIN, min(TILE_MAX, width // cols - GAP))
         changed = side != self.tile
         self.tile = side
-        self.setGridSize(QSize(side + GAP, side + GAP + TEXT_H))
+        self.setGridSize(QSize(side + GAP, side + GAP + self.text_h))
         if changed:
             self._tiles.clear()
             size = self.gridSize()

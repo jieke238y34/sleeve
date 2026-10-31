@@ -14,6 +14,7 @@ The search box at the top shows only the sections that mention what you type (tr
 | Album art size | How big the cover gets on the Now Playing page, 240 to 900 pixels |
 | Theme | Sleeve (your own colours and the seasons) or Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. A theme replaces your accent colour and the seasonal looks until you go back to Sleeve |
 | Seasons and holidays | Off, Seasons, Holidays or Both. Season: follow the calendar, or Spring, Summer, Autumn, Winter. Holiday: follow the calendar, or Christmas, Halloween, New Year |
+| Scroll speed | How far one turn of the mouse wheel moves a list, as a percentage (the default is 150) |
 | Accent colour | One of 16 bold colours, or Custom… to pick any colour you like |
 | Match the colours of the song | The accent follows the cover of the song that is playing |
 | Show what I'm listening to on Discord | Off by default. Needs your own Discord Application ID, see [Playback and sound](06-playback-and-sound) |

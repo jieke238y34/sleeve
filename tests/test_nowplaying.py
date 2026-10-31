@@ -145,7 +145,8 @@ def wheel(view, delta):
     QApplication.sendEvent(view.viewport(), ev)
 
 
-def test_the_wheel_glides_and_rows_can_be_centred(qapp):  # noqa: F811
+def test_the_wheel_glides_and_rows_can_be_centred(qapp, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(SmoothScroll, "speed", 1.0)                 # the base distance, not the user's speed
     view = QListWidget()
     view.addItems([f"row {i}" for i in range(200)])
     view.resize(300, 300)
@@ -198,7 +199,8 @@ def test_expanding_the_cover_never_changes_the_window_size(qapp, cfg, monkeypatc
             win.expand_btn.click()
             settle(qapp, 0.1)
             assert (win.width(), win.height()) == (1000, 700)
-            assert win.np_side.isHidden() and win.np_cover.side() > normal_side
+            assert win.np_side.isHidden() and win.np_cover.side() >= normal_side      # never smaller
+            assert not win.np_title.isHidden() and not win.np_artist.isHidden()       # the song is still named
             assert win.np_cover.side() <= min(win.np_cover.width(), win.np_cover.height())     # it fits the space
             win.expand_btn.click()
             settle(qapp, 0.1)
@@ -411,7 +413,8 @@ def test_sidebar_order_width_and_memory(qapp, cfg, monkeypatch, tmp_path):  # no
         win.close()
 
 
-def test_every_list_scrolls_the_same_number_of_rows_whatever_the_system_says(qapp):  # noqa: F811
+def test_every_list_scrolls_the_same_number_of_rows_whatever_the_system_says(qapp, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(SmoothScroll, "speed", 1.0)                 # the base distance, not the user's speed
     "Regression: a fixed pixel distance made tall-row lists (the queue) crawl next to small-row tables (the library)."
     from PySide6.QtCore import QSize
 

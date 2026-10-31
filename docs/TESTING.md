@@ -39,7 +39,7 @@ pip-audit
 ## The UI audit
 
 `tools/ui_audit.py` renders every page at several window sizes and accent colours without a screen, saves screenshots
-and reports layout problems. It uses a stub player and temporary copies of settings, likes and the cache, so it
+and reports layout problems. It uses a stub player and temporary copies of settings, stashed songs and the cache, so it
 plays no sound, touches no network and changes nothing in your music folder.
 
 ```sh

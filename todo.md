@@ -94,7 +94,7 @@ Current version: **0.2.0** (every build also shows its build number).
 - [ ] **Smart playlists and smart albums** that fill themselves; a **smart DJ** that picks from your library to match
       what you chose.
 - [ ] **Explicit label** on songs; **AI tag** for AI-made songs (needs a database to look them up in).
-- [x] **Updates follow the build number** as well as the version (tags `v0.2.0` or `v0.2.0-build.N`).
+- [x] **Updates follow the build number** as well as the version (tags `v0.2.0` or `v0.2.0+build.N`).
 - [x] **CLI**: `sleeve` starts and opens it; `sleeve --update` and `sleeve --uninstall` (asks first, `--yes` skips).
 
 ## Not started: project

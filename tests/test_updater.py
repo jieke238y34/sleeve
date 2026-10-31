@@ -36,18 +36,20 @@ def test_the_build_number_decides_between_releases_of_the_same_version():
     assert not updater.is_newer("v0.2.0", 98, "0.2.0", 98) and not updater.is_newer("v0.2.0", 97, "0.2.0", 98)
     assert updater.is_newer("v0.3.0", 1, "0.2.0", 500)                       # a higher version wins whatever the build
     assert not updater.is_newer("v0.2.0", 900, "0.3.0", 1)
-    assert updater.parse_build("v0.2.0-build.99") == 99 and updater.parse_build("v0.2.0") == 0
+    assert updater.parse_build("v0.2.0+build.99") == 99 and updater.parse_build("v0.2.0") == 0
     assert updater.parse_build("v0.2.0", "Sleeve 0.2.0 (build 98)") == 98
-    assert updater.parse_build("v0.2.0-build.7", "Sleeve 0.2.0 (build 98)") == 7   # the tag is the stronger word
-    assert updater.parse_version("v0.2.0-build.99") == (0, 2, 0)
-    assert updater.parse_version("v0.2.0-build.") is None and updater.parse_version("v0.2.0-build.x") is None
+    assert updater.parse_build("v0.2.0+build.7", "Sleeve 0.2.0 (build 98)") == 7   # the tag is the stronger word
+    assert updater.parse_version("v0.2.0+build.99") == (0, 2, 0)
+    assert updater.parse_version("v0.2.0+build.") is None and updater.parse_version("v0.2.0+build.x") is None
+    assert updater.parse_version("v0.2.0-build.99") is None                  # that would be a pre-release in SemVer
+    assert updater.parse_version("v0.2.0-rc.1") is None and updater.parse_version("v01.2.3") is None
 
 
 def test_the_wheel_address_is_only_made_from_a_clean_tag():
     assert updater.wheel_url("v0.3.1") == ("https://github.com/jieke238y34/sleeve/releases/download/"
                                           "v0.3.1/sleeve-0.3.1-py3-none-any.whl")
-    assert updater.wheel_url("v0.3.1-build.20").endswith("/v0.3.1-build.20/sleeve-0.3.1-py3-none-any.whl")
-    for bad in ("0.3.1", "v0.3", "v0.3.1/../x", "../v0.3.1", "", "v0.3.1-build.20/../x"):
+    assert updater.wheel_url("v0.3.1+build.20").endswith("/v0.3.1%2Bbuild.20/sleeve-0.3.1-py3-none-any.whl")
+    for bad in ("0.3.1", "v0.3", "v0.3.1/../x", "../v0.3.1", "", "v0.3.1+build.20/../x"):
         with pytest.raises(ValueError):
             updater.wheel_url(bad)
 
@@ -58,9 +60,9 @@ def test_latest_release_reads_the_tag_and_handles_every_failure_in_words():
         "url": "https://github.com/jieke238y34/sleeve/releases/tag/v0.3.0"}
     named = lambda req, timeout: Resp(json.dumps({"tag_name": "v0.3.0", "name": "Sleeve 0.3.0 (build 99)"}).encode())  # noqa: E731
     assert updater.latest_release(named)["build"] == 99
-    assert updater.latest_release(answer("v0.3.0-build.101")) == {
-        "tag": "v0.3.0-build.101", "version": "0.3.0", "build": 101,
-        "url": "https://github.com/jieke238y34/sleeve/releases/tag/v0.3.0-build.101"}
+    assert updater.latest_release(answer("v0.3.0+build.101")) == {
+        "tag": "v0.3.0+build.101", "version": "0.3.0", "build": 101,
+        "url": "https://github.com/jieke238y34/sleeve/releases/tag/v0.3.0+build.101"}
 
     def not_found(req, timeout):
         raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, None)
@@ -90,6 +92,7 @@ def test_removal_takes_the_environment_and_launcher_and_nothing_else(tmp_path):
     home, env = tmp_path / "home", {"SLEEVE_PREFIX": str(tmp_path / "home/.local/share/sleeve")}
     venv = tmp_path / "home/.local/share/sleeve/venv"
     (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
     (venv / "bin/sleeve").write_text("x")
     (tmp_path / "home/.local/bin").mkdir(parents=True)
     (tmp_path / "home/.local/bin/sleeve").symlink_to(venv / "bin/sleeve")
@@ -124,6 +127,8 @@ def test_a_sleeve_command_that_is_not_ours_is_left_alone(tmp_path):
 def test_the_removal_script_quotes_paths_and_lists_only_planned_things(tmp_path):
     home = tmp_path / "it's home"
     env = {"SLEEVE_PREFIX": str(home / ".local/share/sleeve")}
+    (home / ".local/share/sleeve/venv").mkdir(parents=True)
+    (home / ".local/share/sleeve/venv/pyvenv.cfg").write_text("home = /usr/bin\n")
     script = updater.removal_script(env, home)
     parts = shlex.split(script.replace(";", " ; "))                       # what the shell would see as arguments
     assert parts[:4] == ["sleep", "1", ";", "rm"] and str(home / ".local/share/sleeve/venv") in parts
@@ -138,7 +143,7 @@ def test_the_update_command_line_stops_for_copies_it_does_not_own(tmp_path):
 
 
 def test_a_newer_build_of_the_same_version_is_reinstalled_without_touching_qt():
-    same = updater.update_command(f"v{updater.__version__}-build.99999", python="py")
+    same = updater.update_command(f"v{updater.__version__}+build.99999", python="py")
     assert "--force-reinstall" in same and "--no-deps" in same and same[-1].endswith("-py3-none-any.whl")
     newer = updater.update_command("v99.0.0", python="py")
     assert "--force-reinstall" not in newer and "--no-deps" not in newer          # a new version may need new libraries
@@ -160,10 +165,10 @@ def test_the_update_command_line_with_a_fake_environment(tmp_path, monkeypatch):
     ran.clear()
     monkeypatch.setattr(updater, "local_build", lambda: 98)
     same_version = f"v{updater.__version__}"
-    assert updater.cli_update(lines.append, opener=answer(f"{same_version}-build.99"), run=run) == 0
+    assert updater.cli_update(lines.append, opener=answer(f"{same_version}+build.99"), run=run) == 0
     assert ran and "--force-reinstall" in ran[0] and "build 99" in "".join(lines)    # a newer build is an update too
     ran.clear()
-    assert updater.cli_update(lines.append, opener=answer(f"{same_version}-build.98"), run=run) == 0 and not ran
+    assert updater.cli_update(lines.append, opener=answer(f"{same_version}+build.98"), run=run) == 0 and not ran
     assert updater.cli_update(lines.append, opener=answer("v0.0.1"), run=run) == 0 and not ran      # already newest
     assert "newest" in lines[-1]
     assert updater.cli_update(lines.append, run=run, opener=lambda r, timeout: (_ for _ in ()).throw(

@@ -7,3 +7,4 @@ UNDO = "Unstash"            # "Unstash this song"
 PAST = "stashed"            # "already stashed"
 DONE = "Stashed"            # "Stashed 3 new songs"
 SONGS = "Stashed Songs"     # the folder in the Library
+MINE_MARK = "◈"            # before the playlists made in Sleeve, in the list (a diamond of its own, next to Stash)

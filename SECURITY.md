@@ -31,7 +31,7 @@ This is the whole surface, so you can judge the risk:
 - **Listens on the D-Bus session bus** for MPRIS (media keys). Only button presses, seeks, volume and loop/shuffle
   modes are accepted; `OpenUri` does nothing.
 - **Starts `ffmpeg`** (if installed) to measure loudness, with fixed arguments.
-- **Writes** only: tags you save in the tag editor; `.m3u8` files in `Playlists/My Playlists`; settings, liked songs
+- **Writes** only: tags you save in the tag editor; `.m3u8` files in `Playlists/My Playlists`; settings, stashed songs
   and the trust record under `~/.config/sleeve`; and the tag and loudness caches under `~/.cache/sleeve`.
 - **Makes no network connections on its own** (the two exceptions below ask first). The network is used by `dl.py` when it downloads music, and by the
   optional **Find tags online** button, which asks you first and then sends only the title and artist (or file name) of

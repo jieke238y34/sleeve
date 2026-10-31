@@ -2,9 +2,11 @@
 import argparse
 import dataclasses
 import os
+import random
 import re
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -22,7 +24,7 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -45,7 +47,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -235,6 +236,7 @@ class SongModel(QAbstractTableModel):
         super().__init__()
         self.songs = list(songs)
         self.liked = set()                    # the window's stashed paths; shown with a mark before the title
+        self.icons, self.placeholder = {}, None   # path -> cover icon, shared with the window; the mark until one loads
         self._sort = None                     # (column, order) the header shows; kept when the list changes
 
     def set_songs(self, songs):
@@ -262,6 +264,8 @@ class SongModel(QAbstractTableModel):
             heart = f"{labels.MARK} " if s.path in self.liked else ""
             genre = s.genre or ("" if s.folder == library.LOOSE else s.folder)
             return (heart + s.name, s.artist, s.album, genre, fmt_time(s.length))[col]
+        if role == Qt.DecorationRole and col == 0:
+            return self.icons.get(s.path) or self.placeholder
         if role == Qt.TextAlignmentRole and col == 4:
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.ToolTipRole:
@@ -328,6 +332,8 @@ class MainWindow(QMainWindow):
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
+        self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
+        self._queue_source = ""                        # what the queue was started from: a playlist, an album, a folder
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
@@ -336,6 +342,7 @@ class MainWindow(QMainWindow):
         self._loud_timer.setInterval(400)
         self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
+        SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
@@ -500,6 +507,16 @@ class MainWindow(QMainWindow):
         self.table.setModel(self.model)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
+        self.table.setAlternatingRowColors(False)             # a clean list: no stripes
+        self.table.setIconSize(QSize(36, 36))
+        self.table.verticalHeader().setDefaultSectionSize(46)
+        self.model.icons = self._thumbs                       # shared with the queue: path -> cover icon
+        self._lib_thumb_timer = QTimer(self)
+        self._lib_thumb_timer.setSingleShot(True)
+        self._lib_thumb_timer.setInterval(30)
+        self._lib_thumb_timer.timeout.connect(self._load_library_thumbs)
+        self.model.modelReset.connect(self._lib_thumb_timer.start)       # a new order shows new rows: their covers
+        self.table.verticalScrollBar().valueChanged.connect(lambda _=0: self._lib_thumb_timer.start())
         SmoothScroll.attach(self.table)
         head = self.table.horizontalHeader()
         head.setStretchLastSection(False)
@@ -508,7 +525,8 @@ class MainWindow(QMainWindow):
             head.setSectionResizeMode(col, QHeaderView.Interactive)
             head.resizeSection(col, width)
         head.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table.doubleClicked.connect(lambda ix: self.player.set_queue([s.path for s in self.model.songs], ix.row()))
+        self.table.doubleClicked.connect(
+            lambda ix: self._play_queue([s.path for s in self.model.songs], ix.row(), self._folder_source()))
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._song_menu)
         self.album_grid, self.album_detail = AlbumGrid(), AlbumDetail()
@@ -527,7 +545,7 @@ class MainWindow(QMainWindow):
         back.clicked.connect(lambda: self.albums_stack.setCurrentIndex(0))
         self.view_albums_btn.toggled.connect(self._library_view_changed)
         for signal in (self.album_grid.playAlbum, self.album_detail.playAlbum):
-            signal.connect(lambda paths: self.player.set_queue(paths))
+            signal.connect(lambda paths: self._play_queue(paths, 0, self._album_source(paths)))
         for signal in (self.album_grid.enqueueAlbum, self.album_detail.enqueueAlbum):
             signal.connect(lambda paths: self.player.enqueue(paths))
         self.album_grid.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
@@ -553,7 +571,7 @@ class MainWindow(QMainWindow):
     def _style_table(self, t):
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        t.setAlternatingRowColors(True)
+        t.setAlternatingRowColors(False)
         t.verticalHeader().setVisible(False)
         t.horizontalHeader().setStretchLastSection(True)
         t.setShowGrid(False)
@@ -591,6 +609,19 @@ class MainWindow(QMainWindow):
         self.pl_table = QTableWidget(0, 3)
         self.pl_table.setHorizontalHeaderLabels(["Song", "Time", "In library"])
         self._style_table(self.pl_table)
+        self.pl_table.horizontalHeader().hide()                 # a clean list: cover, title, artist, then the time
+        self.pl_table.horizontalHeader().setStretchLastSection(False)
+        self.pl_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.pl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.pl_table.setColumnHidden(2, True)
+        self.pl_table.setIconSize(QSize(44, 44))
+        self.pl_table.setWordWrap(False)
+        self.pl_table.verticalHeader().setDefaultSectionSize(56)
+        self._pl_thumb_timer = QTimer(self)
+        self._pl_thumb_timer.setSingleShot(True)
+        self._pl_thumb_timer.setInterval(30)
+        self._pl_thumb_timer.timeout.connect(self._load_playlist_thumbs)
+        self.pl_table.verticalScrollBar().valueChanged.connect(lambda _=0: self._pl_thumb_timer.start())
         self.pl_table.cellDoubleClicked.connect(self._play_playlist_from)
         self.pl_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_table.customContextMenuRequested.connect(self._playlist_song_menu)
@@ -605,6 +636,10 @@ class MainWindow(QMainWindow):
         back.setToolTip("Back to the covers")
         back.clicked.connect(self._show_playlist_grid)
         info_row.addWidget(back)
+        self.pl_look_btn = QPushButton("Cover && colour…")
+        self.pl_look_btn.setToolTip("Change this playlist's cover picture and title colour")
+        self.pl_look_btn.clicked.connect(self._edit_current_playlist)
+        info_row.addWidget(self.pl_look_btn)
         info_row.addWidget(self.pl_info, 1)
         info_row.addWidget(self.pl_like_all)
         self.pl_empty = QLabel("You have no playlists yet.\n\nDrag playlist files (.m3u8) onto this page to import "
@@ -672,7 +707,7 @@ class MainWindow(QMainWindow):
         head = QHBoxLayout()
         titles = QVBoxLayout()
         titles.setSpacing(0)
-        heading = QLabel("Playlist")
+        self.queue_heading = heading = QLabel("Queue")
         heading.setObjectName("heading")
         self.queue_label = QLabel("Nothing queued")
         self.queue_label.setObjectName("muted")
@@ -779,7 +814,6 @@ class MainWindow(QMainWindow):
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lay.addWidget(side)
         lay.addLayout(right, 1)
-        self._thumbs = {}                              # path -> QIcon, filled a few songs at a time
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
@@ -1187,6 +1221,21 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        row = QHBoxLayout()
+        self.scroll_slider = ClickSlider(Qt.Horizontal)
+        self.scroll_slider.setRange(50, 500)
+        self.scroll_slider.setSingleStep(10)
+        self.scroll_slider.setPageStep(50)
+        self.scroll_slider.setValue(self.settings.scroll_speed)
+        self.scroll_slider.setMaximumWidth(280)
+        self.scroll_label = QLabel(f"{self.settings.scroll_speed}%")
+        self.scroll_slider.valueChanged.connect(self._scroll_speed_changed)
+        row.addWidget(QLabel("Scroll speed"))
+        row.addWidget(self.scroll_slider)
+        row.addWidget(self.scroll_label)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("How far one turn of the mouse wheel moves a list. Higher is faster."))
         lay.addWidget(hint("How big the cover gets on the Now Playing page. It still shrinks to fit a small window."))
         row = QHBoxLayout()
         self.accent_box = QComboBox()
@@ -1636,6 +1685,7 @@ class MainWindow(QMainWindow):
         self._look = look
         self._accent_shown = colour
         self.backdrop.set_fixed(theme.look_backdrop(look))
+        self.backdrop.set_art(self._cover_expanded, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.identity_page.set_accent(colour)
@@ -1867,6 +1917,7 @@ class MainWindow(QMainWindow):
             return True
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
             self._fit_columns()
+            self._lib_thumb_timer.start()
         if ev.type() == QEvent.ShortcutOverride and isinstance(obj, QWidget) and self.isAncestorOf(obj):
             key = ev.key()
             text_like = isinstance(obj, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
@@ -1889,6 +1940,9 @@ class MainWindow(QMainWindow):
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
         self.model.set_songs(library.search(songs, self.search.text()))
+        if self.model.placeholder is None:
+            self.model.placeholder = self._blank_icon()
+        self._lib_thumb_timer.start()
         if self.view_albums_btn.isChecked():
             self._albums_timer.start()
 
@@ -1902,10 +1956,15 @@ class MainWindow(QMainWindow):
                 continue
         folders = sorted({s.folder for s in self.songs if s.folder != library.LOOSE}, key=str.lower)
         dlg = self._quick = QuickSearch(self.songs, playlists_, folders, self)
-        dlg.play.connect(lambda paths, start: self.player.set_queue(paths, start))
+        dlg.play.connect(lambda paths, start: self._play_queue(paths, start, "Search results"))
         dlg.enqueue.connect(lambda paths: self.player.enqueue(paths))
         dlg.play_next.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         dlg.show()
+
+    def _scroll_speed_changed(self, value):
+        self.scroll_label.setText(f"{value}%")
+        SmoothScroll.speed = value / 100                      # every list picks it up on its next wheel turn
+        self._set_setting("scroll_speed", int(value))
 
     def _cover_size_changed(self, value):
         self.cover_label.setText(f"{value} px")
@@ -2005,8 +2064,8 @@ class MainWindow(QMainWindow):
         sel = self._selected()
         if not sel:
             return
-        m = QMenu(self)
-        m.addAction("Play now", lambda: self.player.set_queue([s.path for s in sel]))
+        m = theme.Menu(self)
+        m.addAction("Play now", lambda: self._play_queue([s.path for s in sel], 0, self._folder_source()))
         m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
         all_liked = all(s.path in self.likes for s in sel)
@@ -2046,7 +2105,15 @@ class MainWindow(QMainWindow):
             song = self.by_path.get(play.path)
             if song is not None:                              # songs that left the library are not shown
                 rows.append((song.name, song.artist, play.plays))
-        card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening)
+        insights = self.history.insights(PERIODS[period])
+        artists = Counter()
+        for play in self.history.top(PERIODS[period], limit=1_000_000):
+            song = self.by_path.get(play.path)
+            if song is not None and song.artist.strip():
+                artists[song.artist.strip()] += play.plays
+        insights["artists"] = len(artists)
+        insights["top_artists"] = artists.most_common(5)
+        card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening, insights)
 
     def _listening_period_changed(self, period):
         self._set_setting("identity_period", period)
@@ -2305,7 +2372,8 @@ class MainWindow(QMainWindow):
         lay.addLayout(bar)
         self.pl_grid = plgrid.PlaylistGrid(parent=page)
         self.pl_grid.openAlbum.connect(self._open_playlist_tile)
-        self.pl_grid.playAlbum.connect(lambda paths: self.player.set_queue(paths) if paths else None)
+        self.pl_grid.playAlbum.connect(self._play_tile_paths)
+        self.pl_grid.editRequested.connect(self._playlist_edit_menu)
         self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
         lay.addWidget(self.pl_grid, 1)
@@ -2368,12 +2436,24 @@ class MainWindow(QMainWindow):
 
     def _playlist_tile_menu(self, pos):
         tile = self.pl_grid.album_at(pos)
-        if tile is None or tile.new:
-            return
-        menu = QMenu(self)
+        if tile is not None and not tile.new:
+            self._tile_menu(tile).exec(self.pl_grid.viewport().mapToGlobal(pos))
+
+    def _playlist_edit_menu(self, tile, global_pos):
+        "The Edit pill on a tile was pressed."
+        self._tile_menu(tile).exec(global_pos)
+
+    def _edit_current_playlist(self):
+        "The detail view's Cover & colour button."
+        tile = self.pl_grid.tile_for(str(self._pl_current[1])) if self._pl_current else None
+        if tile is not None:
+            self._tile_menu(tile).exec(self.pl_look_btn.mapToGlobal(QPoint(0, self.pl_look_btn.height())))
+
+    def _tile_menu(self, tile):
+        menu = theme.Menu(self)
         menu.addAction("Open", lambda: self._open_playlist_tile(tile))
         if tile.songs:
-            menu.addAction("Play", lambda: self.player.set_queue(tile.paths))
+            menu.addAction("Play", lambda: self._play_queue(tile.paths, 0, tile.name))
             menu.addAction("Add to queue", lambda: self.player.enqueue(tile.paths))
         menu.addSeparator()
         menu.addAction("Choose a cover picture…", lambda: self._choose_playlist_cover(tile))
@@ -2386,7 +2466,7 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
             menu.addAction("Rename…", lambda: self._playlist_tile_do(tile, self._rename_playlist))
             menu.addAction("Delete…", lambda: self._playlist_tile_do(tile, self._delete_playlist))
-        menu.exec(self.pl_grid.viewport().mapToGlobal(pos))
+        return menu
 
     def _playlist_tile_do(self, tile, action):
         "Rename or delete use the current playlist, so make this tile's playlist the current one first."
@@ -2431,7 +2511,7 @@ class MainWindow(QMainWindow):
         self._set_playlist_look(tile, colour=chosen.name())
 
     def _load_playlists(self, select=None):
-        "Fill the list: the playlists made in Sleeve first (marked with a star), then the ones dl.py wrote."
+        "Fill the list: the playlists made in Sleeve first (marked with ◈), then the ones dl.py wrote."
         keep = select or (self._pl_current[0] if self._pl_current else None)
         spotify = playlists.list_playlists(self.cfg.playlist_dir)
         show = self.settings.show_spotify_playlists
@@ -2448,7 +2528,7 @@ class MainWindow(QMainWindow):
         self.pl_list.blockSignals(True)
         self.pl_list.clear()
         for name, _, mine in self._playlist_files:
-            self.pl_list.addItem(f"★  {name}" if mine else name)
+            self.pl_list.addItem(f"{labels.MINE_MARK}  {name}" if mine else name)
         self.pl_list.blockSignals(False)
         if self._playlist_files:
             row = next((i for i, f in enumerate(self._playlist_files) if f[0] == keep), 0)
@@ -2511,15 +2591,20 @@ class MainWindow(QMainWindow):
         for r, e in enumerate(entries):
             song = self.by_path.get(e.path)
             if song:
-                title = f"{song.artist} - {song.name}" if song.artist else song.name
+                title = f"{song.name}\n{song.artist}" if song.artist else song.name
             else:
-                title = e.title or Path(e.path).stem
+                title = f"{e.title or Path(e.path).stem}\nnot in your library"
             items = (title, fmt_time(e.length or (song.length if song else 0)), "yes" if e.exists else "missing")
             for c, text in enumerate(items):
                 it = QTableWidgetItem(text)
                 if not e.exists:
                     it.setForeground(self.palette().placeholderText())
+                if c == 0:
+                    it.setIcon(self._thumbs.get(e.path) or self._blank_icon())
+                if c == 1:
+                    it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.pl_table.setItem(r, c, it)
+        self._pl_thumb_timer.start()
         model = self.pl_table.selectionModel()
         for r in select_rows:
             if 0 <= r < len(entries):
@@ -2628,7 +2713,7 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(self._current_path)
         if song is None:
             return
-        menu = QMenu(self)
+        menu = theme.Menu(self)
         self._playlist_choices(menu, [song])
         self._popup_menu(menu, self.add_pl_btn)
 
@@ -2646,7 +2731,7 @@ class MainWindow(QMainWindow):
     def _queue_menu(self, pos):
         row = self.queue_list.currentRow()
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
-        m = QMenu(self)
+        m = theme.Menu(self)
         if songs:
             m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
                         lambda: self._toggle_like([songs[0].path]))
@@ -2659,8 +2744,8 @@ class MainWindow(QMainWindow):
         songs = self._songs_for([self._playlist_entries[r].path for r in rows if r < len(self._playlist_entries)])
         if not songs:
             return
-        m = QMenu(self)
-        m.addAction("Play now", lambda: self.player.set_queue([s.path for s in songs]))
+        m = theme.Menu(self)
+        m.addAction("Play now", lambda: self._play_queue([s.path for s in songs], 0, self._playlist_source()))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
         m.addAction(labels.UNDO if all(s.path in self.likes for s in songs) else labels.VERB,
                     lambda: self._toggle_like([s.path for s in songs]))
@@ -2743,8 +2828,12 @@ class MainWindow(QMainWindow):
         if self.folder != item.text():
             self._folder_changed(item.text())
         paths = [s.path for s in self.model.songs]
+        source = item.text()
+        if paths and item.text() in (ALL, LIKED):            # a fresh random order each time, never the same first song
+            random.shuffle(paths)
+            source = f"{source} (shuffled)"
         if paths:
-            self.player.set_queue(paths)
+            self._play_queue(paths, 0, source)
         else:
             self.status.showMessage(f"Nothing in {item.text()} yet", 5000)
 
@@ -2755,7 +2844,7 @@ class MainWindow(QMainWindow):
             self.pl_list.setCurrentRow(row)
         paths = [e.path for e in self._playlist_entries if e.exists]
         if paths:
-            self.player.set_queue(paths)
+            self._play_queue(paths, 0, self._playlist_source())
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
@@ -2764,11 +2853,39 @@ class MainWindow(QMainWindow):
             return
         playable = [e.path for e in self._playlist_entries if e.exists]
         start = sum(1 for e in self._playlist_entries[:row] if e.exists)       # the clicked copy, not the first one
-        self.player.set_queue(playable, start)
+        self._play_queue(playable, start, self._playlist_source())
 
     # --- queue --------------------------------------------------------------
+    def _play_queue(self, paths, start=0, source=""):
+        "Play these songs, and remember what they came from so Now Playing can say so."
+        self._queue_source = source
+        self.player.set_queue(paths, start)
+        self._refresh_queue()
+
+    def _folder_source(self):
+        "What the library list on show is called: the folder, or the search when something is typed."
+        text = self.search.text().strip()
+        return f"Search: {text}" if text else self.folder
+
+    def _album_source(self, paths):
+        "The album name of the songs about to play."
+        song = self.by_path.get(paths[0]) if paths else None
+        return (song.album if song and song.album else "Album")
+
+    def _playlist_source(self):
+        return self._pl_current[0] if self._pl_current else "Playlist"
+
+    def _play_tile_paths(self, paths):
+        tile = self.pl_grid.current_album()
+        if paths:
+            self._play_queue(paths, 0, tile.name if tile is not None else "Playlist")
+
     def _refresh_queue(self):
         queue = list(self.player.queue)
+        if not queue:
+            self._queue_source = ""
+        self.queue_heading.setText(self._queue_source or "Queue")
+        self.queue_heading.setToolTip(self._queue_source)
         if queue != self._queue_shown:                       # a different queue: build the rows again
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
@@ -2845,21 +2962,79 @@ class MainWindow(QMainWindow):
             if not self._thumb_todo:
                 break
             path = self._thumb_todo.pop()
-            try:
-                data = art.cover_bytes(path)
-            except Exception:
-                data = None
-            pix = QPixmap()
-            if data and pix.loadFromData(data):
-                self._thumbs[path] = QIcon(theme.rounded_pixmap(pix, 44, 8))
-            else:
-                self._thumbs[path] = QIcon(self._placeholder_thumb())
+            self._thumbs[path] = self._make_thumb(path)
             for row in self._queue_rows.get(path, ()):
                 item = self.queue_list.item(row)
                 if item is not None:
                     item.setIcon(self._thumbs[path])
         if self._thumb_todo and not self._closing:
             self._thumb_timer.start()
+
+    def _make_thumb(self, path):
+        "The 44 pixel cover icon of a song, or the Sleeve mark when it has none."
+        try:
+            data = art.cover_bytes(path)
+        except Exception:
+            data = None
+        pix = QPixmap()
+        if data and pix.loadFromData(data):
+            return QIcon(theme.rounded_pixmap(pix, 44, 8))
+        return QIcon(self._placeholder_thumb())
+
+    def _blank_icon(self):
+        "What a row shows while its cover is still loading: a dim rounded square, nothing that flashes when scrolling."
+        if getattr(self, "_blank", None) is None:
+            pix = QPixmap(44, 44)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, 20))
+            p.drawRoundedRect(0, 0, 44, 44, 8, 8)
+            p.end()
+            self._blank = QIcon(pix)
+        return self._blank
+
+    def _trim_thumbs(self, keep=2000):
+        while len(self._thumbs) > keep:
+            self._thumbs.pop(next(iter(self._thumbs)))
+
+    @staticmethod
+    def _visible_rows(view, count):
+        "The rows on screen, and a couple below so scrolling finds them ready."
+        top = view.rowAt(0)
+        if top < 0 or not count:
+            return range(0)
+        bottom = view.rowAt(view.viewport().height() - 1)
+        return range(top, min(count, (count - 1 if bottom < 0 else bottom) + 3))
+
+    def _load_library_thumbs(self):
+        "Covers for the rows of the song table that are on screen, three a tick, so the window never stalls."
+        songs = self.model.songs
+        todo = [r for r in self._visible_rows(self.table, len(songs)) if songs[r].path not in self._thumbs][:5]
+        for r in todo:
+            self._thumbs[songs[r].path] = self._make_thumb(songs[r].path)
+            ix = self.model.index(r, 0)
+            self.model.dataChanged.emit(ix, ix, [Qt.DecorationRole])
+        self._trim_thumbs()
+        if todo and not self._closing:
+            self._lib_thumb_timer.start()
+
+    def _load_playlist_thumbs(self):
+        "The same for the playlist on show."
+        entries = self._playlist_entries
+        rows = self._visible_rows(self.pl_table, len(entries))
+        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists][:5]
+        for r in todo:
+            self._thumbs[entries[r].path] = self._make_thumb(entries[r].path)
+        for r in rows:
+            item = self.pl_table.item(r, 0)
+            icon = self._thumbs.get(entries[r].path)
+            if item is not None and icon is not None:
+                item.setIcon(icon)
+        self._trim_thumbs()
+        if todo and not self._closing:
+            self._pl_thumb_timer.start()
 
     def _placeholder_thumb(self):
         logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(44, 44)
@@ -2882,8 +3057,7 @@ class MainWindow(QMainWindow):
         "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
         self._cover_expanded = not self._cover_expanded
         self.np_side.setVisible(not self._cover_expanded)
-        for lab in (self.np_title, self.np_artist, self.np_album):
-            lab.setVisible(not self._cover_expanded)
+        self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
         self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
         self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
         self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
@@ -2895,7 +3069,9 @@ class MainWindow(QMainWindow):
             return
         screen = CoverScreen(self)
         screen.closed.connect(self._cover_screen_closed)
+        screen.seekRequested.connect(self._seek_now)
         screen.set_song(self._np_pix, self.np_title.text(), self.np_artist.text())
+        screen.set_progress(self._pos, self._dur)
         self._cover_screen = screen
         if self.screen() is not None:
             screen.setScreen(self.screen())                   # on the screen this window is on
@@ -3248,7 +3424,7 @@ class MainWindow(QMainWindow):
         if not 0 <= row < len(self._health_rows):
             return
         it = self._health_rows[row]
-        self.player.set_queue([it.path if isinstance(it, library.Song) else it])
+        self._play_queue([it.path if isinstance(it, library.Song) else it], 0, "Health")
 
     # --- player bar ---------------------------------------------------------
     def _nav_changed(self, row):
@@ -3334,6 +3510,8 @@ class MainWindow(QMainWindow):
         if not seeked:
             self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
+        if self._cover_screen is not None:
+            self._cover_screen.set_progress(pos, self._dur)
         if jumped:
             self._update_presence()                          # a seek moves Discord's progress bar too
         if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
@@ -3349,6 +3527,8 @@ class MainWindow(QMainWindow):
 
     def _on_duration(self, dur):
         self._dur = dur
+        if self._cover_screen is not None:
+            self._cover_screen.set_progress(self._pos, dur)
         self.dur_label.setText(fmt_time(dur))
         self.seek.blockSignals(True)                 # a range change can move the value: not a seek
         self.seek.setRange(0, int(dur * 10))

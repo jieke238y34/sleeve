@@ -14,7 +14,9 @@ Clear empties it but keeps the song that is playing, and Save turns it into a pl
 ## Album art
 
 Press the expand button by the cover to make it bigger. The fullscreen button, or F11, shows the cover across the
-whole screen. Press Esc to come back.
+whole screen, on a gradient of its colours, with a thin seek bar you can click or drag. Press Esc, F11, Enter or click to come back.
+The Now Playing page names what is playing (a playlist, album, folder or search). Playing All songs or Stashed Songs
+starts in a fresh random order each time.
 
 ## Lyrics
 

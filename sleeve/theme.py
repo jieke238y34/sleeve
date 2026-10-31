@@ -3,7 +3,7 @@ the playing song's cover."""
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QMenu, QWidget
 
 LAVENDER, CREAM = "#b7afe0", "#f3e9d2"
 BG, TEXT, MUTED = "#15131d", "#ece9f6", "#a29cbd"
@@ -62,10 +62,11 @@ def build_style(accent=LAVENDER, palette=None):
     return f"""
 QMainWindow, QDialog {{ background: {bg}; }}
 QWidget {{ color: {text}; font-size: 10pt; }}QStackedWidget, QSplitter, QLabel, QCheckBox {{ background: transparent; }}
-QToolTip {{ background: #24202f; color: {text}; border: 1px solid #3a3450; padding: 4px; }}
+QToolTip {{ background: #1a1624; color: {text}; border: 1px solid rgba({rgb}, 120); border-left: 3px solid {accent};
+            padding: 5px 10px; font-size: 9pt; }}
 
 QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
-    background: rgba(10, 8, 16, 120); border: none; border-radius: 12px; outline: 0;
+    background: rgba(10, 8, 16, 120); border: 1px solid rgba(255, 255, 255, 22); border-radius: 12px; outline: 0;
     padding: 3px;
     alternate-background-color: rgba(255, 255, 255, 10);
     selection-background-color: rgba({rgb}, 80); selection-color: #ffffff;
@@ -75,7 +76,8 @@ QListWidget::item:selected {{ background: rgba({rgb}, 80); }}
 QListWidget::item, QListWidget::item:focus, QListWidget::item:selected:!active {{ border: none; outline: none; }}
 QListWidget::item:selected:!active {{ background: rgba({rgb}, 80); }}
 QListWidget#nav:focus {{ border: none; }}
-QListWidget#nav {{ background: rgba(10, 8, 16, 170); border-radius: 0; padding: 10px 8px; font-size: 11pt; }}
+QListWidget#nav {{ background: rgba(10, 8, 16, 170); border: none; border-radius: 0; padding: 10px 8px;
+                    font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {muted}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {text}; }}
 QListWidget#nav::item:selected {{ background: {accent}; color: {bg}; font-weight: 600; }}
@@ -97,7 +99,6 @@ QPushButton:focus {{ border: 2px solid {accent}; padding: 4px 14px; }}
 QPushButton#round:focus, QPushButton#play:focus {{ padding: 0; }}
 QPushButton#primary:focus {{ padding: 10px 28px; border-color: {CREAM}; }}
 QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
-QListWidget:focus, QTableView:focus, QTableWidget:focus {{ border: 1px solid rgba({rgb}, 160); }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
@@ -135,8 +136,10 @@ QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
 QComboBox {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 13px;
              padding: 5px 14px; min-width: 120px; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
-QComboBox QAbstractItemView {{ background: #1e1a2a; border: 1px solid rgba(255, 255, 255, 30); padding: 4px;
-                               selection-background-color: {accent}; selection-color: {bg}; outline: 0; }}
+QComboBox QAbstractItemView {{ background: rgba(22, 19, 31, 244); border: 1px solid rgba({rgb}, 80);
+                               border-radius: 12px;
+                               padding: 6px; selection-background-color: rgba({rgb}, 60); selection-color: {accent};
+                               outline: 0; }}
 QProgressBar {{ background: rgba(255, 255, 255, 30); border: none; border-radius: 6px; text-align: center; }}
 QProgressBar::chunk {{ background: {accent}; border-radius: 6px; }}
 QStatusBar {{ background: transparent; color: {muted}; }}
@@ -145,10 +148,11 @@ QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QSplitter::handle {{ background: transparent; }}
 QSplitter::handle:hover {{ background: rgba(255, 255, 255, 30); }}
 
-QMenu {{ background: #1e1a2a; border: 1px solid rgba(255, 255, 255, 30); border-radius: 10px; padding: 6px; }}
-QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
-QMenu::item:selected {{ background: {accent}; color: {bg}; }}
-QMenu::separator {{ height: 1px; background: rgba(255, 255, 255, 30); margin: 5px 8px; }}
+QMenu {{ background: rgba(22, 19, 31, 244); border: 1px solid rgba({rgb}, 80); border-radius: 14px; padding: 8px; }}
+QMenu::item {{ padding: 8px 26px 8px 14px; margin: 1px 0; border-radius: 9px; border-left: 3px solid transparent; }}
+QMenu::item:selected {{ background: rgba({rgb}, 48); color: {accent}; border-left: 3px solid {accent}; }}
+QMenu::item:disabled {{ color: rgba(255, 255, 255, 80); }}
+QMenu::separator {{ height: 1px; background: rgba({rgb}, 60); margin: 6px 12px; }}
 
 QWidget#playerbar {{ background: rgba(10, 8, 16, 170); }}
 QPushButton#seg {{ background: transparent; color: {muted}; border-radius: 14px; padding: 6px 18px; font-weight: 600; }}
@@ -333,6 +337,26 @@ def accent_from_cover(pix):
     return QColor.fromHsvF(max(h, 0.0), min(0.85, max(0.45, s * 1.15)), 0.96).name()
 
 
+class Menu(QMenu):
+    "Every menu in Sleeve: a rounded glass panel (see the QMenu rules in build_style), no square corners behind it."
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
+        self.setWindowFlag(Qt.NoDropShadowWindowHint, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_DeleteOnClose, True)         # one menu per right-click must not pile up
+
+    def addMenu(self, arg):
+        "A submenu made from a title is a Sleeve menu as well (a plain QMenu would show square corners)."
+        if isinstance(arg, str):
+            sub = Menu(self)
+            sub.setTitle(arg)
+            super().addMenu(sub)
+            return sub
+        return super().addMenu(arg)
+
+
 class Backdrop(QWidget):
     "Paints the window background: a smooth gradient in the colours of the playing cover (eased from the last one)."
 
@@ -350,10 +374,19 @@ class Backdrop(QWidget):
         self._fade.valueChanged.connect(self._fading)
         self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
         self._pix, self._fixed = None, None                  # the cover now playing; fixed colours from a theme, if any
+        self._art, self._glow = False, QColor(LAVENDER)      # show a blurred copy of the cover behind everything
 
     def set_cover(self, pix):
         self._pix = pix
         self._retarget()
+
+    def set_art(self, on, glow=None):
+        "Paint a blurred, darkened copy of the cover over the gradient, with a soft glow of `glow` (the accent)."
+        self._art = bool(on)
+        if glow is not None:
+            self._glow = QColor(glow)
+        self._cache_key = None
+        self.update()
 
     def set_fixed(self, colours):
         "Use these three colours whatever is playing (a theme's own backdrop); None goes back to the cover's colours."
@@ -368,6 +401,14 @@ class Backdrop(QWidget):
         self._fade.stop()
         self._fade.start()
 
+    def _blurred(self, w, h):
+        "The cover shrunk and stretched to fill w x h: a cheap blur, kept until the cover or the size changes."
+        key = (self._pix.cacheKey(), w, h)
+        if getattr(self, "_blur", (None, None))[0] != key:
+            small = self._pix.scaled(28, 28, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            self._blur = (key, small.scaled(w, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+        return self._blur[1]
+
     def _fading(self, t):
         self._now = [self._mix(a, b, t) for a, b in zip(self._from, self._to, strict=True)]
         self.update()
@@ -380,7 +421,8 @@ class Backdrop(QWidget):
     def paintEvent(self, event):
         "Repaints only copy the finished picture: the window repaints often (the seek bar ticks), the gradient rarely."
         ratio = self.devicePixelRatioF()
-        key = (self.width(), self.height(), ratio, tuple(c.rgb() for c in self._now))
+        key = (self.width(), self.height(), ratio, tuple(c.rgb() for c in self._now), self._art, self._glow.rgb(),
+               self._pix.cacheKey() if self._art and self._pix is not None and not self._pix.isNull() else 0)
         if key != self._cache_key:
             self._cache, self._cache_key = self._render(ratio), key
         p = QPainter(self)
@@ -407,6 +449,19 @@ class Backdrop(QWidget):
         light.setAlpha(0)
         glow.setColorAt(1.0, light)
         p.fillRect(self.rect(), glow)
+        if self._art:
+            if self._pix is not None and not self._pix.isNull():     # the cover, shrunk and stretched: a cheap blur
+                big = self._blurred(w, h)
+                p.setOpacity(0.6)
+                p.drawPixmap((w - big.width()) // 2, (h - big.height()) // 2, big)
+                p.setOpacity(1.0)
+            halo = QRadialGradient(QPointF(w * 0.5, h * 0.42), max(w, h) * 0.55)   # the accent, behind the cover
+            tint = QColor(self._glow)
+            tint.setAlpha(80)
+            halo.setColorAt(0.0, tint)
+            tint.setAlpha(0)
+            halo.setColorAt(1.0, tint)
+            p.fillRect(self.rect(), halo)
         shade = QLinearGradient(0, 0, 0, h)                  # a little darker towards the player bar
         shade.setColorAt(0.0, QColor(21, 19, 29, 40))
         shade.setColorAt(1.0, QColor(21, 19, 29, 170))

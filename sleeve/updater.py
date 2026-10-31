@@ -1,4 +1,8 @@
-"""Updating and removing Sleeve when it was installed with install.sh (its own Python environment under
+"""Versions follow Semantic Versioning (semver.org): MAJOR.MINOR.PATCH, and the build number is *build metadata*
+(`v0.2.0+build.99`), which SemVer ignores when ordering releases. Sleeve adds one rule of its own for updates: of two
+releases with the same version, the higher build number is the newer one.
+
+Updating and removing Sleeve when it was installed with install.sh (its own Python environment under
 ~/.local/share/sleeve). Nothing here runs by itself: a check happens only when the user asks, and talks to one fixed
 GitHub address. A copy installed by a package manager (dnf, zypper, apt) or run from a checkout is never touched; the
 user is told which command to use instead.
@@ -15,6 +19,7 @@ import shutil
 import subprocess  # nosec B404 (the command line update/removal runs pip and nothing else)
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -28,7 +33,8 @@ API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 APP_ID = "io.github.jieke238y34.Sleeve"
 MAX_BYTES = 1_000_000
-_TAG = re.compile(r"v(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:-build\.(\d{1,7}))?")   # v0.2.0 or v0.2.0-build.99
+_NUM = r"(0|[1-9]\d{0,3})"                                          # SemVer: no leading zeros
+_TAG = re.compile(rf"v{_NUM}\.{_NUM}\.{_NUM}(?:\+build\.(\d{{1,7}}))?")   # v0.2.0 or v0.2.0+build.99
 _TITLE_BUILD = re.compile(r"\(build (\d{1,7})\)")
 
 
@@ -41,13 +47,13 @@ def _match(text):
 
 
 def parse_version(text):
-    "(major, minor, patch) for '0.2.0', 'v0.2.0' or 'v0.2.0-build.99'; None for anything else."
+    "(major, minor, patch) for '0.2.0', 'v0.2.0' or 'v0.2.0+build.99'; None for anything else."
     m = _match(text)
     return tuple(int(n) for n in m.groups()[:3]) if m else None
 
 
 def parse_build(text, title=""):
-    "The build number of a release: from `-build.N` in its tag, else '(build N)' in its title, else 0 (unknown)."
+    "The build number of a release: from `+build.N` in its tag, else '(build N)' in its title, else 0 (unknown)."
     m = _match(text)
     if m and m.group(4):
         return int(m.group(4))
@@ -75,7 +81,8 @@ def wheel_url(tag):
     version = parse_version(tag) if isinstance(tag, str) and tag.startswith("v") else None
     if version is None:
         raise ValueError("not a release tag")
-    return f"https://github.com/{REPO}/releases/download/{tag}/sleeve-{'.'.join(map(str, version))}-py3-none-any.whl"
+    shown = urllib.parse.quote(tag, safe="")                      # the + of v0.2.0+build.9 is %2B in a web address
+    return f"https://github.com/{REPO}/releases/download/{shown}/sleeve-{'.'.join(map(str, version))}-py3-none-any.whl"
 
 
 def latest_release(opener=urllib.request.urlopen):
@@ -131,9 +138,12 @@ def how_to_update(kind):
 def update_command(tag, python=None):
     """The pip command that puts a release into the running environment. A newer build of the version already
     installed has the same version number, so pip is told to reinstall it (without touching Qt and the rest)."""
+    url = wheel_url(tag)
+    if parse_version(tag) < parse_version(__version__):
+        raise ValueError("that release is older than this copy")             # never a downgrade, whoever asks
     same = parse_version(tag) == parse_version(__version__)
     extra = ["--force-reinstall", "--no-deps"] if same else []
-    return [python or sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", *extra, wheel_url(tag)]
+    return [python or sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", *extra, url]
 
 
 def label(release):
@@ -146,13 +156,27 @@ def removal_plan(env=None, home=None):
     command that does not point into our own environment is not either."""
     home = Path(home) if home else Path.home()
     prefix = prefix_dir(env)
-    dirs = [prefix / "venv", prefix / "preview"]
+    venv = prefix / "venv"
+    dirs = []
+    if _prefix_ok(prefix, home) and (venv / "pyvenv.cfg").is_file() and not venv.is_symlink():
+        dirs.append(venv)                                       # only a real virtual environment is ever removed
+        if prefix.name == "sleeve":
+            dirs.append(prefix / "preview")                     # the side-by-side copy the reinstall script makes
     files = [home / ".local/share/applications" / f"{APP_ID}.desktop",
              home / ".local/share/icons/hicolor/scalable/apps" / f"{APP_ID}.svg"]
     link = home / ".local/bin/sleeve"
-    if link.is_symlink() and os.readlink(link).startswith(str(dirs[0])):
-        files.append(link)
+    if dirs and link.is_symlink() and Path(os.path.realpath(link)).is_relative_to(venv.resolve()):
+        files.append(link)                                      # a command that really points into our environment
     return dirs, files
+
+
+def _prefix_ok(prefix, home):
+    "False for a prefix that is `/`, the home folder or a folder above it: whatever is inside is not ours to remove."
+    try:
+        top, here = Path(prefix).resolve(), Path(home).resolve()
+    except OSError:
+        return False
+    return top != Path("/") and top != here and top not in here.parents
 
 
 def remove_installation(env=None, home=None):
@@ -186,8 +210,10 @@ def data_plan(env=None, home=None, playlist_dir=None):
     if folder is not None and folder.is_dir() and not folder.is_symlink():
         files = sorted(f for f in folder.iterdir() if f.is_file() and not f.is_symlink()
                        and f.suffix.lower() in PLAYLIST_EXT)
-    return {"folders": [f for f in folders if f.is_dir() and not f.is_symlink()], "playlists": files,
-            "playlist_folder": folder}
+    found = [f if f.is_dir() and not f.is_symlink() else None for f in folders]
+    dl = Path(env.get("XDG_DATA_HOME") or home / ".local" / "share") / "sleeve" / "playlist-sync"
+    return {"folders": [f for f in found if f], "config_dir": found[0], "cache_dir": found[1], "playlists": files,
+            "playlist_folder": folder, "dl_dir": dl if dl.is_dir() and not dl.is_symlink() else None}
 
 
 def _count(file, key):
@@ -201,7 +227,7 @@ def _count(file, key):
 
 def describe_data(plan):
     "The lines the user reads before agreeing to a full uninstall (plain text)."
-    config_dir = next((f for f in plan["folders"] if f.parent.name != ".cache" and f.parent.name != "cache"), None)
+    config_dir, cache_dir = plan["config_dir"], plan["cache_dir"]              # named in the plan, never guessed
     lines = []
     n = len(plan["playlists"])
     if n:
@@ -212,9 +238,10 @@ def describe_data(plan):
         liked, plays = _count(config_dir / "liked.json", "liked"), _count(config_dir / "history.json", "plays")
         lines.append(f"your stashed songs ({liked}) and your listening history ({plays} plays)")
         lines.append(f"your settings, playlist covers and title colours, in {config_dir}")
-    for f in plan["folders"]:
-        if f is not config_dir:
-            lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {f}")
+    if cache_dir is not None:
+        lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {cache_dir}")
+    if plan.get("dl_dir") is not None:
+        lines.append(f"the copy of dl.py that Sleeve downloaded, with its config.ini, in {plan['dl_dir']}")
     return lines
 
 
@@ -226,6 +253,10 @@ def remove_data(plan):
         if folder.name == "sleeve" and folder.is_dir() and not folder.is_symlink():
             shutil.rmtree(folder, ignore_errors=True)
             removed.append(str(folder))
+    dl = plan.get("dl_dir")
+    if dl is not None and dl.name == "playlist-sync" and dl.parent.name == "sleeve" and not dl.is_symlink():
+        shutil.rmtree(dl, ignore_errors=True)
+        removed.append(str(dl))
     for f in plan["playlists"]:
         if f.is_file() and not f.is_symlink() and f.suffix.lower() in PLAYLIST_EXT:
             f.unlink(missing_ok=True)
@@ -244,18 +275,28 @@ def removal_script(env=None, home=None, plan=None, pid=None):
     on the way out, which would bring a deleted folder back), then delete what the plan lists. `plan` is a data_plan
     for a full uninstall; without it the user's data stays."""
     dirs, files = removal_plan(env, home)
+    playlists = []
     if plan:
         dirs = dirs + [f for f in plan["folders"] if f.name == "sleeve"]
-        files = files + list(plan["playlists"])
-    some = " ".join(shlex.quote(str(d)) for d in dirs)
-    more = " ".join(shlex.quote(str(f)) for f in files)
-    wait = "sleep 1; "
-    if pid:                                          # up to 20 seconds for Sleeve to finish saving and exit
-        wait = f"n=0; while kill -0 {int(pid)} 2>/dev/null && [ $n -lt 100 ]; do sleep 0.2; n=$((n+1)); done; "
-    script = f"{wait}rm -rf {some}; rm -f {more}"
-    if plan and plan["playlists"] and plan["playlist_folder"] is not None:
-        script += f"; rmdir {shlex.quote(str(plan['playlist_folder']))} 2>/dev/null || true"   # only if it is empty
-    return script
+        if plan.get("dl_dir") is not None:
+            dirs.append(plan["dl_dir"])
+        playlists = list(plan["playlists"])
+    quote = shlex.quote
+    wait = "sleep 1"
+    if pid:      # up to a minute for Sleeve to finish saving and exit; if it has not, delete nothing (run it again)
+        wait = (f"n=0; while kill -0 {int(pid)} 2>/dev/null && [ $n -lt 300 ]; do sleep 0.2; n=$((n+1)); done; "
+                f"if kill -0 {int(pid)} 2>/dev/null; then exit 1; fi")
+    steps = [wait]
+    if dirs:
+        steps.append("rm -rf -- " + " ".join(quote(str(d)) for d in dirs))
+    if files:
+        steps.append("rm -f -- " + " ".join(quote(str(f)) for f in files))
+    for parent in dict.fromkeys(f.parent for f in playlists):    # a folder swapped for a link since the plan: leave it
+        names = " ".join(quote(str(f)) for f in playlists if f.parent == parent)
+        steps.append(f"if [ ! -L {quote(str(parent))} ]; then rm -f -- {names}; fi")
+    if playlists and plan["playlist_folder"] is not None:
+        steps.append(f"rmdir -- {quote(str(plan['playlist_folder']))} 2>/dev/null || true")   # only if it is empty
+    return "; ".join(steps)
 
 
 def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env=None):

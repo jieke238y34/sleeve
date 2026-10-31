@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 HOME = Path.home()
+# Where "Get dl.py for me" puts it (see getdl.py). Nothing else is guessed: a dl.py somewhere else is chosen in
+# Settings or Downloads (Sleeve then remembers the path), or named with --dl or $SLEEVE_DL.
 DL_CANDIDATES = [
-    HOME / "claude-projects" / "playlist-sync-templates" / "dl.py",
-    HOME / "claude-projects" / "playlist-sync" / "dl.py",
+    Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local" / "share") / "sleeve" / "playlist-sync" / "dl.py",
 ]
 TRUST_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "sleeve" / "trusted_dl.json"
 
@@ -65,7 +66,7 @@ class Config:
 
 
 def find_dl(explicit=None):
-    "dl.py to use: the argument, then $SLEEVE_DL, then the usual places."
+    "dl.py to use: the argument, then $SLEEVE_DL, then the copy Sleeve fetched itself."
     for c in [explicit, os.environ.get("SLEEVE_DL"), *DL_CANDIDATES]:
         if c and Path(c).expanduser().is_file():
             return Path(c).expanduser().resolve()

@@ -14,7 +14,9 @@ cd sleeve
 
 The script makes a private Python environment in `~/.local/share/sleeve/venv`, builds and installs Sleeve into it, adds
 a `sleeve` command in `~/.local/bin`, and adds Sleeve (with its icon) to your application menu. It needs no root access.
-Run it again after `git pull` to update. `./install.sh --uninstall` removes it and leaves your music and settings alone.
+To update, press **Check for updates** in Settings, run `sleeve --update`, or pull the source and run `./install.sh` again.
+`./install.sh --uninstall` (or `sleeve --uninstall`) removes it and leaves your music and settings alone;
+`sleeve --uninstall --full` also deletes Sleeve's own data (add `--yes` to skip the question).
 
 To install without cloning first: `curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | sh`.
 
@@ -29,6 +31,8 @@ To install without cloning first: `curl -fsSL https://raw.githubusercontent.com/
 - `mpv` is not needed
 
 ## From the GitHub release
+
+No release has been published yet (v0.2.0 is still unreleased). Once it is, this works:
 
 1. Open the [Releases page](https://github.com/jieke238y34/sleeve/releases) and download
    `sleeve-0.2.0-py3-none-any.whl`.
