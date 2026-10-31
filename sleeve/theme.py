@@ -104,7 +104,7 @@ QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
-QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 80); }}
+QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
@@ -114,7 +114,7 @@ QPushButton#play:hover {{ background: {CREAM}; }}
 QPushButton#primary {{ background: {accent}; color: {bg}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
 QPushButton#primary:hover {{ background: {CREAM}; }}
-QPushButton#primary:disabled {{ background: rgba({rgb}, 70); color: rgba(21, 19, 29, 160); }}
+QPushButton#primary:disabled {{ background: rgba({rgb}, 46); color: rgba(255, 255, 255, 150); }}
 QListWidget#activity {{ font-size: 10.5pt; }}
 QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#activity::item:selected {{ background: transparent; }}

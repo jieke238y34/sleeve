@@ -3,7 +3,6 @@ import argparse
 import dataclasses
 import os
 import random
-import re
 import sys
 import time
 from collections import Counter
@@ -112,6 +111,7 @@ from .coverart import ArtCache, ArtWorker, is_art_url
 from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
+from .lyricswin import LyricsWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
@@ -128,7 +128,6 @@ ALL = "All songs"
 CUSTOM_LABEL = "Custom…"
 QUEUE_ROW = QSize(10, 54)                    # every row of the queue is this tall, with or without its cover
 DL_HOME = "https://github.com/jieke238y34/playlist-sync"
-LYRICS_MAX_BATCHES = 200                     # 200 x 300 songs: more than any library, but a loop must end
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
 
 
@@ -518,10 +517,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+K"), self, self._quick_search)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
-        self._lyrics_run = None                               # the lyrics job in progress (see _lyrics_begin)
-        self._lyrics_timer = QTimer(self)                     # while it runs, look for the files it has just written
-        self._lyrics_timer.setInterval(4000)
-        self._lyrics_timer.timeout.connect(self._lyrics_scan)
+        self.lyrics_win = LyricsWindow(cfg, lambda: self.songs, self)      # its own runner: downloads keep going
+        self.lyrics_win.finishedJob.connect(self.rescan)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
         self.log_timer.start(3000)
@@ -945,8 +942,12 @@ class MainWindow(QMainWindow):
             b.setToolTip(what)
             if primary:
                 b.setObjectName("primary")
-            b.clicked.connect(lambda _=False, n=name: self._run_action(n))
-            self.sync_buttons.append(b)
+            if name == "Fetch lyrics":                         # its own window and runner: never waits for a download
+                b.setText("Get lyrics…")
+                b.clicked.connect(self._open_lyrics_window)
+            else:
+                b.clicked.connect(lambda _=False, n=name: self._run_action(n))
+                self.sync_buttons.append(b)
             self._action_buttons[name] = b
             return b
 
@@ -964,7 +965,9 @@ class MainWindow(QMainWindow):
         self.setup_btn.clicked.connect(self._open_setup)
         self.setup_btn.setVisible(self.cfg.has_dl)
         tidy.addWidget(self.setup_btn)
-        tidy.addWidget(QLabel("Tidy up:"))
+        tidy_label = QLabel("Tidy up:")
+        tidy_label.setContentsMargins(4, 0, 4, 0)
+        tidy.addWidget(tidy_label)
         for name in sync.ACTIONS:
             if name != "Sync playlists":
                 tidy.addWidget(action_button(name))
@@ -999,11 +1002,10 @@ class MainWindow(QMainWindow):
         foot.addWidget(self.details_btn)
         foot.addWidget(clear)
         foot.addStretch(1)
-        self.sync_note = QLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
+        self.sync_note = ElidedLabel(f"Using {self.cfg.dl_path}" if self.cfg.has_dl else "dl.py not found")
         self.sync_note.setObjectName("muted")
-        self.sync_note.setTextFormat(Qt.PlainText)
-        self.sync_note.setWordWrap(True)                    # a long path wraps instead of widening the page
-        foot.addWidget(self.sync_note)
+        self.sync_note.setAlignment(Qt.AlignRight | Qt.AlignVCenter)     # one line; the whole path is the tooltip
+        foot.addWidget(self.sync_note, 1)
 
         self.sync_log = QPlainTextEdit()          # what dl.py really printed, for when something needs a closer look
         self.sync_log.setReadOnly(True)
@@ -1965,6 +1967,15 @@ class MainWindow(QMainWindow):
         self.health_table = QTableWidget(0, 3)
         self.health_table.setHorizontalHeaderLabels(["Title", "Artist", "File"])
         self._style_table(self.health_table)
+        head = self.health_table.horizontalHeader()
+        head.setStretchLastSection(False)
+        head.setSectionResizeMode(0, QHeaderView.Stretch)
+        head.setSectionResizeMode(1, QHeaderView.Interactive)
+        head.setSectionResizeMode(2, QHeaderView.Stretch)
+        head.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.health_table.setColumnWidth(1, 200)
+        self.health_table.setTextElideMode(Qt.ElideMiddle)     # a long path keeps its folder and its file name
+        self.health_table.setWordWrap(False)
         self.health_table.cellDoubleClicked.connect(self._play_health_row)
         self._health = {}
         self._health_rows = []
@@ -1985,11 +1996,23 @@ class MainWindow(QMainWindow):
         actions = FlowLayout()
         for b in (self.health_play_btn, self.health_folder_btn, self.health_online_btn, self.health_fix_btn):
             actions.addWidget(b)
+        self.health_empty = QLabel("Nothing to fix here.")
+        self.health_empty.setObjectName("muted")
+        self.health_empty.setAlignment(Qt.AlignCenter)
+        title = QLabel("Health")
+        title.setObjectName("title")
+        sub = QLabel("Problems found in your music folder. Pick a kind on the left; fix them all with one button.")
+        sub.setObjectName("muted")
+        sub.setWordWrap(True)
         right = QVBoxLayout()
+        right.addWidget(title)
+        right.addWidget(sub)
         right.addWidget(self.health_table, 1)
+        right.addWidget(self.health_empty, 1)
         right.addLayout(actions)
         lay.addWidget(self.health_list)
         lay.addLayout(right, 1)
+        self.health_table.setVisible(False)                # until a kind with problems is picked
         self._health_buttons()
         return page
 
@@ -3512,11 +3535,15 @@ class MainWindow(QMainWindow):
                 started = self.runner.run(name)
             if started:
                 self._add_activity(activity.STEP, f"Starting: {label}")
-                if name == "Fetch lyrics":
-                    self._lyrics_begin()
         except Exception as e:
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
+    def _open_lyrics_window(self):
+        win = self.lyrics_win
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
             b.setEnabled(not running and self.cfg.has_dl)
@@ -3528,10 +3555,6 @@ class MainWindow(QMainWindow):
     def _on_sync_finished(self, code):
         if self._closing:
             return
-        if self._lyrics_run is not None:
-            self._lyrics_after_batch(code)
-            if self._lyrics_run is not None:                       # more batches to come: not finished, not an error
-                return
         if code == 0:
             self._add_activity(activity.GOOD, "Finished")
         elif code in (15, -15, 143, -1) and not self.runner.running:
@@ -3542,82 +3565,9 @@ class MainWindow(QMainWindow):
     def _on_sync_line(self, line):
         self.sync_log.appendPlainText(line)
         self._show_line(line)
-        run = self._lyrics_run
-        if run is not None:
-            looking = re.match(r"^Lyrics: looking for (\d[\d,]*) of (\d[\d,]*) songs", line)
-            if looking:                                            # dl.py asks 300 at a time: how many are still left?
-                asked, total = (int(n.replace(",", "")) for n in looking.groups())
-                run["more"] = max(0, total - asked)
-            elif line.startswith("Lyrics: every song already has a lyrics file"):
-                run["more"] = 0
-
-    # --- lyrics: all the batches, and which songs got some ------------------------
-    def _lyrics_begin(self):
-        self._lyrics_run = {"start": time.time(), "seen": set(), "batches": 1, "more": 0, "synced": 0, "plain": 0,
-                            "stop": False}
-        self._lyrics_timer.start()
 
     def _stop_clicked(self):
-        if self._lyrics_run is not None:
-            self._lyrics_run["stop"] = True                         # Stop ends the whole job, not just this batch
         self.runner.stop()
-
-    def _lyrics_scan(self):
-        "List the songs whose lyrics file has appeared since the job began (dl.py itself never says which)."
-        run = self._lyrics_run
-        if run is None:
-            return
-        found = []
-        for song in self.songs:
-            if song.path in run["seen"]:
-                continue
-            base = Path(song.path)
-            for suffix in (".lrc", ".txt"):
-                try:
-                    fresh = os.stat(base.with_suffix(suffix)).st_mtime >= run["start"] - 1
-                except OSError:
-                    continue
-                if fresh:
-                    run["seen"].add(song.path)
-                    run["synced" if suffix == ".lrc" else "plain"] += 1
-                    found.append((song, suffix == ".lrc"))
-                    break
-        for song, synced in found[:80]:
-            label = f"{song.artist} - {song.name}" if song.artist else song.name
-            self._add_activity(activity.GOOD, f"Lyrics added: {label} ({'synced' if synced else 'text only'})")
-        if len(found) > 80:
-            self._add_activity(activity.INFO, f"…and {len(found) - 80} more songs got lyrics")
-
-    def _lyrics_after_batch(self, code):
-        "A batch of lyrics ended: start the next one while songs are left, or say how it all went."
-        run = self._lyrics_run
-        self._lyrics_scan()
-        if code == 0 and run["more"] > 0 and not run["stop"] and run["batches"] < LYRICS_MAX_BATCHES:
-            QTimer.singleShot(800, self._lyrics_next_batch)
-            return
-        self._lyrics_timer.stop()
-        added = run["synced"] + run["plain"]
-        if run["stop"]:
-            self._add_activity(activity.WARN, f"Lyrics stopped. {added} songs got lyrics so far.")
-        elif code == 0:
-            self._add_activity(
-                activity.GOOD, f"Lyrics done: {added} songs got lyrics ({run['synced']} synced, "
-                               f"{run['plain']} text only) in {run['batches']} batches")
-        self._lyrics_run = None
-
-    def _lyrics_next_batch(self):
-        run = self._lyrics_run
-        if run is None or run["stop"] or self.runner.running or self._closing:
-            return
-        run["batches"] += 1
-        self._add_activity(activity.STEP, f"Batch {run['batches']}: {run['more']:,} songs still to try")
-        try:
-            if not self.runner.run("Fetch lyrics"):
-                self._lyrics_after_batch(1)
-        except Exception as e:                                     # e.g. dl.py changed and needs approving again
-            self._add_activity(activity.BAD, f"Could not start the next batch: {e}")
-            self._lyrics_timer.stop()
-            self._lyrics_run = None
 
     def _show_line(self, line):
         "One line of dl.py output: shown as a friendly message (or not at all) and as the progress summary."
@@ -3634,8 +3584,8 @@ class MainWindow(QMainWindow):
 
     def _poll_log(self):
         "Follow a download started outside the app (a terminal, a timer); keep this page from starting another."
-        if self.runner.running or not self.cfg.has_dl:
-            return
+        if self.runner.running or self.lyrics_win.running or not self.cfg.has_dl:
+            return                                            # our own dl.py processes are not "another program's"
         try:
             fresh = sync.other_dl_running()
             if fresh is None:                                 # this system cannot list processes: go by the log
@@ -3666,8 +3616,9 @@ class MainWindow(QMainWindow):
             return
         self._external = on
         for name, b in self._action_buttons.items():
-            b.setEnabled(not on or name == "Status")
-            b.setToolTip(FRIENDLY[name][1] if not on or name == "Status" else "A download is already running")
+            free = not on or name in ("Status", "Fetch lyrics")        # the lyrics job has its own runner
+            b.setEnabled(free)
+            b.setToolTip(FRIENDLY[name][1] if free else "A download is already running")
         if on:
             self.dl_state.setText("A download is running (started outside Sleeve). Following it here.")
         else:
@@ -3702,7 +3653,11 @@ class MainWindow(QMainWindow):
             else:
                 vals = (Path(it).stem, "", it)
             for c, text in enumerate(vals):
-                self.health_table.setItem(r, c, QTableWidgetItem(text))
+                item = QTableWidgetItem(text)
+                item.setToolTip(text)
+                self.health_table.setItem(r, c, item)
+        self.health_table.setVisible(bool(items))
+        self.health_empty.setVisible(not items)
         self._health_buttons()
 
     def _health_path(self):
@@ -4080,6 +4035,7 @@ class MainWindow(QMainWindow):
         if self._vol_timer.isActive():               # the volume was changed in the last moment
             self._vol_timer.stop()
             self._save_settings()
+        self.lyrics_win.shutdown()
         self.runner.shutdown()
         self.player.close()
         super().closeEvent(event)
