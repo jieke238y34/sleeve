@@ -186,7 +186,8 @@ def data_plan(env=None, home=None, playlist_dir=None):
     if folder is not None and folder.is_dir() and not folder.is_symlink():
         files = sorted(f for f in folder.iterdir() if f.is_file() and not f.is_symlink()
                        and f.suffix.lower() in PLAYLIST_EXT)
-    return {"folders": [f for f in folders if f.is_dir() and not f.is_symlink()], "playlists": files,
+    found = [f if f.is_dir() and not f.is_symlink() else None for f in folders]
+    return {"folders": [f for f in found if f], "config_dir": found[0], "cache_dir": found[1], "playlists": files,
             "playlist_folder": folder}
 
 
@@ -201,7 +202,7 @@ def _count(file, key):
 
 def describe_data(plan):
     "The lines the user reads before agreeing to a full uninstall (plain text)."
-    config_dir = next((f for f in plan["folders"] if f.parent.name != ".cache" and f.parent.name != "cache"), None)
+    config_dir, cache_dir = plan["config_dir"], plan["cache_dir"]              # named in the plan, never guessed
     lines = []
     n = len(plan["playlists"])
     if n:
@@ -212,9 +213,8 @@ def describe_data(plan):
         liked, plays = _count(config_dir / "liked.json", "liked"), _count(config_dir / "history.json", "plays")
         lines.append(f"your stashed songs ({liked}) and your listening history ({plays} plays)")
         lines.append(f"your settings, playlist covers and title colours, in {config_dir}")
-    for f in plan["folders"]:
-        if f is not config_dir:
-            lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {f}")
+    if cache_dir is not None:
+        lines.append(f"Sleeve's cache of tags, loudness and cover addresses, in {cache_dir}")
     return lines
 
 
