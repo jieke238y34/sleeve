@@ -219,9 +219,9 @@ def test_expanding_the_cover_never_changes_the_window_size(qapp, cfg, monkeypatc
             settle(qapp, 0.1)
             assert (win.width(), win.height()) == (1000, 700)
             assert not win.np_side.isHidden() and win.np_cover.side() == normal_side
-        win.resize(900, 560)                                                  # a small window gives a small cover
+        win.resize(900, 600)                                                  # a small window gives a small cover
         settle(qapp, 0.2)
-        assert (win.width(), win.height()) == (900, 560) and win.np_cover.side() < normal_side
+        assert (win.width(), win.height()) == (900, 600) and win.np_cover.side() < normal_side
     finally:
         win.close()
 
@@ -301,12 +301,12 @@ def test_small_windows_scroll_the_long_pages_instead_of_growing(qapp, cfg, monke
     try:
         need = win.minimumSizeHint()
         assert need.width() <= 900 and need.height() <= 520, (need.width(), need.height())
-        win.resize(900, 560)
+        win.resize(900, 600)
         win.show()
         for page in range(win.nav.count()):
             win.nav.setCurrentRow(page)
             settle(qapp, 0.05)
-            assert (win.width(), win.height()) == (900, 560)                    # no page makes the window grow
+            assert (win.width(), win.height()) == (900, 600)                    # no page makes the window grow
     finally:
         win.close()
 
