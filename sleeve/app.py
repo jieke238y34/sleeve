@@ -117,6 +117,7 @@ from .boost import StreamBoost
 from .coverart import ArtCache, ArtWorker, is_art_url
 from .coverart import clear_cache as clear_art_cache
 from .coverview import CoverScreen, CoverView
+from .discbutton import DiscButton
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
@@ -1070,9 +1071,10 @@ class MainWindow(QMainWindow):
         self.np_shuffle_btn.clicked.connect(lambda: self.shuffle_btn.click())
         self.np_cover.doubleClicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
-        self.np_prev, self.np_play, self.np_next = (QPushButton("") for _ in range(3))
+        self.np_prev, self.np_next = QPushButton(""), QPushButton("")
+        self.np_play = DiscButton()                              # the record player, bigger on this page
         for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
-                                   (self.np_play, "Play / pause", self.player.toggle, "play"),
+                                   (self.np_play, "Play / pause", self.player.toggle, "playbig"),
                                    (self.np_next, "Next", self.player.next, "skip")):
             b.setObjectName(name)
             b.setToolTip(tip)
@@ -2738,7 +2740,10 @@ class MainWindow(QMainWindow):
             return b
         self.shuffle_btn = button("", "Shuffle: off", self.player.set_shuffle, checkable=True)
         self.prev_btn = button("", "Previous", self.player.prev)
-        self.play_btn = button("", "Play / pause", self.player.toggle, "play")
+        self.play_btn = DiscButton()                          # a little record player: it turns while music plays
+        self.play_btn.setObjectName("play")
+        self.play_btn.setToolTip("Play / pause")
+        self.play_btn.clicked.connect(self.player.toggle)
         self.next_btn = button("", "Next", self.player.next)
         self.stash_btn = button("", f"{labels.VERB} this song", self._stash_current)
         self.stash_btn.setObjectName("round")
@@ -4809,14 +4814,15 @@ class MainWindow(QMainWindow):
         self._update_toggle_icons()
 
     def _update_transport_icons(self):
-        "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
+        "The skips are painted chevrons; the play button is a record player that spins while music plays."
         playing = getattr(self, "_is_playing", False)
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
         for prev, play, nxt in sets:
-            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
-                                            (play, "pause" if playing else "play", theme.BG, 38)):
-                btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
-                btn.setIconSize(QSize(side, side))
+            for btn, kind in ((prev, "prev"), (nxt, "next")):
+                btn.setIcon(QIcon(theme.transport_icon(kind, theme.TEXT, 26)))
+                btn.setIconSize(QSize(26, 26))
+            play.setPlaying(playing)
+            play.setAccessibleName("Pause" if playing else "Play")
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."

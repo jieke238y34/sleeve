@@ -202,6 +202,10 @@ QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
                     padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
 QPushButton#play:hover {{ background: {CREAM}; }}
+QPushButton#playbig {{ border-radius: 38px; min-width: 76px; max-width: 76px; min-height: 76px; max-height: 76px;
+                       padding: 0; background: {accent}; color: {bg}; }}
+QPushButton#playbig:hover {{ background: {CREAM}; }}
+QPushButton#playbig:focus {{ padding: 0; }}
 
 QPushButton#primary {{ background: {accent}; color: {bg}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
@@ -269,10 +273,9 @@ STYLE = build_style()
 
 
 def transport_icon(kind, color, size=24):
-    """A painted icon for the transport buttons ("play", "pause", "prev" or "next"), drawn in `color` and crisp at any
-    scale. Sleeve's own shapes rather than the usual ones: play is a plump pick-shaped triangle with a spindle hole,
-    pause two round pills, and the skips are chevrons with a fading trail behind the leading one, so they point the way
-    the music moves."""
+    """A painted icon for the skip buttons ("prev" or "next"), drawn in `color` and crisp at any scale: two chevrons
+    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the record
+    player in discbutton.py.)"""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
@@ -281,35 +284,18 @@ def transport_icon(kind, color, size=24):
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(size / 24, size / 24)
     ink = QColor(color)
-    if kind == "play":                           # a plump pick-shaped triangle with a spindle hole, like a record label
-        p.setPen(QPen(ink, 5.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        p.setBrush(ink)
-        tri = QPainterPath(QPointF(7.9, 6.2))
-        tri.lineTo(QPointF(17.3, 12))
-        tri.lineTo(QPointF(7.9, 17.8))
-        tri.closeSubpath()
-        p.drawPath(tri)
-        p.setCompositionMode(QPainter.CompositionMode_Clear)               # the hole is cut out, not painted over
-        p.setPen(Qt.NoPen)
-        p.drawEllipse(QPointF(11.1, 12.0), 1.9, 1.9)
-    elif kind == "pause":                        # two equal round pills, centred on the middle of the icon
-        p.setPen(Qt.NoPen)
-        p.setBrush(ink)
-        p.drawRoundedRect(QRectF(6.6, 5.0, 4.2, 14.0), 2.1, 2.1)
-        p.drawRoundedRect(QRectF(13.2, 5.0, 4.2, 14.0), 2.1, 2.1)
-    else:                                        # prev / next: two chevrons, the leading one solid, the trail faded
-        forward = kind == "next"
-        trail = QColor(ink)
-        trail.setAlphaF(0.38)
-        for shift, colour in ((-5.2, trail), (2.4, ink)) if forward else ((5.2, trail), (-2.4, ink)):
-            p.setPen(QPen(colour, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            p.setBrush(Qt.NoBrush)
-            x = 12 + shift
-            tip, back = (x + 4.0, x - 4.0) if forward else (x - 4.0, x + 4.0)
-            chevron = QPainterPath(QPointF(back, 5.6))
-            chevron.lineTo(QPointF(tip, 12))
-            chevron.lineTo(QPointF(back, 18.4))
-            p.drawPath(chevron)
+    forward = kind == "next"
+    trail = QColor(ink)
+    trail.setAlphaF(0.38)
+    for shift, colour in ((-5.2, trail), (2.4, ink)) if forward else ((5.2, trail), (-2.4, ink)):
+        p.setPen(QPen(colour, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        x = 12 + shift
+        tip, back = (x + 4.0, x - 4.0) if forward else (x - 4.0, x + 4.0)
+        chevron = QPainterPath(QPointF(back, 5.6))
+        chevron.lineTo(QPointF(tip, 12))
+        chevron.lineTo(QPointF(back, 18.4))
+        p.drawPath(chevron)
     p.end()
     return pix
 

@@ -9,33 +9,27 @@ from sleeve import theme
 
 def test_each_icon_is_drawn_in_its_colour_and_differs_from_the_others(qapp):  # noqa: F811
     seen = {}
-    for kind in ("play", "pause", "prev", "next"):
+    for kind in ("prev", "next"):
         image = theme.transport_icon(kind, "#ff0000", 24).toImage()
         painted = [(x, y) for x in range(image.width()) for y in range(image.height())
                    if image.pixelColor(x, y).alpha() > 200]
         assert painted, kind
         assert QColor(image.pixelColor(*painted[len(painted) // 2])).red() > 200       # the colour asked for
         seen[kind] = frozenset(painted)
-    assert len(set(seen.values())) == 4                                              # four different shapes
+    assert len(set(seen.values())) == 2                                              # two different shapes
 
 
-def test_the_play_buttons_show_pause_while_playing_and_play_when_not(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_skip_buttons_carry_icons_and_no_text(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        for button in (win.prev_btn, win.play_btn, win.next_btn, win.np_prev, win.np_play, win.np_next):
+        for button in (win.prev_btn, win.next_btn, win.np_prev, win.np_next):
             assert not button.icon().isNull() and button.text() == ""
-        win._on_playing(True)
-        paused = win.play_btn.icon().pixmap(30, 30).toImage()
-        win._on_playing(False)
-        playing = win.play_btn.icon().pixmap(30, 30).toImage()
-        assert paused != playing
-        assert win.np_play.icon().pixmap(30, 30).toImage() == playing                 # both pages say the same
     finally:
         win.close()
 
 
-def test_the_icons_are_centred_in_their_square_play_a_touch_to_the_right(qapp):  # noqa: F811
-    for kind, allowed in (("pause", 0.6), ("play", 1.6), ("prev", 1.6), ("next", 1.6)):
+def test_the_skip_icons_are_centred_in_their_square(qapp):  # noqa: F811
+    for kind, allowed in (("prev", 1.6), ("next", 1.6)):
         image = theme.transport_icon(kind, "#ff0000", 24).toImage()
         xs = [x for x in range(image.width()) for y in range(image.height()) if image.pixelColor(x, y).alpha() > 40]
         ys = [y for x in range(image.width()) for y in range(image.height()) if image.pixelColor(x, y).alpha() > 40]

@@ -79,8 +79,9 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 
 ### Changed
 
-- Previous, play/pause and next are painted icons of Sleeve's own: a plump pick-shaped play triangle, two round pills
-  for pause, and chevrons with a fading trail for the skips; on the player bar and on Now Playing.
+- The **play button is a little record player**: a vinyl record that turns slowly while music plays, with the tonearm
+  resting on it, and that stops with the arm swung away when paused (no play triangle or pause bars; it only animates while
+  playing and on screen). Previous and next are painted chevrons with a fading trail. On the player bar and Now Playing.
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
 - Resuming after a long pause no longer skips to the next song.
 - The sidebar runs the whole height of the window, in one dark column behind the page list and the album art; the player
