@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Settings > Look: **Show hover tips** switches off the small labels that appear when the pointer rests on a button
+  (Previous, Stash, Play and the rest). The labels themselves are kept for screen readers.
 - **Black** is an accent colour (and a custom accent may be as dark as you like). Text and icons on an accent surface turn
   white when the accent is dark; where the accent is drawn straight on the window (sliders, switch labels, icons) a black
   accent is shown as a light neutral so it never disappears.

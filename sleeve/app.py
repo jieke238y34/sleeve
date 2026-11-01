@@ -71,6 +71,7 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -1523,6 +1524,10 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
+        self.tooltips_box.setChecked(self.settings.tooltips)
+        self.tooltips_box.toggled.connect(self._tooltips_toggled)
+        lay.addWidget(self.tooltips_box)
         self.side_art_box = Switch("Show the small album art under the sidebar")
         self.side_art_box.setChecked(self.settings.side_art)
         self.side_art_box.toggled.connect(lambda on: (self._set_setting("side_art", on), self._apply_layout()))
@@ -2124,6 +2129,11 @@ class MainWindow(QMainWindow):
     def _loudness_done(self):
         if self._loud_again and not self._closing:
             self._measure_loudness()
+
+    def _tooltips_toggled(self, on):
+        self._set_setting("tooltips", on)
+        if not on:
+            QToolTip.hideText()                                   # one that is showing goes at once
 
     def _gapless_toggled(self, on):
         self._set_setting("gapless", on)
@@ -2876,6 +2886,8 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, ev):
         "Window shortcuts (space, left, right) must not steal those keys from a widget that uses them."
+        if ev.type() == QEvent.ToolTip and not self.settings.tooltips:
+            return True                                           # hover labels are switched off in Settings > Look
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
         if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
