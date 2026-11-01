@@ -62,7 +62,7 @@ Current version: **0.2.0** (every build also shows its build number).
 
 ## Not started: player and lyrics
 
-- [ ] **Lyrics**: strip junk (boilerplate tags above and below) from lyric files; lyrics in the expanded album view
+- [ ] **Lyrics**: (junk lines at the edges of a lyric file are now stripped) lyrics in the expanded album view
       (one line before, the next line underneath, the current one in the accent or text colour); download lyrics
       while songs download; a faster stop command.
 - [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
