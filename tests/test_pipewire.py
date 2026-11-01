@@ -48,6 +48,9 @@ def test_earbuds_buttons_run_the_script_and_report(qapp, cfg, monkeypatch, tmp_p
     script.write_text(f"#!/bin/sh\necho \"$1\" >> {log}\nexit 0\n")
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    # Maid BT also installs outside PATH (~/.local/bin and friends, see earbuds._PLACES): a machine that really runs it
+    # must not answer this test, so the fallback spots are emptied along with PATH
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         assert not win.earbuds_frame.isHidden() or True
