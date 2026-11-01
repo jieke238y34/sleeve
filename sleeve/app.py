@@ -2309,6 +2309,11 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
             self.nd_buttons.append(b)
         row.addWidget(self.nd_back_btn)
+        self.nd_save_btn = QPushButton("Save to library")
+        self.nd_save_btn.setToolTip("Download the selected songs or albums into your music folder, under Navidrome. "
+                                    "With nothing selected, every song listed is saved.")
+        self.nd_save_btn.clicked.connect(self._nd_save)
+        row.addWidget(self.nd_save_btn)
         self.nd_table = QTableWidget(0, 4)
         self.nd_table.setHorizontalHeaderLabels(["Title", "Artist", "Album", "Time"])
         self._style_table(self.nd_table)
@@ -2323,7 +2328,8 @@ class MainWindow(QMainWindow):
         self.nd_table.setColumnWidth(2, 200)
         self.nd_table.setWordWrap(False)
         self.nd_table.setTextElideMode(Qt.ElideRight)
-        self.nd_table.verticalHeader().setDefaultSectionSize(36)
+        self.nd_table.verticalHeader().setDefaultSectionSize(48)
+        self.nd_table.setIconSize(QSize(40, 40))
         self.nd_table.cellDoubleClicked.connect(self._nd_activate)
         SmoothScroll.attach(self.nd_table)
         lay.addWidget(title)
@@ -2331,6 +2337,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         lay.addWidget(self.nd_table, 1)
         self._nd_rows, self._nd_stack, self._nd_workers = [], [], set()
+        self._nd_covers, self._nd_asked = {}, set()          # cover id -> QIcon (or None: the server has none)
         self._nd_refresh_state()
         return page
 
@@ -2395,7 +2402,7 @@ class MainWindow(QMainWindow):
         connected = self._nd_client() is not None
         self.nd_hint.setText("Your music on your Navidrome server. Double-click an album to open it, a song to play it."
                              if connected else "Not connected. Add your server in Settings > Navidrome.")
-        for w in (self.nd_search, self.nd_back_btn, *self.nd_buttons):
+        for w in (self.nd_search, self.nd_back_btn, self.nd_save_btn, *self.nd_buttons):
             w.setEnabled(connected)
         self.nd_back_btn.setVisible(bool(self._nd_stack))
         if not connected:
@@ -2458,6 +2465,69 @@ class MainWindow(QMainWindow):
                     cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.nd_table.setItem(r, c, cell)
         self._nd_refresh_state()
+        self._nd_show_covers()
+
+    def _nd_cover_id(self, kind, item):
+        return item["cover"] if kind == "album" else navidrome.COVERS.get(item.path, "")
+
+    def _nd_show_covers(self):
+        "Put the covers that are known on their rows, and ask the server (once each) for the ones that are not."
+        wanted = []
+        for r, (kind, item) in enumerate(self._nd_rows):
+            cid = self._nd_cover_id(kind, item)
+            icon = self._nd_covers.get(cid)
+            if icon is not None and self.nd_table.item(r, 0) is not None:
+                self.nd_table.item(r, 0).setIcon(icon)
+            elif cid and cid not in self._nd_covers and cid not in self._nd_asked and len(wanted) < 60:
+                wanted.append(cid)
+        client = self._nd_client()
+        if not wanted or client is None:
+            return
+        self._nd_asked.update(wanted)
+
+        def got(pictures):
+            for cid, data in pictures.items():
+                pix = QPixmap()
+                self._nd_covers[cid] = QIcon(pix) if data and pix.loadFromData(data) else None
+            self._nd_show_covers()
+        self._nd_run(lambda: {cid: client.cover(cid) for cid in wanted}, got)
+
+    def _nd_save(self):
+        "Download the selected rows (albums are opened first) into <music folder>/Navidrome, skipping what is there."
+        client = self._nd_client()
+        if client is None or not self._nd_rows:
+            return
+        picked = sorted({i.row() for i in self.nd_table.selectionModel().selectedRows()}) or range(len(self._nd_rows))
+        rows = [self._nd_rows[r] for r in picked if 0 <= r < len(self._nd_rows)]
+        music = self.cfg.music_dir
+        self.status.showMessage("Saving from your server…", 5000)
+
+        def work():
+            songs = []
+            for kind, item in rows:
+                songs += client.album(item["id"])[1] if kind == "album" else [item]
+            saved = skipped = failed = 0
+            for song in songs[:500]:
+                dest = navidrome.stash_path(music, song)
+                if dest.exists():
+                    skipped += 1
+                    continue
+                try:
+                    client.download(navidrome.remote_id(song.path), dest)
+                    saved += 1
+                except navidrome.NavidromeError:
+                    failed += 1
+            return saved, skipped, failed
+
+        def done(result):
+            saved, skipped, failed = result
+            note = f"Saved {saved} song{'s' if saved != 1 else ''} to your library"
+            note += f" ({skipped} already there)" if skipped else ""
+            note += f", {failed} could not be downloaded" if failed else ""
+            self.status.showMessage(note, 10000)
+            if saved:
+                self.rescan()
+        self._nd_run(work, done)
 
     def _nd_back(self):
         if self._nd_stack:
