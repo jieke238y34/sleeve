@@ -116,7 +116,6 @@ def test_the_art_starts_level_with_the_top_of_the_panel_beside_it(qapp, cfg, mon
         win.close()
 
 
-
 def test_the_strip_stays_in_the_page_area_and_never_overlaps_the_sidebar(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     monkeypatch.setattr(waveform, "compute_peaks", lambda path, **kw: [0.6] * 30)
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
