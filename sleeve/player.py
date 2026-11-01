@@ -99,6 +99,7 @@ class Player(QObject):
         self._slots = [_Slot(self), _Slot(self)]
         self._cur = 0                      # the slot that is playing; the other one is loaded with the next song
         self._plan = None                  # (index now, index of the song after it or None)
+        self._was_paused = False
         self._clock = QElapsedTimer()      # time since the last position report, to aim the hand-over precisely
         self.output_id = ""                # "": follow the system default output; otherwise a device id
         self._devices = QMediaDevices(self)   # PipeWire/WirePlumber add, remove and re-default outputs (earbuds on/off)
@@ -221,10 +222,13 @@ class Player(QObject):
             return
         if state == QMediaPlayer.PlayingState:
             self._set_playing(True)
-            self._clock.restart()                       # time spent paused is not time the song has played
+            if self._was_paused:                        # time spent paused is not time the song has played
+                self._clock.restart()
+                self._was_paused = False
             self._arm_switch()
         elif state == QMediaPlayer.PausedState:
             self._set_playing(False)
+            self._was_paused = True
             self._switch_timer.stop()
 
     def _on_status(self, status):

@@ -144,6 +144,7 @@ def test_resuming_after_a_long_pause_does_not_hand_over_to_the_next_song(qapp, t
     p = player.Player()
     p.set_queue([str(a), str(b)])
     p.index, p.duration, p.position, p._plan, p._clock = 0, 180.0, 40.0, (0, 1), Clock()
+    p._on_state(QMediaPlayer.PausedState)
     p._on_state(QMediaPlayer.PlayingState)
     assert p._switch_timer.isActive()
     assert p._switch_timer.interval() > 100_000, p._switch_timer.interval()      # about 2 minutes of song are left

@@ -54,8 +54,22 @@ jobs:
         if: matrix.python == '3.10'
         continue-on-error: true
         run: |
+          pip list 2>/dev/null | grep -i -E "pyside|shiboken"
+          python -X faulthandler - <<'PY' || true
+          from PySide6.QtGui import QPainter, QPixmap
+          from PySide6.QtWidgets import QApplication
+          app = QApplication([])
+          pix = QPixmap(64, 64)
+          p = QPainter(pix)
+          print("probe: painter active", p.isActive(), flush=True)
+          p.save()
+          print("probe: save ok", flush=True)
+          p.setRenderHint(QPainter.Antialiasing)
+          print("probe: setRenderHint ok", flush=True)
+          p.end()
+          PY
           timeout -s KILL 150 pytest -s -x -v -o faulthandler_timeout=45 tests/test_grid_fills.py > grid.log 2>&1 || true
-          tail -120 grid.log
+          grep -v "^  File \"/opt" grid.log | tail -60
       - run: pytest -v -o faulthandler_timeout=90      # a test stuck over 90 s dumps every thread's stack
       - name: Run the desktop-integration tests on a session bus (Linux)
         run: dbus-run-session -- pytest tests/test_mpris.py tests/test_singleton.py -q

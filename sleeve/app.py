@@ -142,9 +142,44 @@ DL_HOME = "https://github.com/jieke238y34/playlist-sync"
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
 
 
-def scrollable(page):
+class TopButton(QPushButton):
+    "A pill at the bottom right of a scroll area: appears once it is scrolled down, and scrolls back to the top."
+
+    SHOW_AFTER = 240                                  # pixels scrolled before it shows
+
+    def __init__(self, area):
+        super().__init__("↑  Top", area.viewport())
+        self.area, self.bar = area, area.verticalScrollBar()
+        self.setObjectName("chip")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Scroll back to the top")
+        self.setAccessibleName("Scroll back to the top")
+        self.clicked.connect(lambda: self.bar.setValue(0))
+        self.bar.valueChanged.connect(self._follow)
+        area.viewport().installEventFilter(self)
+        self.hide()
+
+    def _follow(self, *_):
+        self.setVisible(self.bar.value() > self.SHOW_AFTER)
+        self.raise_()
+        self._place()
+
+    def _place(self):
+        view = self.area.viewport()
+        self.adjustSize()
+        self.move(view.width() - self.width() - 24, view.height() - self.height() - 16)
+
+    def eventFilter(self, obj, event):
+        if obj is self.area.viewport() and event.type() == QEvent.Resize:
+            self._place()
+        return False
+
+
+def scrollable(page, top_button=False):
     "The page inside a scroll area, so that a small window scrolls it instead of being forced to grow."
     area = QScrollArea()
+    if top_button:
+        area.top_button = TopButton(area)
     area.setWidget(page)
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.NoFrame)
@@ -568,7 +603,7 @@ class MainWindow(QMainWindow):
                            ("Health", self._health_page()),
                            ("Settings", self._settings_page())):
             self.nav.addItem(name)
-            self.stack.addWidget(scrollable(page) if name in SCROLLED_PAGES else page)
+            self.stack.addWidget(scrollable(page, top_button=name == "Settings") if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
         self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
         self.splitter.setChildrenCollapsible(False)
