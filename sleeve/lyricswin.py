@@ -1,7 +1,8 @@
-"""The lyrics job in a window of its own, so songs can download while lyrics are being fetched.
+"""The lyrics job in a panel beside the download feed, so songs can download while lyrics are being fetched.
 
-dl.py looks for lyrics for 300 songs at a time. This window runs it batch after batch with its own runner, shows each
-song that got lyrics, and never touches the Downloads page's runner, so both can work at the same time.
+dl.py looks for lyrics for 300 songs at a time. This panel runs it batch after batch with its own runner, shows each
+song that got lyrics, and never touches the Downloads page's runner, so both can work at the same time. It slides out
+from the right edge of the Downloads page (pulling the download feed aside, with a gap between them) and slides back.
 """
 
 import os
@@ -9,7 +10,7 @@ import re
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -33,33 +34,21 @@ KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN:
               activity.STEP: "#b7afe0"}
 
 
-def side_position(main, screen, size, gap=8):
-    """Where a window of `size` (width, height) goes next to the main window: just right of it, level with its top;
-    on the left when the screen has no room on the right; and tucked against the screen's right edge when it fits on
-    neither side. `main` and `screen` are (x, y, width, height). Returns (x, y)."""
-    mx, my, mw, mh = main
-    sx, sy, sw, sh = screen
-    width, height = size
-    x = mx + mw + gap
-    if x + width > sx + sw:
-        x = mx - width - gap
-        if x < sx:
-            x = sx + sw - width
-    y = min(max(my, sy), sy + max(0, sh - height))
-    return max(x, sx), y
-
-
 class LyricsWindow(QWidget):
     "Start, watch and stop the lyrics job. `songs` is a function giving the library's songs when it is asked."
+
+    GAP = 14                            # between the download feed and this panel
+    SLIDE_MS = 320
 
     runningChanged = Signal(bool)
     finishedJob = Signal()              # the whole job ended (the library may have new lyrics files to show)
 
     def __init__(self, cfg, songs, parent=None):
-        super().__init__(parent, Qt.Window)
+        super().__init__(parent)
         self.cfg, self._songs = cfg, songs
-        self.setWindowTitle("Lyrics · Sleeve")
-        self.resize(560, 520)
+        self.setMaximumWidth(0)
+        self.hide()
+        self._anim = None
         self.runner = sync.SyncRunner(cfg, self)
         self.runner.line.connect(self.on_line)
         self.runner.finished.connect(self.on_finished)
@@ -103,8 +92,12 @@ class LyricsWindow(QWidget):
         row.addWidget(self.stop_btn)
         row.addStretch(1)
         row.addWidget(clear)
+        self.hide_btn = QPushButton("Hide")
+        self.hide_btn.setToolTip("Slide the lyrics panel away; the job keeps running")
+        self.hide_btn.clicked.connect(self.slide_away)
+        row.addWidget(self.hide_btn)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setContentsMargins(self.GAP, 0, 0, 0)
         lay.setSpacing(8)
         for w in (heading, self.state, note):
             lay.addWidget(w)
@@ -116,20 +109,35 @@ class LyricsWindow(QWidget):
             b.setCursor(Qt.PointingHandCursor)
             b.setFocusPolicy(Qt.TabFocus)
 
-    def show_beside(self, main):
-        "Open as a second window on the right of `main` (not on top of it), as tall as it is. Already open: just raise."
-        if not self.isVisible():
-            frame = main.frameGeometry()
-            screen = main.screen()
-            area = screen.availableGeometry() if screen is not None else frame
-            height = min(frame.height(), area.height())
-            self.resize(self.width(), height)
-            x, y = side_position((frame.x(), frame.y(), frame.width(), frame.height()),
-                                 (area.x(), area.y(), area.width(), area.height()), (self.width(), height))
-            self.move(x, y)
+    def minimumSizeHint(self):
+        return QSize(0, 0)              # the slide may squeeze it to nothing; its contents are just clipped
+
+    def is_open(self):
+        return self.isVisible() and self.maximumWidth() > 0 and (self._anim is None or self._anim.endValue() > 0)
+
+    def _slide(self, end, then=None):
+        if self._anim is not None:
+            self._anim.stop()
+        anim = self._anim = QPropertyAnimation(self, b"maximumWidth", self)
+        anim.setDuration(self.SLIDE_MS)
+        anim.setEasingCurve(QEasingCurve.OutCubic if end else QEasingCurve.InCubic)
+        anim.setStartValue(self.maximumWidth())
+        anim.setEndValue(end)
+        if then:
+            anim.finished.connect(then)
+        anim.start()
+
+    def slide_out(self, width):
+        "Pull out to `width` pixels (gap included) from the right edge of the page. Already out: nothing to do."
+        if self.is_open():
+            return
         self.show()
-        self.raise_()
-        self.activateWindow()
+        self._slide(max(width, self.GAP + 220))
+
+    def slide_away(self):
+        "Slide back in and hide; a running job is not stopped."
+        if self.isVisible():
+            self._slide(0, self.hide)
 
     @property
     def running(self):
@@ -274,11 +282,6 @@ class LyricsWindow(QWidget):
             self.timer.stop()
             self.run = None
             self.runningChanged.emit(self.running)
-
-    def closeEvent(self, e):
-        "Closing the window only hides it: the job goes on. The app stops it when it quits."
-        e.ignore()
-        self.hide()
 
     def shutdown(self):
         self.timer.stop()
