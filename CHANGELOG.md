@@ -79,7 +79,7 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 
 ### Changed
 
-- Previous, play/pause and next are painted icons of Sleeve's own: a plump pick-shaped play triangle, two round pills
+- Previous, play/pause and next are painted icons of Sleeve's own: a solid soft-cornered play triangle, two equal bars
   for pause, and chevrons with a fading trail for the skips; on the player bar and on Now Playing.
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
 - Resuming after a long pause no longer skips to the next song.

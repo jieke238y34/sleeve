@@ -270,8 +270,8 @@ STYLE = build_style()
 
 def transport_icon(kind, color, size=24):
     """A painted icon for the transport buttons ("play", "pause", "prev" or "next"), drawn in `color` and crisp at any
-    scale. Sleeve's own shapes rather than the usual ones: play is a plump pick-shaped triangle with a spindle hole,
-    pause two round pills, and the skips are chevrons with a fading trail behind the leading one, so they point the way
+    scale. Sleeve's own shapes rather than the usual ones: play is a solid soft-cornered triangle,
+    pause two equal bars, and the skips are chevrons with a fading trail behind the leading one, so they point the way
     the music moves."""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
@@ -281,22 +281,19 @@ def transport_icon(kind, color, size=24):
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(size / 24, size / 24)
     ink = QColor(color)
-    if kind == "play":                           # a plump pick-shaped triangle with a spindle hole, like a record label
-        p.setPen(QPen(ink, 5.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    if kind == "play":                           # a solid triangle with soft corners, nudged right so it looks centred
+        p.setPen(QPen(ink, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         p.setBrush(ink)
-        tri = QPainterPath(QPointF(7.9, 6.2))
-        tri.lineTo(QPointF(17.3, 12))
-        tri.lineTo(QPointF(7.9, 17.8))
+        tri = QPainterPath(QPointF(9.7, 6.4))
+        tri.lineTo(QPointF(17.5, 12))
+        tri.lineTo(QPointF(9.7, 17.6))
         tri.closeSubpath()
         p.drawPath(tri)
-        p.setCompositionMode(QPainter.CompositionMode_Clear)               # the hole is cut out, not painted over
-        p.setPen(Qt.NoPen)
-        p.drawEllipse(QPointF(11.1, 12.0), 1.9, 1.9)
-    elif kind == "pause":                        # two equal round pills, centred on the middle of the icon
+    elif kind == "pause":                        # two equal bars with rounded ends, centred on the middle
         p.setPen(Qt.NoPen)
         p.setBrush(ink)
-        p.drawRoundedRect(QRectF(6.6, 5.0, 4.2, 14.0), 2.1, 2.1)
-        p.drawRoundedRect(QRectF(13.2, 5.0, 4.2, 14.0), 2.1, 2.1)
+        p.drawRoundedRect(QRectF(6.9, 5.4, 3.6, 13.2), 1.5, 1.5)
+        p.drawRoundedRect(QRectF(13.5, 5.4, 3.6, 13.2), 1.5, 1.5)
     else:                                        # prev / next: two chevrons, the leading one solid, the trail faded
         forward = kind == "next"
         trail = QColor(ink)

@@ -35,7 +35,7 @@ def test_the_play_buttons_show_pause_while_playing_and_play_when_not(qapp, cfg, 
 
 
 def test_the_icons_are_centred_in_their_square_play_a_touch_to_the_right(qapp):  # noqa: F811
-    for kind, allowed in (("pause", 0.6), ("play", 1.6), ("prev", 1.6), ("next", 1.6)):
+    for kind, allowed in (("pause", 0.6), ("play", 2.0), ("prev", 1.6), ("next", 1.6)):
         image = theme.transport_icon(kind, "#ff0000", 24).toImage()
         xs = [x for x in range(image.width()) for y in range(image.height()) if image.pixelColor(x, y).alpha() > 40]
         ys = [y for x in range(image.width()) for y in range(image.height()) if image.pixelColor(x, y).alpha() > 40]
