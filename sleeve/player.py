@@ -395,6 +395,30 @@ class Player(QObject):
         else:
             self._replan()
 
+    def remove_at(self, i):
+        """Take the song at queue position `i` out of the queue only; its file is never touched. Taking out the one that
+        is playing moves on to the one after it (paused stays paused); taking out the last one stops."""
+        if not 0 <= i < len(self.queue):
+            return
+        if len(self.queue) == 1:
+            self.clear()
+            return
+        if i != self.index:
+            del self.queue[i]
+            if i < self.index:
+                self.index -= 1
+            self.queueChanged.emit()
+            self._replan()
+            return
+        was_playing = self.playing
+        del self.queue[i]
+        self._new_queue = True                          # the index points at the next song now: nothing to remember
+        self.queueChanged.emit()
+        self.play_index(min(i, len(self.queue) - 1))
+        if not was_playing:
+            self._media.pause()
+            self._set_playing(False)
+
     def clear(self):
         self.queue = []
         self._played, self._new_queue = [], False

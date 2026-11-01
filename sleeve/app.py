@@ -3790,9 +3790,13 @@ class MainWindow(QMainWindow):
         self._new_playlist(songs)
 
     def _queue_menu(self, pos):
-        row = self.queue_list.currentRow()
+        item = self.queue_list.itemAt(pos)
+        row = self.queue_list.row(item) if item is not None else self.queue_list.currentRow()
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
         m = theme.Menu(self)
+        if 0 <= row < len(self.player.queue):
+            act = m.addAction("Remove from queue", lambda: self.player.remove_at(row))
+            act.setToolTip("Takes it off this list only; the song stays where it is on disk")
         if songs:
             m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
                         lambda: self._toggle_like([songs[0].path]))
