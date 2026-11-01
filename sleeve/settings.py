@@ -150,7 +150,10 @@ class Settings:
     def load(self):
         self.values = dict(DEFAULTS)
         try:
-            if self.file.stat().st_size > MAX_BYTES:
+            st = self.file.stat()
+            if st.st_mode & 0o777 != 0o600:                 # a file old versions or an editor left looser: quiet it
+                os.chmod(self.file, 0o600)                  # this file carries account details; user-only is right
+            if st.st_size > MAX_BYTES:
                 return
             data = json.loads(self.file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -185,10 +188,11 @@ class Settings:
         return ACCENTS[self.values["accent"]]
 
     def save(self):
-        "Write the file (mode 0600, replaced atomically). Raises OSError."
+        "Write the file (mode 0600 even over a stale or looser file, replaced atomically). Raises OSError."
         self.file.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.file.with_name(self.file.name + ".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)                    # a .tmp left over from an interrupted save may carry another mode
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(self.values, fh, indent=1, sort_keys=True)
         os.replace(tmp, self.file)
