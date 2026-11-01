@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QListWidget
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import plgrid, settings
 from sleeve.albums import GAP, AlbumGrid
@@ -164,8 +164,8 @@ def test_all_songs_and_stashed_songs_start_in_a_fresh_random_order(qapp, cfg, mo
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         monkeypatch.setattr(win.player, "set_queue", lambda paths, start=0: setattr(win.player, "queue", list(paths)))
-        win.likes.add([s.path for s in win.songs])
-        win._likes_changed()
+        win.stash.add([s.path for s in win.songs])
+        win._stash_changed()
         order = [s.path for s in win.songs]
         monkeypatch.setattr("sleeve.app.random.shuffle", lambda items: items.reverse())
         for name in ("All songs", win.folders.item(1).text()):                                # All songs, then Stashed Songs

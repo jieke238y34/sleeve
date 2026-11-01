@@ -4,7 +4,7 @@ hidden, and only while Sleeve is the window in focus."""
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import app as sleeve_app
 

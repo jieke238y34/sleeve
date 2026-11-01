@@ -95,7 +95,6 @@ from . import (
     labels,
     lastfm,
     library,
-    likes,
     loudness,
     lrc,
     musicbrainz,
@@ -107,6 +106,7 @@ from . import (
     seasons,
     settings,
     singleton,
+    stash,
     sync,
     tags,
     theme,
@@ -384,7 +384,7 @@ class SongModel(QAbstractTableModel):
     def __init__(self, songs=()):
         super().__init__()
         self.songs = list(songs)
-        self.liked = set()                    # the window's stashed paths; shown with a mark before the title
+        self.stashed = set()                  # the window's stashed paths; shown with a mark before the title
         self.icons, self.placeholder = {}, None   # path -> cover icon, shared with the window; the mark until one loads
         self._sort = None                     # (column, order) the header shows; kept when the list changes
         self.keep_order = False               # the list is in an order of its own (recently played): do not sort it
@@ -411,7 +411,7 @@ class SongModel(QAbstractTableModel):
             return None
         s, col = self.songs[index.row()], index.column()
         if role == Qt.DisplayRole:
-            heart = f"{labels.MARK} " if s.path in self.liked else ""
+            heart = f"{labels.MARK} " if s.path in self.stashed else ""
             genre = s.genre or ("" if s.folder == library.LOOSE else s.folder)
             return (heart + s.name, s.artist, s.album, genre, fmt_time(s.length))[col]
         if role == Qt.DecorationRole and col == 0:
@@ -496,10 +496,10 @@ class TagDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, cfg, player=None, likes_file=None, settings_file=None):
+    def __init__(self, cfg, player=None, stash_file=None, settings_file=None):
         super().__init__()
         self.cfg = cfg
-        self.likes = likes.Likes(likes_file)
+        self.stash = stash.Stash(stash_file)
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
@@ -718,7 +718,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self.view_albums_btn)
         top.addWidget(rescan)
         self.model = SongModel()
-        self.model.liked = self.likes.paths
+        self.model.stashed = self.stash.paths
         self.table = QTableView()
         self.table.setModel(self.model)
         self._style_table(self.table)
@@ -847,9 +847,9 @@ class MainWindow(QMainWindow):
         self.pl_info = QLabel("")
         self.pl_info.setTextFormat(Qt.PlainText)           # tags and paths are data, never markup
         self.pl_info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # a long line never widens the window
-        self.pl_like_all = QPushButton(f"{labels.MARK} {labels.VERB} all")
-        self.pl_like_all.setToolTip(f"Add every song of this playlist to your {labels.SONGS.lower()}")
-        self.pl_like_all.clicked.connect(self._like_playlist)
+        self.pl_stash_all = QPushButton(f"{labels.MARK} {labels.VERB} all")
+        self.pl_stash_all.setToolTip(f"Add every song of this playlist to your {labels.SONGS.lower()}")
+        self.pl_stash_all.clicked.connect(self._stash_playlist)
         info_row = QHBoxLayout()
         back = QPushButton("‹  All playlists")
         back.setToolTip("Back to the covers")
@@ -860,7 +860,7 @@ class MainWindow(QMainWindow):
         self.pl_look_btn.clicked.connect(self._edit_current_playlist)
         info_row.addWidget(self.pl_look_btn)
         info_row.addStretch(1)
-        info_row.addWidget(self.pl_like_all)
+        info_row.addWidget(self.pl_stash_all)
         self.pl_title = QLabel("")
         self.pl_title.setObjectName("title")
         self.pl_title.setTextFormat(Qt.PlainText)
@@ -1054,7 +1054,7 @@ class MainWindow(QMainWindow):
         self.np_stash_btn = QPushButton("")                    # stash or unstash the song playing
         self.np_stash_btn.setObjectName("round")
         self.np_stash_btn.setEnabled(False)
-        self.np_stash_btn.clicked.connect(self._like_current)
+        self.np_stash_btn.clicked.connect(self._stash_current)
         self.full_btn = QPushButton("⛶")
         self.full_btn.setObjectName("round")
         self.full_btn.setToolTip("Album art fullscreen (F11)")
@@ -1780,7 +1780,7 @@ class MainWindow(QMainWindow):
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
                                             ("dl.py", self.cfg.dl_path or "not found (optional)"),
-                                            (labels.SONGS, self.likes.file), ("Settings", self.settings.file))):
+                                            (labels.SONGS, self.stash.file), ("Settings", self.settings.file))):
             value_label = QLabel(str(value))
             value_label.setTextFormat(Qt.PlainText)
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -2730,9 +2730,9 @@ class MainWindow(QMainWindow):
         self.prev_btn = button("", "Previous", self.player.prev)
         self.play_btn = button("", "Play / pause", self.player.toggle, "play")
         self.next_btn = button("", "Next", self.player.next)
-        self.like_btn = button("", f"{labels.VERB} this song", self._like_current)
-        self.like_btn.setObjectName("round")
-        self.like_btn.setEnabled(False)
+        self.stash_btn = button("", f"{labels.VERB} this song", self._stash_current)
+        self.stash_btn.setObjectName("round")
+        self.stash_btn.setEnabled(False)
         self.repeat_btn = button("", "Repeat: off", self._cycle_repeat, checkable=True)
         self._repeat_mode = 0
         self.add_pl_btn = button("", "Add this song to a playlist", self._add_current_to_playlist)
@@ -2778,7 +2778,7 @@ class MainWindow(QMainWindow):
         middle.setSpacing(4)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        for w in (self.like_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn,
+        for w in (self.stash_btn, self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn,
                   self.add_pl_btn):
             buttons.addWidget(w)
         buttons.addStretch(1)
@@ -2889,7 +2889,7 @@ class MainWindow(QMainWindow):
         if self.folder == ALL:
             songs = self.songs
         elif self.folder == LIKED:
-            songs = [s for s in self.songs if s.path in self.likes]
+            songs = [s for s in self.songs if s.path in self.stash]
         elif self.folder == RECENT:                          # newest first, until a column header is clicked
             songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
         else:
@@ -3023,8 +3023,8 @@ class MainWindow(QMainWindow):
         m.addAction("Play now", lambda: self._play_queue([s.path for s in sel], 0, self._folder_source()))
         m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
-        all_liked = all(s.path in self.likes for s in sel)
-        m.addAction(labels.UNDO if all_liked else labels.VERB, lambda: self._toggle_like([s.path for s in sel]))
+        all_stashed = all(s.path in self.stash for s in sel)
+        m.addAction(labels.UNDO if all_stashed else labels.VERB, lambda: self._toggle_stash([s.path for s in sel]))
         self._add_to_playlist_menu(m, sel)
         m.addSeparator()
         m.addAction("Edit tags…", lambda: self._edit_tags(sel[0]))
@@ -3032,22 +3032,22 @@ class MainWindow(QMainWindow):
         m.addAction("Show in file manager", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
         m.exec(self.table.viewport().mapToGlobal(pos))
 
-    def _toggle_like(self, paths):
+    def _toggle_stash(self, paths):
         try:
-            self.likes.toggle(paths)
+            self.stash.toggle(paths)
         except OSError as e:
-            self.status.showMessage(f"Could not save your liked songs: {e}", 8000)
-        self._likes_changed()
+            self.status.showMessage(f"Could not save your stashed songs: {e}", 8000)
+        self._stash_changed()
 
-    def _like_current(self):
+    def _stash_current(self):
         if self._current_path:
-            self._toggle_like([self._current_path])
+            self._toggle_stash([self._current_path])
 
     def _refresh_identity(self):
         "Show the library on the Identity page (the names of all your playlists feed its moods)."
         mine = [n for n, _ in self.my_playlists.names()]
         names = mine + [n for n, _ in playlists.list_playlists(self.cfg.playlist_dir)]
-        self.identity_page.set_library(self.songs, self.likes.paths, names)
+        self.identity_page.set_library(self.songs, self.stash.paths, names)
         self._refresh_listening()
 
     def _refresh_listening(self):
@@ -3367,7 +3367,7 @@ class MainWindow(QMainWindow):
             if name == ALL:
                 count = len(self.songs)
             elif name == LIKED:
-                count = sum(1 for s in self.songs if s.path in self.likes)
+                count = sum(1 for s in self.songs if s.path in self.stash)
             elif name == RECENT:
                 count = sum(1 for p in self.history.recent() if p in self.by_path)
             else:
@@ -3375,38 +3375,38 @@ class MainWindow(QMainWindow):
             item.setData(COUNT_ROLE, count)
         self.folders.viewport().update()
 
-    def _likes_changed(self):
+    def _stash_changed(self):
         self._fill_folder_counts()
         self._refresh_identity()
         if self.folder == LIKED:
-            self._apply_filter()                    # an unliked song leaves this list
+            self._apply_filter()                    # an unstashed song leaves this list
         elif self.model.songs:
             self.model.dataChanged.emit(self.model.index(0, 0), self.model.index(len(self.model.songs) - 1, 0))
-        self._update_like_button()
+        self._update_stash_button()
 
-    def _update_like_button(self):
-        on = self._current_path in self.likes
-        self.like_btn.setEnabled(bool(self._current_path) and not navidrome.is_remote(self._current_path))
+    def _update_stash_button(self):
+        on = self._current_path in self.stash
+        self.stash_btn.setEnabled(bool(self._current_path) and not navidrome.is_remote(self._current_path))
         self.add_pl_btn.setEnabled(self._current_path in self.by_path)
         accent = getattr(self, "_accent_shown", theme.LAVENDER)        # the diamond follows the accent colour
-        self.like_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
-        self.like_btn.setToolTip(f"{labels.UNDO} this song" if on else f"{labels.VERB} this song")
-        self.np_stash_btn.setEnabled(self.like_btn.isEnabled())
-        self.np_stash_btn.setIcon(self.like_btn.icon())
-        self.np_stash_btn.setToolTip(self.like_btn.toolTip())
-        self.np_stash_btn.setAccessibleName(self.like_btn.toolTip())
+        self.stash_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
+        self.stash_btn.setToolTip(f"{labels.UNDO} this song" if on else f"{labels.VERB} this song")
+        self.np_stash_btn.setEnabled(self.stash_btn.isEnabled())
+        self.np_stash_btn.setIcon(self.stash_btn.icon())
+        self.np_stash_btn.setToolTip(self.stash_btn.toolTip())
+        self.np_stash_btn.setAccessibleName(self.stash_btn.toolTip())
 
-    def _like_playlist(self):
+    def _stash_playlist(self):
         paths = [e.path for e in self._playlist_entries if e.exists]
         if not paths:
             self.status.showMessage("Nothing in this playlist is in the library", 6000)
             return
         try:
-            new = self.likes.add(paths)
+            new = self.stash.add(paths)
         except OSError as e:
             self.status.showMessage(f"Could not save your {labels.SONGS.lower()}: {e}", 8000)
             return
-        self._likes_changed()
+        self._stash_changed()
         self.status.showMessage(f"{labels.DONE} {new} new songs ({len(paths) - new} were already {labels.PAST})", 8000)
 
     def _edit_tags(self, song):
@@ -3638,7 +3638,7 @@ class MainWindow(QMainWindow):
         "Enable the edit buttons for one of your playlists; with no playlist at all, show the empty state instead."
         self.pl_empty.setVisible(not anything)
         self.pl_table.setVisible(anything)
-        self.pl_like_all.setVisible(anything)
+        self.pl_stash_all.setVisible(anything)
         for b in self.pl_edit_buttons:
             b.setEnabled(on)
             b.setVisible(anything)
@@ -3832,8 +3832,8 @@ class MainWindow(QMainWindow):
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
         m = theme.Menu(self)
         if songs:                                                   # stash first, then the rest
-            m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
-                        lambda: self._toggle_like([songs[0].path]))
+            m.addAction(labels.UNDO if songs[0].path in self.stash else labels.VERB,
+                        lambda: self._toggle_stash([songs[0].path]))
         if 0 <= row < len(self.player.queue):
             act = m.addAction("Remove from queue", lambda: self.player.remove_at(row))
             act.setToolTip("Takes it off this list only; the song stays where it is on disk")
@@ -3850,8 +3850,8 @@ class MainWindow(QMainWindow):
         m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in songs], 0, self._playlist_source()))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
-        m.addAction(labels.UNDO if all(s.path in self.likes for s in songs) else labels.VERB,
-                    lambda: self._toggle_like([s.path for s in songs]))
+        m.addAction(labels.UNDO if all(s.path in self.stash for s in songs) else labels.VERB,
+                    lambda: self._toggle_stash([s.path for s in songs]))
         self._add_to_playlist_menu(m, songs)
         m.exec(self.pl_table.viewport().mapToGlobal(pos))
 
@@ -4807,8 +4807,8 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setIcon(QIcon(theme.toggle_icon("repeat", accent if mode else theme.MUTED, mode != 0,
                                                         one=mode == REPEAT_ONE)))
         self.repeat_btn.setToolTip("Repeat: " + {0: "off", REPEAT_ALL: "all songs", REPEAT_ONE: "this song"}[mode])
-        if hasattr(self, "like_btn"):
-            self._update_like_button()
+        if hasattr(self, "stash_btn"):
+            self._update_stash_button()
 
     def _seek_released(self):
         self._dragging = False
@@ -4879,7 +4879,7 @@ class MainWindow(QMainWindow):
         self._wave_request()
         self._update_presence()
         self._seeking = False                               # a new song starts a fresh listen, not a seek
-        self._update_like_button()
+        self._update_stash_button()
         if not path:
             self.now.setText("Nothing playing")
             self._side_src = None

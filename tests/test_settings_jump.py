@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import QPushButton, QScrollArea
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 
 def test_a_chip_per_section_scrolls_to_its_heading(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 
 def click_row(table, row, button=Qt.LeftButton, modifier=Qt.NoModifier):

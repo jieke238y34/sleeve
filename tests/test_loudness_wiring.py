@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Signal  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 from sleeve import loudness, player  # noqa: E402
 

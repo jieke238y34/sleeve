@@ -31,11 +31,11 @@ _BUS = _private_session_bus()
 
 
 @pytest.fixture(autouse=True)
-def private_likes_file(tmp_path, monkeypatch):
+def private_stash_file(tmp_path, monkeypatch):
     "No test may read or write the real ~/.config/sleeve/liked.json."
-    from sleeve import likes
+    from sleeve import stash
 
-    monkeypatch.setattr(likes, "LIKES_FILE", tmp_path / "liked-for-tests.json")
+    monkeypatch.setattr(stash, "STASH_FILE", tmp_path / "liked-for-tests.json")
 
 
 @pytest.fixture(autouse=True)

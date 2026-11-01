@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest  # noqa: E402
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 from sleeve import library, myplaylists, playlists  # noqa: E402
 from sleeve.namedialog import NameDialog  # noqa: E402

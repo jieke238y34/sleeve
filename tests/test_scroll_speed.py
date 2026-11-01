@@ -93,7 +93,7 @@ def test_a_touchpad_that_reports_pixels_follows_the_setting_too(qapp, restore_sp
 
 def test_the_slider_in_settings_changes_the_speed_of_lists_that_already_exist(qapp, cfg, monkeypatch, tmp_path,  # noqa: F811
                                                                               restore_speed):
-    from test_likes import make_window
+    from test_stash import make_window
 
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:

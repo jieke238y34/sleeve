@@ -16,7 +16,7 @@ def test_empty_library():
 def test_one_song():
     p = compute([S("/m/a.mp3", title="Hi")], {"/m/a.mp3"})
     assert (p.songs, p.artists, p.albums, p.genres) == (1, 1, 1, 1)
-    assert p.longest == p.shortest and p.liked == 1 and p.liked_share == 1.0
+    assert p.longest == p.shortest and p.stashed == 1 and p.stashed_share == 1.0
     assert 2 <= len(p.words) <= 4
 
 
@@ -71,8 +71,8 @@ def lib(n, artist=lambda i: f"Art{i}", **kw):
     return [S(f"/m/{i}.mp3", artist=artist(i), **kw) for i in range(n)]
 
 
-def persona(songs, liked=()):
-    return compute(songs, liked).persona.title
+def persona(songs, stashed=()):
+    return compute(songs, stashed).persona.title
 
 
 def test_personas():

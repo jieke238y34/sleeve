@@ -7,8 +7,8 @@ import urllib.parse
 import pytest
 from PySide6.QtTest import QTest
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
 from test_navidrome import fake, login, ok
+from test_stash import make_window
 
 from sleeve import navidrome
 from sleeve.library import Song

@@ -6,7 +6,7 @@ import zipfile
 import pytest
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import app as sleeve_app
 from sleeve import backup, history

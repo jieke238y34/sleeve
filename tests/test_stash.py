@@ -8,16 +8,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from test_app import FakeAudio, StubPlayer, cfg, qapp, wait  # noqa: E402,F401  (fixtures)
 
 from sleeve import app as sleeve_app  # noqa: E402
-from sleeve import likes, playlists, settings  # noqa: E402
+from sleeve import playlists, settings, stash  # noqa: E402
 
 
 def test_add_remove_toggle_and_persist(tmp_path):
     f = tmp_path / "sub" / "liked.json"
-    lk = likes.Likes(f)
+    lk = stash.Stash(f)
     assert len(lk) == 0
     assert lk.add(["/m/a.mp3", "/m/b.mp3", "/m/a.mp3"]) == 2
     assert "/m/a.mp3" in lk and lk.add(["/m/a.mp3"]) == 0
-    assert likes.Likes(f).paths == {"/m/a.mp3", "/m/b.mp3"}     # survives a restart
+    assert stash.Stash(f).paths == {"/m/a.mp3", "/m/b.mp3"}     # survives a restart
     assert stat.S_IMODE(f.stat().st_mode) == 0o600
     assert lk.toggle(["/m/a.mp3", "/m/c.mp3"]) is True           # one is not liked yet: like both
     assert lk.toggle(["/m/a.mp3", "/m/c.mp3"]) is False          # all liked: unlike them
@@ -28,11 +28,11 @@ def test_add_remove_toggle_and_persist(tmp_path):
 def test_bad_files_are_ignored(tmp_path):
     f = tmp_path / "liked.json"
     f.write_text("not json")
-    assert len(likes.Likes(f)) == 0
+    assert len(stash.Stash(f)) == 0
     f.write_text(json.dumps({"liked": ["/ok.mp3", "relative.mp3", 5, None]}))
-    assert likes.Likes(f).paths == {"/ok.mp3"}
+    assert stash.Stash(f).paths == {"/ok.mp3"}
     f.write_text(json.dumps(["/x.mp3"]))
-    assert len(likes.Likes(f)) == 0
+    assert len(stash.Stash(f)) == 0
 
 
 def make_window(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
@@ -41,7 +41,7 @@ def make_window(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     table = {"a.mp3": ("Alpha", "Band", "Rock"), "b.mp3": ("Beta", "Other", "Rock"), "c.mp3": ("Gamma", "Band", "Pop")}
     import mutagen
     monkeypatch.setattr(mutagen, "File", lambda path, easy=False: FakeAudio(*table[os.path.basename(path)]))
-    win = sleeve_app.MainWindow(cfg, StubPlayer(), likes_file=tmp_path / "liked.json")
+    win = sleeve_app.MainWindow(cfg, StubPlayer(), stash_file=tmp_path / "liked.json")
     assert wait(qapp, lambda: len(win.songs) == 3)
     return win
 
@@ -53,18 +53,18 @@ def test_liked_folder_heart_and_button(qapp, cfg, monkeypatch, tmp_path):  # noq
         assert win.folder == sleeve_app.LIKED and win.model.rowCount() == 0
         win.folders.setCurrentRow(0)
         first = win.model.songs[0]
-        win._toggle_like([first.path])
+        win._toggle_stash([first.path])
         assert win.model.data(win.model.index(0, 0)).startswith("◆ ")
         win.folders.setCurrentRow(1)
         assert [s.path for s in win.model.songs] == [first.path]
         win._on_track(0, first.path)                       # the diamond in the player bar follows the song
-        assert win.like_btn.toolTip() == "Unstash this song" and win.like_btn.isEnabled()
-        assert not win.like_btn.icon().isNull()
-        win.like_btn.click()                               # unstash from the bar: leaves the Stashed list
-        assert win.like_btn.toolTip() == "Stash this song" and win.model.rowCount() == 0
-        assert not likes.Likes(tmp_path / "liked.json").paths
+        assert win.stash_btn.toolTip() == "Unstash this song" and win.stash_btn.isEnabled()
+        assert not win.stash_btn.icon().isNull()
+        win.stash_btn.click()                               # unstash from the bar: leaves the Stashed list
+        assert win.stash_btn.toolTip() == "Stash this song" and win.model.rowCount() == 0
+        assert not stash.Stash(tmp_path / "liked.json").paths
         win._on_track(-1, "")
-        assert not win.like_btn.isEnabled()
+        assert not win.stash_btn.isEnabled()
     finally:
         win.close()
 
@@ -75,12 +75,12 @@ def test_like_all_in_playlist_and_save_failure(qapp, cfg, monkeypatch, tmp_path)
         win.pl_spotify_btn.click()                         # the Spotify-made playlists are hidden by default
         present = [e.path for e in win._playlist_entries if e.exists]
         assert present
-        win._like_playlist()
-        assert set(present) <= win.likes.paths
-        win._like_playlist()
+        win._stash_playlist()
+        assert set(present) <= win.stash.paths
+        win._stash_playlist()
         assert "already stashed" in win.status.currentMessage()
-        monkeypatch.setattr(win.likes, "save", lambda: (_ for _ in ()).throw(OSError("disk full")))
-        win._toggle_like(["/x/y.mp3"])                     # must show a message, not raise
+        monkeypatch.setattr(win.stash, "save", lambda: (_ for _ in ()).throw(OSError("disk full")))
+        win._toggle_stash(["/x/y.mp3"])                     # must show a message, not raise
         assert "disk full" in win.status.currentMessage()
     finally:
         win.close()
@@ -94,7 +94,7 @@ def test_every_existing_song_of_a_playlist_file_gets_liked(tmp_path):
     (music / "Liked Songs.m3u8").write_text(
         "#EXTM3U\n#EXTINF:10,A\nRock/a.mp3\n#EXTINF:10,B\nRock/gone.mp3\nhttp://evil/x.mp3\n", encoding="utf-8")
     entries = playlists.read_m3u8(music / "Liked Songs.m3u8", music)
-    lk = likes.Likes(tmp_path / "liked.json")
+    lk = stash.Stash(tmp_path / "liked.json")
     assert lk.add(e.path for e in entries if e.exists) == 1
     assert lk.paths == {str(music / "Rock" / "a.mp3")}
 
@@ -108,7 +108,7 @@ def test_double_click_on_a_folder_or_playlist_starts_playing_it(qapp, cfg, monke
         assert not [c for c in win.player.calls if c[0] == "set_queue"]
         assert "Nothing in" in win.status.currentMessage()
         win.folders.setCurrentRow(0)
-        win._toggle_like([win.model.songs[0].path])
+        win._toggle_stash([win.model.songs[0].path])
         win.folders.setCurrentRow(1)
         win.folders.itemDoubleClicked.emit(win.folders.item(1))
         name, args = win.player.calls[-1]

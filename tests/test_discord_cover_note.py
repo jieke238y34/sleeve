@@ -1,7 +1,7 @@
 """Settings says which step of the Discord cover is missing: no album name, still looking, no match, or sent."""
 
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 COVER = "https://coverartarchive.org/release/76df3287-6cda-33eb-8e9a-044b5e15ffdd/front-500"
 

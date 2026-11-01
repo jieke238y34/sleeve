@@ -2,7 +2,7 @@
 
 from PySide6.QtTest import QTest
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 
 def test_get_lyrics_pulls_a_panel_out_beside_the_feed_with_a_gap(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

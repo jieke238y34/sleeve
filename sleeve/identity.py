@@ -106,8 +106,8 @@ class Identity:
     quality_unknown: int = 0                             # songs whose bitrate could not be read
     genre_tagged: float = 0.0                            # share of songs with a genre tag
     album_tagged: float = 0.0
-    liked: int = 0
-    liked_share: float = 0.0
+    stashed: int = 0
+    stashed_share: float = 0.0
     folders: list = field(default_factory=list)          # [(genre folder, songs)]
     words: list = field(default_factory=list)
     persona: Persona = Persona("The Blank Page", "Nothing here yet, so every song you add will tell the story.")
@@ -203,7 +203,7 @@ def _traits(p, songs, artist_counts, genre_counts):
         Trait("languages", "Languages", pct(min(langs, 5) / 5),
               f"{langs} non-Latin writing system{'s' if langs != 1 else ''} found." if langs
               else "Only Latin letters."),
-        Trait("heart", "Stash", pct(p.liked_share), f"{p.liked_share:.0%} of songs are stashed."),
+        Trait("heart", "Stash", pct(p.stashed_share), f"{p.stashed_share:.0%} of songs are stashed."),
     ]
 
 
@@ -252,8 +252,8 @@ def _words(p):
     return out[:4]
 
 
-def compute(songs, liked_paths=(), playlist_names=()):
-    "The Identity of a list of Songs; liked_paths is the set of stashed paths, playlist_names the user's playlists."
+def compute(songs, stashed_paths=(), playlist_names=()):
+    "The Identity of a list of Songs; stashed_paths is the set of stashed paths, playlist_names the user's playlists."
     songs = list(songs)
     n = len(songs)
     p = Identity(songs=n)
@@ -285,9 +285,9 @@ def compute(songs, liked_paths=(), playlist_names=()):
     p.genre_tagged = sum(1 for s in songs if s.genre.strip()) / n
     p.album_tagged = sum(1 for s in songs if s.album.strip()) / n
     p.no_genre_share = sum(1 for s in songs if s.genre.strip().lower() in NO_GENRE) / n
-    liked = set(liked_paths)
-    p.liked = sum(1 for s in songs if s.path in liked)
-    p.liked_share = p.liked / n
+    stashed = set(stashed_paths)
+    p.stashed = sum(1 for s in songs if s.path in stashed)
+    p.stashed_share = p.stashed / n
     p.folders = sorted(Counter(s.folder for s in songs).items(), key=lambda kv: (-kv[1], kv[0]))
     p.traits = _traits(p, songs, artists, [(g, c) for g, c in genres if g.lower() not in NO_GENRE])
     p.persona = _persona(p)
@@ -996,8 +996,8 @@ class IdentityPage(QWidget):
         inner.setSpacing(18)
         self.ring = Ring()
         inner.addWidget(self.ring)
-        self.liked_text = _label("", 10.5, TEXT, wrap=True)
-        inner.addWidget(self.liked_text, 1)
+        self.stashed_text = _label("", 10.5, TEXT, wrap=True)
+        inner.addWidget(self.stashed_text, 1)
         card.box.addLayout(inner)
         card.box.addStretch(1)
         row.addWidget(card, 2)
@@ -1067,8 +1067,8 @@ class IdentityPage(QWidget):
             t.set_accent(accent)
         self._paint()
 
-    def set_library(self, songs, liked_paths=(), playlist_names=()):
-        self.identity = compute(songs, liked_paths, playlist_names)
+    def set_library(self, songs, stashed_paths=(), playlist_names=()):
+        self.identity = compute(songs, stashed_paths, playlist_names)
         self._paint()
 
     def _paint(self):
@@ -1096,8 +1096,8 @@ class IdentityPage(QWidget):
         self.quality_note.setText(
             f"{known / p.songs:.0%} of songs have a bitrate Sleeve can read; the others are left out."
             if p.songs else "Nothing to measure yet.")
-        self.ring.set_share(p.liked_share, a)
-        self.liked_text.setText(f"{_plural(p.liked, 'song')} stashed, out of {p.songs:,}." if p.songs
+        self.ring.set_share(p.stashed_share, a)
+        self.stashed_text.setText(f"{_plural(p.stashed, 'song')} stashed, out of {p.songs:,}." if p.songs
                                 else "No songs yet.")
         self.long_line.setText(self._track_line("Longest", p.longest))
         self.short_line.setText(self._track_line("Shortest", p.shortest))

@@ -4,7 +4,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from test_app import StubPlayer, cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 from sleeve import (
     activity,  # noqa: E402
@@ -67,7 +67,7 @@ def test_progress_summary_reads_the_eta():
 
 def make(cfg, monkeypatch, tmp_path):  # noqa: F811
     monkeypatch.setattr(sleeve_app, "CACHE_FILE", tmp_path / "cache.json")
-    return sleeve_app.MainWindow(cfg, StubPlayer(), likes_file=tmp_path / "liked.json")
+    return sleeve_app.MainWindow(cfg, StubPlayer(), stash_file=tmp_path / "liked.json")
 
 
 def test_lines_from_a_run_show_as_friendly_messages_and_raw_log(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

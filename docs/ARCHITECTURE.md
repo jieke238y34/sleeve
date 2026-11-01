@@ -12,7 +12,7 @@ sleeve/
   library.py      scans the music folder into Song records; tag cache keyed by size + mtime
   playlists.py    reads the .m3u8 files dl.py writes
   myplaylists.py  playlists made in Sleeve: .m3u8 files in <playlist folder>/My Playlists, import, matching
-  likes.py        stashed songs (formerly called liked), kept in ~/.config/sleeve/liked.json
+  stash.py        stashed songs (formerly called liked), kept in ~/.config/sleeve/liked.json (the old name, so data carries over)
   settings.py     preferences in ~/.config/sleeve/settings.json (volume, ceiling, gapless, same volume, accent)
   player.py       two QMediaPlayers, the queue, gapless hand-over
   loudness.py     same-volume levelling: ReplayGain tags, else ffmpeg measurement, cached on disk

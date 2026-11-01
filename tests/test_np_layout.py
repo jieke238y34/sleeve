@@ -5,7 +5,7 @@ from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QPushButton
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 SIZES = [(800, 560), (900, 640), (1000, 600), (1180, 760), (1500, 700), (1500, 1100), (2000, 1000), (2560, 1440)]
 
