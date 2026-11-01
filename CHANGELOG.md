@@ -19,7 +19,8 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   no match on MusicBrainz, or found and sent (then it is Discord that could not fetch the picture).
 - **Navidrome** (a new page and Settings > Navidrome): connect to a Navidrome or other Subsonic server, search it, open
   albums and stream songs. Your password is turned into a login token on this computer and not kept. Covers from the
-  server and stashing server songs are not there yet.
+  server show as small pictures, and **Save to library** downloads the selected songs or albums into your music folder
+  under Navidrome (artist and album folders; files already there are skipped).
 - Settings > **APIs**: every outside service Sleeve can talk to (Discord, Last.fm, Navidrome, MusicBrainz and the Cover
   Art Archive, GitHub updates, dl.py) with whether it is on, what is sent and where. No passwords or keys are shown,
   and a button copies the list.
@@ -48,15 +49,24 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   page moved to just below Downloads in the sidebar.
 - Now Playing: put the playlist and the lyrics on the left or the right (Settings > Look), or both on one side.
 - **Hide player** (bottom right, or Ctrl+B): one click folds the player bar away for more room, one click brings it back.
-- The lyrics job (Downloads > Get lyrics) opens as a second window on the right of Sleeve, as tall as it, instead of on
-  top of it (on the left if the screen has no room; some Wayland desktops place windows themselves).
-- Library > **Recently played**: the songs you played last, newest first, each once (needs "Remember what I listen to").
-- Settings > **Backup**: *Back up my data* saves your settings, stashed songs, listening history, playlist covers and
-  title colours as one zip; *Restore from a backup* puts them back. The zip never holds your music, your Last.fm
-  sign-in or your dl.py approval, and a restore only accepts those files, so a doctored zip cannot write elsewhere.
+- The lyrics job (Downloads > Get lyrics) is a panel that slides out beside the download feed, with a gap between them;
+  Hide slides it away and the job keeps running. It no longer opens as a separate window.
+- Now Playing has **previous / play-pause / next** buttons between the song's words and the round buttons (they drop out
+  when the window is too short to keep the art at 160 px). The player bar folds away by itself on that page and the
+  waveform strip shows instead; *Show player* (or Ctrl+B) brings it back for the visit, and leaving the page restores
+  your saved choice.
+- Settings has a row of **jump chips** under the search, one per section, that scroll straight to it.
+- Lyrics files: credit and boilerplate lines at the very start or end (Lyrics by, Music:, web addresses, copyright
+  lines, 作词：) are no longer shown as lyrics.
 
 ### Changed
 
+- The sidebar runs the whole height of the window, in one dark column behind the page list and the album art; the player
+  bar sits under the pages only. Round buttons are outlined, and the Now Playing skip buttons have their own size.
+- The waveform strip is back to its earlier look (peaks scaled by the loudest part, small bars, 40 px).
+- The player bar's side blocks can be narrower, so the window still fits at its smallest size.
+- CI: a hung job fails after 25 minutes and a test stuck for 90 seconds prints every thread's stack, so a Python 3.10
+  hang names its test instead of holding the run for hours.
 - Better for music in other languages: search and sorting ignore case, Latin/Greek/Cyrillic accents and full-width
   versus half-width letters (`beyonce` finds Beyoncé, `ＹＯＡＳＯＢＩ` finds YOASOBI), while Japanese voiced marks and
   Korean syllables are kept as they are. Synced and plain lyrics files saved in Shift-JIS, EUC-KR, GB18030, Windows-1251

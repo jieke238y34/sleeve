@@ -249,8 +249,10 @@ A copy installed by a package manager, or run from a checkout, is not touched: S
   remote. The Plasma media widget and lock screen controls work too.
 - **[PlasMusic Toolbar](https://github.com/ccatterina/plasmusic-toolbar):** pick Sleeve as its source for title, cover,
   seek bar and controls in your panel.
-- **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** if installed, Settings gets earbuds buttons, and Sleeve
-  follows the sound when the earbuds switch.
+- **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** other apps pair with it on their own. Sleeve gets three
+  earbuds buttons in its settings (use earbuds / hand to phone / turn off) as soon as the switcher is installed, and
+  follows the sound when the earbuds switch. Controllers stay controllers: a Bluetooth gamepad is never mistaken for a
+  headset, and the earbuds' volume returns to the last state on every reconnect.
 - **Discord and [arRPC](https://arrpc.openasar.dev/):** optional "Listening to" status for Discord, Vesktop and other
   clients, including Flatpak ones. Off until you switch it on in Settings and add your own Discord Application ID. It can show the album cover too
   (a separate switch: the cover address comes from MusicBrainz and the Cover Art Archive).
