@@ -221,6 +221,7 @@ class Player(QObject):
             return
         if state == QMediaPlayer.PlayingState:
             self._set_playing(True)
+            self._clock.restart()                       # time spent paused is not time the song has played
             self._arm_switch()
         elif state == QMediaPlayer.PausedState:
             self._set_playing(False)

@@ -117,3 +117,31 @@ def test_switches_say_on_or_off_and_look_different(qapp):  # noqa: F811
     plain = Switch("x")
     plain.setChecked(True)                                                     # before it is shown: no animation
     assert plain._pos == 1.0
+
+
+def test_resuming_after_a_long_pause_does_not_hand_over_to_the_next_song(qapp, tmp_path):  # noqa: F811
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    class Clock:
+        "Stands in for QElapsedTimer: `ms` is what has passed since the last restart."
+        ms = 500_000                                      # a long pause since the last position report
+
+        def isValid(self):
+            return True
+
+        def elapsed(self):
+            return self.ms
+
+        def restart(self):
+            self.ms = 0
+
+    a, b = tmp_path / "a.mp3", tmp_path / "b.mp3"
+    a.write_bytes(b"x")
+    b.write_bytes(b"x")
+    p = player.Player()
+    p.set_queue([str(a), str(b)])
+    p.index, p.duration, p.position, p._plan, p._clock = 0, 180.0, 40.0, (0, 1), Clock()
+    p._on_state(QMediaPlayer.PlayingState)
+    assert p._switch_timer.isActive()
+    assert p._switch_timer.interval() > 100_000, p._switch_timer.interval()      # about 2 minutes of song are left
+    p.close()
