@@ -53,6 +53,7 @@ DEFAULTS = {
     "gradient": None,                  # your own 5-colour background (a list of #rrggbb), or None: follow the cover
     "np_queue_side": "left",           # Now Playing: which side the playlist panel is on
     "np_lyrics_side": "right",         # Now Playing: which side the lyrics panel is on
+    "tooltips": True,                  # the little labels that appear when the pointer rests on a button
     "side_art": True,                  # the small album art under the sidebar list is shown
     "legacy_layout": False,            # the classic look: the player bar across the whole window, with the art in it
     "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
@@ -93,7 +94,7 @@ def _valid(key, value):
         return value in ("identity", "listening")
     if key in ("gapless", "same_volume", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
-                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
+                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art", "tooltips",
                 "legacy_layout", "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
