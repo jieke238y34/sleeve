@@ -24,8 +24,7 @@ BAR, GAP = 3, 2                  # pixels
 
 def peaks_from_pcm(data, buckets=BUCKETS):
     """Peak loudness (0 to 1) of each of `buckets` equal parts of signed 16-bit little-endian mono audio `data`.
-    Scaled to the typical loud part (a single spike does not flatten the rest) and eased so quiet parts stay visible.
-    An empty or silent input gives []."""
+    Quiet songs are scaled up so the loudest peak reaches 1. An empty or silent input gives []."""
     data = bytes(data)[:len(data) // 2 * 2]
     if not data:
         return []
@@ -42,11 +41,8 @@ def peaks_from_pcm(data, buckets=BUCKETS):
             continue
         stride = max(1, len(chunk) // 64)                      # looking at every few samples is enough for an outline
         out.append(float(max(abs(x) for x in chunk[::stride])))
-    loud = sorted(v for v in out if v > 0)
-    if not loud:
-        return []
-    top = loud[min(len(loud) - 1, int(len(loud) * 0.95))]            # the typical loud part, not one stray spike
-    return [min(1.0, v / top) ** 0.7 for v in out]                  # eased up a little so quiet parts still show
+    top = max(out)
+    return [v / top for v in out] if top > 0 else []
 
 
 def compute_peaks(path, buckets=BUCKETS, ffmpeg=None, run=subprocess.run):
@@ -85,7 +81,7 @@ class WaveSeek(QWidget):
         super().__init__(parent)
         self.peaks, self.fraction, self._drag = [], 0.0, None
         self.accent = QColor("#b7afe0")
-        self.setMinimumHeight(56)
+        self.setMinimumHeight(40)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip("Click or drag to seek")
         self.setMouseTracking(True)
@@ -146,7 +142,7 @@ class WaveSeek(QWidget):
         p.setPen(Qt.NoPen)
         for i, peak in enumerate(bars):
             x = i * step
-            height = max(4.0, peak * (h - 8))
+            height = max(3.0, peak * (h - 6))
             p.setBrush(self.accent if (x + BAR / 2) / w <= shown else rest)
             p.drawRoundedRect(QRectF(x, (h - height) / 2, BAR, height), BAR / 2, BAR / 2)
         p.end()
