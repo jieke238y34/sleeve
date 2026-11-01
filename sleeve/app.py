@@ -1060,7 +1060,7 @@ class MainWindow(QMainWindow):
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
-        self.np_prev, self.np_play, self.np_next = (QPushButton(g) for g in ("⏮", "▶", "⏭"))
+        self.np_prev, self.np_play, self.np_next = (QPushButton("") for _ in range(3))
         for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
                                    (self.np_play, "Play / pause", self.player.toggle, "play"),
                                    (self.np_next, "Next", self.player.next, "skip")):
@@ -2727,9 +2727,9 @@ class MainWindow(QMainWindow):
             b.clicked.connect(slot)
             return b
         self.shuffle_btn = button("", "Shuffle: off", self.player.set_shuffle, checkable=True)
-        self.prev_btn = button("⏮", "Previous", self.player.prev)
-        self.play_btn = button("▶", "Play / pause", self.player.toggle, "play")
-        self.next_btn = button("⏭", "Next", self.player.next)
+        self.prev_btn = button("", "Previous", self.player.prev)
+        self.play_btn = button("", "Play / pause", self.player.toggle, "play")
+        self.next_btn = button("", "Next", self.player.next)
         self.like_btn = button("", f"{labels.VERB} this song", self._like_current)
         self.like_btn.setObjectName("round")
         self.like_btn.setEnabled(False)
@@ -2742,6 +2742,7 @@ class MainWindow(QMainWindow):
             b.setIconSize(QSize(22, 22))
         self.shuffle_btn.toggled.connect(self._update_toggle_icons)
         self._update_toggle_icons()
+        self._update_transport_icons()
         self.pos_label = QLabel("0:00")
         self.seek = ClickSlider(Qt.Horizontal)
         self.seek.setRange(0, 0)
@@ -4787,6 +4788,16 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setChecked(mode != 0)
         self._update_toggle_icons()
 
+    def _update_transport_icons(self):
+        "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
+        playing = getattr(self, "_is_playing", False)
+        sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
+        for prev, play, nxt in sets:
+            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 20), (nxt, "next", theme.TEXT, 20),
+                                            (play, "pause" if playing else "play", theme.BG, 30)):
+                btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
+                btn.setIconSize(QSize(side, side))
+
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
         accent, mode = self._accent_shown, getattr(self, "_repeat_mode", 0)
@@ -4857,8 +4868,7 @@ class MainWindow(QMainWindow):
 
     def _on_playing(self, playing):
         self._is_playing = bool(playing)
-        self.play_btn.setText("⏸" if playing else "▶")
-        self.np_play.setText(self.play_btn.text())
+        self._update_transport_icons()
         self._update_presence()
 
     def _on_track(self, index, path):
