@@ -169,10 +169,21 @@ QPushButton#primary:focus {{ padding: 10px 28px; border-color: {CREAM}; }}
 QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
-QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
-                     padding: 0; font-size: 14pt; }}
+                     padding: 0; font-size: 14pt; background: transparent; border: 1px solid rgba(255, 255, 255, 46); }}
+QPushButton#round:hover {{ background: rgba(255, 255, 255, 30); border-color: rgba(255, 255, 255, 80); }}
+QPushButton#round:checked {{ background: rgba(255, 255, 255, 26); border-color: {accent}; }}
+QPushButton#round:focus {{ border: 2px solid {accent}; }}
+QPushButton#chip {{ background: rgba(255, 255, 255, 20); border: none; border-radius: 14px; padding: 0 15px;
+                    min-height: 28px; max-height: 28px; font-size: 9pt; }}
+QPushButton#chip:hover {{ background: rgba(255, 255, 255, 44); }}
+QPushButton#chip:pressed {{ background: {accent}; color: {bg}; }}
+QPushButton#chip:focus {{ border: 2px solid {accent}; padding: 0 13px; }}
+QPushButton#skip {{ border-radius: 22px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px;
+                    padding: 0; font-size: 14pt; background: rgba(255, 255, 255, 18); }}
+QPushButton#skip:hover {{ background: rgba(255, 255, 255, 40); }}
+QPushButton#skip:focus {{ border: 2px solid {accent}; padding: 0; }}
 QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; padding: 0 12px; font-size: 9pt;
                        background: transparent; }}
 QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}

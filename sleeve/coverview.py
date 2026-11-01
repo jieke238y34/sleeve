@@ -117,13 +117,14 @@ class CoverView(QWidget):
         for b in self._transport:
             b.setVisible(shown)
         if shown:
-            widest = max(b.minimumSizeHint().width() for b in self._transport)
-            row = widest * len(self._transport) + 8 * (len(self._transport) - 1)
+            tall = max(b.minimumSizeHint().height() for b in self._transport)
+            row = sum(b.minimumSizeHint().width() for b in self._transport) + 18 * (len(self._transport) - 1)
             x = max(0, min(cx - row // 2, wid - row))
-            for b in self._transport:
-                b.setGeometry(x, y + 8, widest, b.minimumSizeHint().height())
-                x += widest + 8
-            y += 8 + max(b.minimumSizeHint().height() for b in self._transport)
+            for b in self._transport:                         # each at its own size, on one centre line
+                w, h = b.minimumSizeHint().width(), b.minimumSizeHint().height()
+                b.setGeometry(x, y + 8 + (tall - h) // 2, w, h)
+                x += w + 18
+            y += 8 + tall
         if self._btns:
             widest = max(b.minimumSizeHint().width() for b in self._btns)
             row = widest * len(self._btns) + 8 * (len(self._btns) - 1)
