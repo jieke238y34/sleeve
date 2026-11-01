@@ -584,6 +584,8 @@ class MainWindow(QMainWindow):
         column.setSpacing(0)
         column.addWidget(self.stack, 1)
         column.addWidget(self.wave_strip)
+        self.bar = self._player_bar()                         # under the pages only: the sidebar runs the whole height
+        column.addWidget(self.bar)
         self.splitter.addWidget(content)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
@@ -596,9 +598,7 @@ class MainWindow(QMainWindow):
             self.splitter.setSizes([self.settings.nav_width, 10_000])
             self._fit_side_art()
         QTimer.singleShot(0, _late_restore)
-        self.bar = self._player_bar()
         self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
-        outer.addWidget(self.bar)
         self.setCentralWidget(root)
         self.status = self.statusBar()
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
@@ -1022,9 +1022,9 @@ class MainWindow(QMainWindow):
         self.full_btn.clicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
         self.np_prev, self.np_play, self.np_next = (QPushButton(g) for g in ("⏮", "▶", "⏭"))
-        for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "round"),
+        for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
                                    (self.np_play, "Play / pause", self.player.toggle, "play"),
-                                   (self.np_next, "Next", self.player.next, "round")):
+                                   (self.np_next, "Next", self.player.next, "skip")):
             b.setObjectName(name)
             b.setToolTip(tip)
             b.setAccessibleName(tip)
@@ -1771,8 +1771,32 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._align_settings(lay)
+        self._settings_jump_row(page, lay)
         self._group_settings(lay)
         return page
+
+    def _settings_jump_row(self, page, lay):
+        "A row of chips under the search, one per section: a click scrolls the page to that heading."
+        heads = [lay.itemAt(i).widget() for i in range(lay.count())]
+        heads = [w for w in heads if isinstance(w, QLabel) and w.objectName() == "heading" and w.text() != "Settings"]
+        row = FlowLayout()
+        for head in heads:
+            chip = QPushButton(head.text())
+            chip.setObjectName("chip")
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.setToolTip(f"Jump to {head.text()}")
+            chip.clicked.connect(lambda _=False, h=head: self._settings_jump(page, h))
+            row.addWidget(chip)
+        lay.insertLayout(lay.indexOf(self.settings_none) + 1, row)
+        self.settings_jump_chips = row
+
+    def _settings_jump(self, page, head):
+        area = page.parentWidget()
+        while area is not None and not isinstance(area, QScrollArea):
+            area = area.parentWidget()
+        if area is not None:
+            head.parentWidget().show()                          # a section the search hid comes back to be shown
+            area.verticalScrollBar().setValue(max(0, head.mapTo(page, QPoint(0, 0)).y() - 8))
 
     LABEL_COLUMN = 190
 
@@ -2602,7 +2626,7 @@ class MainWindow(QMainWindow):
         self.volume = ClickSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
         self.volume.setValue(self.player.volume)
-        self.volume.setMinimumWidth(150)
+        self.volume.setMinimumWidth(100)
         self.volume.setMaximumWidth(180)
         self.volume.valueChanged.connect(self.player.set_volume)
         self.volume.setToolTip("Volume")
@@ -2619,7 +2643,7 @@ class MainWindow(QMainWindow):
         right_lay.addStretch(1)
         right_lay.addWidget(self.volume)
         for side in (left, right):                   # same limits and stretch: kept equal
-            side.setMinimumWidth(190)
+            side.setMinimumWidth(140)
             side.setMaximumWidth(420)
         lay.addWidget(left, 1)
         middle = QVBoxLayout()
