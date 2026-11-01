@@ -236,7 +236,7 @@ def test_fullscreen_is_a_separate_window_that_always_closes(qapp, cfg, monkeypat
         song = first_song(win)
         win._on_track(0, song.path)
         before = (win.width(), win.height(), win.nav.isHidden(), win.bar.isHidden())
-        win.full_btn.click()
+        win._toggle_fullscreen()
         screen = win._cover_screen
         assert screen is not None and screen.isFullScreen() and screen.title.text() == song.name
         assert (win.width(), win.height(), win.nav.isHidden(), win.bar.isHidden()) == before    # the app is untouched

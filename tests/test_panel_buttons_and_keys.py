@@ -27,21 +27,21 @@ def test_each_button_sits_on_the_side_of_the_panel_it_opens(qapp, cfg, monkeypat
         def left_to_right():
             return [b for b in sorted(win.np_cover._btns, key=lambda b: b.x())]
 
-        assert left_to_right() == [win.tab_queue, win.np_stash_btn, win.full_btn, win.tab_lyrics]     # the default
+        assert left_to_right() == [win.tab_queue, win.np_stash_btn, win.np_shuffle_btn, win.tab_lyrics]     # the default
         win.queue_side_box.setCurrentIndex(win.queue_side_box.findData("right"))
         win.lyrics_side_box.setCurrentIndex(win.lyrics_side_box.findData("left"))
         for _ in range(6):
             qapp.processEvents()
-        assert left_to_right() == [win.tab_lyrics, win.np_stash_btn, win.full_btn, win.tab_queue]     # swapped with them
+        assert left_to_right() == [win.tab_lyrics, win.np_stash_btn, win.np_shuffle_btn, win.tab_queue]     # swapped with them
         win.lyrics_side_box.setCurrentIndex(win.lyrics_side_box.findData("right"))
         for _ in range(6):
             qapp.processEvents()
-        assert left_to_right() == [win.np_stash_btn, win.full_btn, win.tab_queue, win.tab_lyrics]     # both on the right
+        assert left_to_right() == [win.np_stash_btn, win.np_shuffle_btn, win.tab_queue, win.tab_lyrics]     # both on the right
         win.queue_side_box.setCurrentIndex(win.queue_side_box.findData("left"))
         win.lyrics_side_box.setCurrentIndex(win.lyrics_side_box.findData("left"))
         for _ in range(6):
             qapp.processEvents()
-        assert left_to_right() == [win.tab_queue, win.tab_lyrics, win.np_stash_btn, win.full_btn]     # both on the left
+        assert left_to_right() == [win.tab_queue, win.tab_lyrics, win.np_stash_btn, win.np_shuffle_btn]     # both on the left
         assert all(b.isVisible() for b in win.np_cover._btns)
     finally:
         win.close()

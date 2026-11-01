@@ -16,16 +16,20 @@ def art(win, qapp):  # noqa: F811
     win._set_side_art(pix)
 
 
-def test_the_small_art_stays_when_you_go_to_now_playing_and_back(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_small_art_steps_aside_on_now_playing_and_comes_back(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.resize(1100, 700)
         win.show()
         art(win, qapp)
-        for page in ("Now Playing", "Library", "Now Playing"):
+        for page, shown in (("Library", True), ("Now Playing", False), ("Library", True), ("Now Playing", False)):
             win.show_page(page)
             settle(qapp)
-            assert win.cover.isVisible() and win.cover.width() >= 56, page
+            assert win.cover.isVisible() is shown, page
+        win.show_page("Library")
+        win.side_art_box.setChecked(False)
+        settle(qapp)
+        assert not win.cover.isVisible()                                      # still off when the setting says so
     finally:
         win.close()
 
