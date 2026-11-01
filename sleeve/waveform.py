@@ -6,7 +6,7 @@ reduced to a few hundred peaks, in the background, once per song. Without ffmpeg
 still being worked out, a soft even strip stands in and seeking still works.
 """
 
-import subprocess
+import subprocess  # nosec B404 (only runs ffmpeg, as a list, never a shell)
 import sys
 from array import array
 
