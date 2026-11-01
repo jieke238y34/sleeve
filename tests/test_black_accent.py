@@ -51,3 +51,11 @@ def test_black_is_an_accent_you_can_pick_and_the_play_icon_turns_white(qapp, cfg
         assert painted and all(c.red() > 240 and c.green() > 240 for c in painted)       # white ink on the black button
     finally:
         win.close()
+
+
+def test_a_black_accent_is_shown_light_where_it_is_drawn_on_the_window():
+    assert theme.visible_accent("#000000") == "#d9d5ea"
+    assert theme.visible_accent("#a595f0") == "#a595f0"                   # a bright accent is used as it is
+    style = theme.build_style("#000000")
+    assert "QSlider::sub-page:horizontal { background: #d9d5ea;" in style    # the slider fill is visible
+    assert "QListWidget#nav::item:selected { background: #000000; color: #ffffff;" in style   # the surface stays black

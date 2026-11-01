@@ -4,7 +4,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
 from PySide6.QtWidgets import QCheckBox
 
-from .theme import CREAM, LAVENDER, MUTED, TEXT
+from .theme import CREAM, LAVENDER, MUTED, TEXT, on_accent, visible_accent
 
 TRACK_W, TRACK_H, GAP = 46, 26, 12
 
@@ -82,15 +82,20 @@ class Switch(QCheckBox):
         if on:                                      # a light tick on the knob says "yes" without needing to read
             p.setBrush(QColor(CREAM))
             p.drawEllipse(QPointF(x, track.center().y()), radius - 3.2, radius - 3.2)
+        if on and on_accent(accent.name()) == "#ffffff":      # a black track still needs an edge to be seen
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QColor(255, 255, 255, 110))
+            p.drawRoundedRect(track, TRACK_H / 2, TRACK_H / 2)
         if self.hasFocus():
             p.setBrush(Qt.NoBrush)
-            p.setPen(QColor(accent.red(), accent.green(), accent.blue(), 150))
+            seen = QColor(visible_accent(accent.name()))
+            p.setPen(QColor(seen.red(), seen.green(), seen.blue(), 150))
             p.drawRoundedRect(track.adjusted(-2, -2, 2, 2), TRACK_H / 2 + 2, TRACK_H / 2 + 2)
         # "On" / "Off", then the label
         font = self.font()
         font.setBold(True)
         p.setFont(font)
-        p.setPen(accent if on else QColor(MUTED))
+        p.setPen(QColor(visible_accent(accent.name())) if on else QColor(MUTED))
         state = QRectF(TRACK_W + GAP, 0, self._label_width(), self.height())
         p.drawText(state, Qt.AlignVCenter | Qt.AlignLeft, self.state_text())
         font.setBold(False)

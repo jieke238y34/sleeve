@@ -2240,9 +2240,10 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self._update_transport_icons()                                      # the play icon is white on a black accent
-        self.wave.set_accent(colour)
-        self.identity_page.set_accent(colour)
-        self._vol_bubble.set_accent(colour)
+        lit = theme.visible_accent(colour)                                  # a black accent is shown light where it is
+        self.wave.set_accent(lit)                                           # drawn straight on the dark window
+        self.identity_page.set_accent(lit)
+        self._vol_bubble.set_accent(lit)
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()
@@ -3408,7 +3409,7 @@ class MainWindow(QMainWindow):
         on = self._current_path in self.stash
         self.stash_btn.setEnabled(bool(self._current_path) and not navidrome.is_remote(self._current_path))
         self.add_pl_btn.setEnabled(self._current_path in self.by_path)
-        accent = getattr(self, "_accent_shown", theme.LAVENDER)        # the diamond follows the accent colour
+        accent = theme.visible_accent(getattr(self, "_accent_shown", theme.LAVENDER))   # the diamond follows the accent
         self.stash_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
         self.stash_btn.setToolTip(f"{labels.UNDO} this song" if on else f"{labels.VERB} this song")
         self.np_stash_btn.setEnabled(self.stash_btn.isEnabled())
@@ -4824,7 +4825,7 @@ class MainWindow(QMainWindow):
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
-        accent, mode = self._accent_shown, getattr(self, "_repeat_mode", 0)
+        accent, mode = theme.visible_accent(self._accent_shown), getattr(self, "_repeat_mode", 0)
         shuffle_on = self.shuffle_btn.isChecked()
         self.shuffle_btn.setIcon(QIcon(theme.toggle_icon("shuffle", accent if shuffle_on else theme.MUTED, shuffle_on)))
         self.shuffle_btn.setToolTip("Shuffle: on" if shuffle_on else "Shuffle: off")
