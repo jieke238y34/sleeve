@@ -25,6 +25,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QCursor,
     QDesktopServices,
     QFont,
     QGuiApplication,
@@ -269,15 +270,48 @@ class ElidedLabel(QLabel):
         return self._full
 
 
+class LinkLabel(QLabel):
+    "A label that can be clicked (the artist or album name): hand cursor and an underline while the pointer is on it."
+
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _underline(self, on):
+        font = self.font()
+        font.setUnderline(on)
+        self.setFont(font)
+
+    def enterEvent(self, e):
+        super().enterEvent(e)
+        if self.text():
+            self._underline(True)
+
+    def leaveEvent(self, e):
+        super().leaveEvent(e)
+        self._underline(False)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self.text():
+            self.clicked.emit()
+        else:
+            super().mousePressEvent(e)
+
+
 class NowText(QWidget):
     """The song in the player bar: the title in bold, the artist under it in the quiet colour, each shortened with an …
-    when it does not fit. `setText("title\nartist")` and `text()` work like a label's."""
+    when it does not fit. `setText("title\nartist")` and `text()` work like a label's. Clicking the artist says so."""
+
+    artistClicked = Signal()
 
     def __init__(self, text="", parent=None):
         super().__init__(parent)
         self.title, self.artist = ElidedLabel(), ElidedLabel()
         self.title.setObjectName("nowtitle")
         self.artist.setObjectName("nowartist")
+        self.artist.setCursor(Qt.PointingHandCursor)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(0)
@@ -297,6 +331,13 @@ class NowText(QWidget):
 
     def text(self):
         return self._text
+
+    def mousePressEvent(self, e):
+        on_artist = self.artist.isVisible() and self.artist.geometry().contains(e.position().toPoint())
+        if e.button() == Qt.LeftButton and on_artist:
+            self.artistClicked.emit()
+        else:
+            super().mousePressEvent(e)
 
 
 class ClickLabel(QLabel):
@@ -708,6 +749,12 @@ class MainWindow(QMainWindow):
         self.search.textChanged.connect(self._apply_filter)
         rescan = QPushButton("Rescan")
         rescan.clicked.connect(self.rescan)
+        self._scope = None                                    # ("artist" | "album", name, artist): all songs by / from
+        self.scope_btn = QPushButton("")
+        self.scope_btn.setObjectName("chip")
+        self.scope_btn.setToolTip("Back to the whole library")
+        self.scope_btn.setVisible(False)
+        self.scope_btn.clicked.connect(lambda: self._clear_scope())
         self.queue_sel_btn = QPushButton("＋  Queue")
         self.queue_sel_btn.setToolTip("Add the selected songs to the end of the queue (Shift+Enter)")
         self.queue_sel_btn.setEnabled(False)
@@ -719,6 +766,7 @@ class MainWindow(QMainWindow):
             b.setAutoExclusive(True)
         self.view_songs_btn.setChecked(True)
         top.addWidget(self.search, 1)
+        top.addWidget(self.scope_btn)
         top.addWidget(self.view_songs_btn)
         top.addWidget(self.view_albums_btn)
         top.addWidget(self.queue_sel_btn)
@@ -1055,7 +1103,10 @@ class MainWindow(QMainWindow):
 
         right = QVBoxLayout()
         self.np_cover = CoverView(self.settings.cover_size)
-        self.np_title, self.np_artist, self.np_album = QLabel(), QLabel(), QLabel()
+        self.np_title, self.np_artist, self.np_album = QLabel(), LinkLabel(), LinkLabel()
+        self._np_who = ("", "")                              # the artist and album tags, as they are in the file
+        self.np_artist.clicked.connect(lambda: self._browse_artist(self._np_who[0]))
+        self.np_album.clicked.connect(lambda: self._browse_album(self._np_who[1], self._np_who[0]))
         for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
             lab.setObjectName(name)
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
@@ -2739,6 +2790,7 @@ class MainWindow(QMainWindow):
         self.cover.doubleClicked.connect(self._cover_double_clicked)
         self.now = NowText("Nothing playing")              # bold title, quiet artist; each ends in … when too long
         self.now.setMinimumWidth(100)
+        self.now.artistClicked.connect(self._browse_current_artist)
         self.now.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)     # takes what its side block gives it
 
         def button(glyph, tip, slot, name="round", checkable=False):
@@ -2867,7 +2919,67 @@ class MainWindow(QMainWindow):
 
     def _folder_changed(self, name):
         self.folder = name or ALL
+        self._clear_scope(apply=False)                        # picking a folder leaves "all by this artist"
         self._apply_filter()
+
+    # --- all the songs by an artist, or from an album ----------------------------------------------------------
+    def _in_scope(self, song):
+        kind, name, artist = self._scope
+        if kind == "artist":
+            names = {fold(n) for n in artists.split_artists(song.artist)} | {fold(song.artist)}
+            return fold(name) in names
+        return fold(song.album) == fold(name) and (not artist or fold(artist) in fold(song.artist)
+                                                   or fold(song.artist) in fold(artist))
+
+    def _set_scope(self, scope):
+        self._scope = scope
+        if scope:
+            self.scope_btn.setText(f"{'Artist' if scope[0] == 'artist' else 'Album'}: {scope[1]}   ✕")
+        self.scope_btn.setVisible(bool(scope))
+
+    def _clear_scope(self, apply=True):
+        if self._scope is None:
+            return
+        self._set_scope(None)
+        if apply:
+            self._apply_filter()
+
+    def _browse(self, kind, name, artist=""):
+        "Show every song by an artist, or from an album, in the Library (whatever folder or filter was open)."
+        name = (name or "").strip()
+        if not name:
+            return
+        self.show_page("Library")
+        self.view_songs_btn.setChecked(True)
+        self.folders.setCurrentRow(0)                         # All songs (a folder change clears any scope, so first)
+        self.search.blockSignals(True)
+        self.search.clear()
+        self.search.blockSignals(False)
+        self._set_scope((kind, name, artist))
+        self._apply_filter()
+        count = self.model.rowCount()
+        word = "by" if kind == "artist" else "from"
+        self.status.showMessage(f"{count} song{'s' if count != 1 else ''} {word} {name}", 5000)
+
+    def _browse_artist(self, raw):
+        "Click an artist: all their songs. A tag with several artists asks which one."
+        names = artists.split_artists(raw)
+        if len(names) == 1:
+            self._browse("artist", names[0])
+        elif names:
+            m = theme.Menu(self)
+            for n in names:
+                m.addAction(f"All songs by {n}", lambda n=n: self._browse("artist", n))
+            m.exec(QCursor.pos())
+
+    def _browse_album(self, album, artist=""):
+        names = artists.split_artists(artist)
+        self._browse("album", album, names[0] if len(names) == 1 else "")
+
+    def _browse_current_artist(self):
+        song = self.by_path.get(self._current_path)
+        if song is not None:
+            self._browse_artist(song.artist)
 
     def _deselect_on_click(self, obj, ev):
         "A plain click on a row that is already highlighted clears the highlight. The sidebar keeps showing its page."
@@ -2918,6 +3030,8 @@ class MainWindow(QMainWindow):
             songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
+        if self._scope:
+            songs = [s for s in songs if self._in_scope(s)]
         self.model.keep_order = self.folder == RECENT
         self.model.set_songs(library.search(songs, self.search.text()))
         if self.model.placeholder is None:
@@ -3039,6 +3153,13 @@ class MainWindow(QMainWindow):
         rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
         return [self.model.songs[r] for r in rows]
 
+    def _browse_actions(self, menu, song):
+        "“All songs by …” and “The album …” for a right-clicked song."
+        if song.artist:
+            menu.addAction(f"All songs by {artists.display(song.artist)}", lambda: self._browse_artist(song.artist))
+        if song.album:
+            menu.addAction(f"The album “{song.album}”", lambda: self._browse_album(song.album, song.artist))
+
     def _queue_selected(self, next_up=False):
         "Add the selected library songs to the end of the queue (or right after the playing one), and say so."
         sel = self._selected()
@@ -3059,6 +3180,7 @@ class MainWindow(QMainWindow):
         all_stashed = all(s.path in self.stash for s in sel)
         m.addAction(labels.UNDO if all_stashed else labels.VERB, lambda: self._toggle_stash([s.path for s in sel]))
         self._add_to_playlist_menu(m, sel)
+        self._browse_actions(m, sel[0])
         m.addSeparator()
         m.addAction("Edit tags…", lambda: self._edit_tags(sel[0]))
         folder = str(Path(sel[0].path).parent)
@@ -3872,6 +3994,7 @@ class MainWindow(QMainWindow):
             act.setToolTip("Takes it off this list only; the song stays where it is on disk")
         if songs:
             self._add_to_playlist_menu(m, songs)
+            self._browse_actions(m, songs[0])
         m.addAction("Save the whole queue as a playlist…", self._save_queue_as_playlist)
         m.exec(self.queue_list.viewport().mapToGlobal(pos))
 
@@ -4401,6 +4524,7 @@ class MainWindow(QMainWindow):
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
         self.np_title.setText(title or "Nothing playing")
+        self._np_who = (artist or "", album or "")
         self.np_artist.setText(artists.display(artist))
         self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
         self.np_album.setToolTip(detail)
