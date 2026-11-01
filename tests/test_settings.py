@@ -119,6 +119,9 @@ def test_switches_say_on_or_off_and_look_different(qapp):  # noqa: F811
     assert plain._pos == 1.0
 
 
+def test_the_player_bar_starts_hidden_by_default(tmp_path):
+    assert settings.DEFAULTS["player_bar_hidden"] is True
+    assert settings.Settings(tmp_path / "fresh.json").player_bar_hidden is True
 def test_resuming_after_a_long_pause_does_not_hand_over_to_the_next_song(qapp, tmp_path):  # noqa: F811
     from PySide6.QtMultimedia import QMediaPlayer
 

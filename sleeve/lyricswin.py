@@ -14,7 +14,6 @@ from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, 
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import activity, config, sync
+from .flow import FlowLayout
 from .smoothscroll import SmoothScroll
 
 MAX_BATCHES = 200                       # 200 x 300 songs: more than any library, but a loop must end
@@ -87,10 +87,9 @@ class LyricsWindow(QWidget):
         SmoothScroll.attach(self.feed)
         clear = QPushButton("Clear")
         clear.clicked.connect(self.feed.clear)
-        row = QHBoxLayout()
+        row = FlowLayout()                                         # wraps when the panel is narrow, never squeezes
         row.addWidget(self.start_btn)
         row.addWidget(self.stop_btn)
-        row.addStretch(1)
         row.addWidget(clear)
         self.hide_btn = QPushButton("Hide")
         self.hide_btn.setToolTip("Slide the lyrics panel away; the job keeps running")

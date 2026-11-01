@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from test_app import FakeAudio, StubPlayer, cfg, qapp, wait  # noqa: E402,F401  (fixtures)
 
 from sleeve import app as sleeve_app  # noqa: E402
-from sleeve import likes, playlists  # noqa: E402
+from sleeve import likes, playlists, settings  # noqa: E402
 
 
 def test_add_remove_toggle_and_persist(tmp_path):
@@ -36,6 +36,7 @@ def test_bad_files_are_ignored(tmp_path):
 
 
 def make_window(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    monkeypatch.setitem(settings.DEFAULTS, "player_bar_hidden", False)     # most tests want the bar; the real default is hidden
     monkeypatch.setattr(sleeve_app, "CACHE_FILE", tmp_path / "cache.json")
     table = {"a.mp3": ("Alpha", "Band", "Rock"), "b.mp3": ("Beta", "Other", "Rock"), "c.mp3": ("Gamma", "Band", "Pop")}
     import mutagen
