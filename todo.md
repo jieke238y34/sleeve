@@ -65,7 +65,7 @@ Current version: **0.2.0** (every build also shows its build number).
 - [ ] **Lyrics**: (junk lines at the edges of a lyric file are now stripped) lyrics in the expanded album view
       (one line before, the next line underneath, the current one in the accent or text colour); download lyrics
       while songs download; a faster stop command.
-- [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
+- [ ] **Now Playing**: (featured artists now read "SBTRKT with Sampha") title colour follows the accent or text colour (configurable); the label says the playlist or
       genre that is playing, not the word "playlist"; clean display of featured artists (SBTRKT with Sampha, not
       "SBTRKT/Sampha").
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.

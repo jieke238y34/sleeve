@@ -63,6 +63,9 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   player bar across the whole window with the small art at its left end).
 - `install.sh` prints the KDE stack it finds (Plasma, Frameworks, Qt, KDE Connect) so install logs show what runs.
 
+- Several artists in one tag read as a sentence where they are shown: `SBTRKT with Sampha` instead of `SBTRKT/Sampha`,
+  `A, B & C` for more. Names with a short slash (AC/DC) stay whole, and the tag in the file is never changed.
+
 ### Changed
 
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).

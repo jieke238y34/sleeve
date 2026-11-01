@@ -79,6 +79,7 @@ from . import (
     activity,
     apis,
     art,
+    artists,
     audioinfo,
     backup,
     build_label,
@@ -3978,7 +3979,7 @@ class MainWindow(QMainWindow):
             for i, path in enumerate(queue):
                 s = self.by_path.get(path)
                 title = s.name if s else Path(path).stem
-                it = QListWidgetItem(f"{title}\n{s.artist}" if s and s.artist else title)
+                it = QListWidgetItem(f"{title}\n{artists.display(s.artist)}" if s and s.artist else title)
                 it.setToolTip(path)
                 it.setSizeHint(QUEUE_ROW)
                 if path in self._thumbs:
@@ -4315,7 +4316,7 @@ class MainWindow(QMainWindow):
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
         self.np_title.setText(title or "Nothing playing")
-        self.np_artist.setText(artist)
+        self.np_artist.setText(artists.display(artist))
         self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
         self.np_album.setToolTip(detail)
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
@@ -4846,11 +4847,11 @@ class MainWindow(QMainWindow):
             self._current_path = ""                       # the song did not load: nothing is being listened to
             self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
             return
-        self.now.setText(f"{s.name}\n{s.artist}")
+        self.now.setText(f"{s.name}\n{artists.display(s.artist)}")
         self._started_at = int(time.time())
         if getattr(self.player, "playing", False):          # a song brought back paused is not being played
             self.scrobbler.now_playing(s)
-        self.setWindowTitle(f"{s.artist} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
+        self.setWindowTitle(f"{artists.display(s.artist)} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
         try:
             data = art.cover_bytes(path)
         except Exception:
