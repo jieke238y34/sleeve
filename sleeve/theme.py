@@ -175,8 +175,8 @@ QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-
 QPushButton#round:hover {{ background: rgba(255, 255, 255, 30); border-color: rgba(255, 255, 255, 80); }}
 QPushButton#round:checked {{ background: rgba(255, 255, 255, 26); border-color: {accent}; }}
 QPushButton#round:focus {{ border: 2px solid {accent}; }}
-QPushButton#chip {{ background: rgba(255, 255, 255, 20); border: none; border-radius: 14px; padding: 0 15px; min-height: 28px; max-height: 28px;
-                    font-size: 9pt; }}
+QPushButton#chip {{ background: rgba(255, 255, 255, 20); border: none; border-radius: 14px; padding: 0 15px;
+                    min-height: 28px; max-height: 28px; font-size: 9pt; }}
 QPushButton#chip:hover {{ background: rgba(255, 255, 255, 44); }}
 QPushButton#chip:pressed {{ background: {accent}; color: {bg}; }}
 QPushButton#chip:focus {{ border: 2px solid {accent}; padding: 0 13px; }}
