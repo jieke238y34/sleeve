@@ -53,7 +53,9 @@ jobs:
       - name: Find the crash (Python 3.10 aborts after test_glass_lists_insights.py)
         if: matrix.python == '3.10'
         continue-on-error: true
-        run: timeout 200 pytest -s -x -o faulthandler_timeout=60 tests/test_grid_fills.py 2>&1 | tail -80
+        run: |
+          timeout -s KILL 150 pytest -s -x -v -o faulthandler_timeout=45 tests/test_grid_fills.py > grid.log 2>&1 || true
+          tail -120 grid.log
       - run: pytest -v -o faulthandler_timeout=90      # a test stuck over 90 s dumps every thread's stack
       - name: Run the desktop-integration tests on a session bus (Linux)
         run: dbus-run-session -- pytest tests/test_mpris.py tests/test_singleton.py -q
