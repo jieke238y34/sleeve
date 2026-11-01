@@ -4,11 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-01
 
 *A new sleeve, same material.* A new look and layout, with your music, stash, history and settings carried over untouched.
 
-Work towards the next stable release. Releases stay stable-only: a build is published when it is ready, not per commit.
+Releases stay stable-only: a build is published when it is ready, not per commit.
 
 ### Added
 
