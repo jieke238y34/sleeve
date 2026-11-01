@@ -154,3 +154,18 @@ def test_now_playing_folds_the_bar_by_itself_and_leaving_restores_the_saved_choi
         assert not win.bar.isVisible() and win.settings.player_bar_hidden    # the saved choice, not the page's
     finally:
         win.close()
+
+
+def test_double_clicking_the_strip_plays_or_pauses(qapp):  # noqa: F811
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QMouseEvent
+    strip = waveform.WaveSeek()
+    strip.resize(400, 44)
+    asked = []
+    strip.doubleClicked.connect(lambda: asked.append(1))
+    seeks = []
+    strip.seekRequested.connect(seeks.append)
+    pos = QPointF(200, 20)
+    strip.mouseDoubleClickEvent(QMouseEvent(QEvent.MouseButtonDblClick, pos, pos, Qt.LeftButton, Qt.LeftButton,
+                                            Qt.NoModifier))
+    assert asked == [1] and not seeks and strip._drag is None

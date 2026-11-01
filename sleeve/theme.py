@@ -52,6 +52,19 @@ def accent_gradient(accent):
     return out
 
 
+def cover_gradient(palette, accent=None):
+    """Five dark colours, top left to bottom right, with the hues of the cover's own colours (spread over five points)
+    at the same dark, readable lightness as `accent_gradient`. Without a cover palette: the accent's gradient."""
+    colours = [QColor(c) for c in palette or ()]
+    if not colours:
+        return accent_gradient(accent or LAVENDER)
+    out = []
+    for point, light in zip(resample(colours, 5), (0.30, 0.36, 0.30, 0.22, 0.14), strict=True):
+        hue = max(0.0, point.hslHueF())
+        out.append(QColor.fromHslF(hue, min(0.62, max(0.25, point.hslSaturationF())), light).name())
+    return out
+
+
 def derived_muted(text, bg):
     "The quiet text colour that goes with a text and background colour: the text, a good way towards the background."
     t, b = QColor(text), QColor(bg)
@@ -476,6 +489,7 @@ class Backdrop(QWidget):
         self._fade.valueChanged.connect(self._fading)
         self._cache, self._cache_key = None, None            # the painted gradient, reused until size or colours change
         self._pix, self._fixed = None, None                  # the cover now playing; fixed colours from a theme, if any
+        self._blend = False                                  # fixed colours are an accent gradient: hues from the cover
         self._art, self._glow = False, QColor(LAVENDER)      # show a blurred copy of the cover behind everything
         self._last_resize, self._dragging = 0.0, False       # while the window is being dragged the picture is only
         self._last_size = None
@@ -512,15 +526,21 @@ class Backdrop(QWidget):
         self._cache_key = None
         self.update()
 
-    def set_fixed(self, colours):
-        "Use these three or five colours whatever is playing (a theme's or your own backdrop); None follows the cover."
+    def set_fixed(self, colours, blend=False):
+        """Use these three or five colours whatever is playing (a theme's or your own backdrop); None follows the cover.
+        With `blend` the colours are only the fallback: while a cover is showing, the five points take the cover's hues
+        (the accent-following 5-point gradient), at the same dark lightness."""
         colours = [QColor(c) for c in colours] if colours else None
-        if [c.rgb() for c in colours or ()] != [c.rgb() for c in self._fixed or ()]:
-            self._fixed = colours
+        blend = bool(blend and colours)
+        if [c.rgb() for c in colours or ()] != [c.rgb() for c in self._fixed or ()] or blend != self._blend:
+            self._fixed, self._blend = colours, blend
             self._retarget()
 
     def _retarget(self):
         colours = self._fixed or palette_from(self._pix) or [QColor(c) for c in NEUTRAL]
+        if self._blend:
+            colours = cover_gradient(palette_from(self._pix), self._fixed[2]) if self._pix is not None else colours
+            colours = [QColor(c) for c in colours]
         self._from, self._to = resample(self._now, len(colours)), colours     # 3 and 5 colours fade into each other
         self._fade.stop()
         self._fade.start()

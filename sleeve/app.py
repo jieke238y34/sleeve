@@ -539,6 +539,7 @@ class MainWindow(QMainWindow):
         Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
         root.set_fixed(self._backdrop_colours(self._look))
+        self._apply_backdrop(self._look)
         outer = self._outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -1008,17 +1009,16 @@ class MainWindow(QMainWindow):
 
         right = QVBoxLayout()
         self.np_cover = CoverView(self.settings.cover_size)
-        self.np_cover.clicked.connect(self._toggle_cover)
         self.np_title, self.np_artist, self.np_album = QLabel(), QLabel(), QLabel()
         for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
             lab.setObjectName(name)
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
             lab.setWordWrap(True)
-        self.expand_btn = QPushButton("⤢")
-        self.expand_btn.setObjectName("round")
-        self.expand_btn.setToolTip("Expand the album art")
-        self.expand_btn.clicked.connect(self._toggle_cover)
+        self.np_stash_btn = QPushButton("")                    # stash or unstash the song playing
+        self.np_stash_btn.setObjectName("round")
+        self.np_stash_btn.setEnabled(False)
+        self.np_stash_btn.clicked.connect(self._like_current)
         self.full_btn = QPushButton("⛶")
         self.full_btn.setObjectName("round")
         self.full_btn.setToolTip("Album art fullscreen (F11)")
@@ -1034,7 +1034,7 @@ class MainWindow(QMainWindow):
             b.clicked.connect(slot)
         self.np_cover.set_transport((self.np_prev, self.np_play, self.np_next))
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
-        self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
+        self._np_pix, self._cover_screen = None, None
         lyrics_side = self.np_lyrics_side = QWidget()               # the lyrics panel (right side unless moved)
         lyrics_side.setMinimumWidth(self.NP_PANEL_MIN)
         lyrics_side.setMaximumWidth(self.NP_PANEL)
@@ -2189,8 +2189,8 @@ class MainWindow(QMainWindow):
             return                                                  # nothing changed since the last repaint
         self._look = look
         self._accent_shown = colour
-        self.backdrop.set_fixed(self._backdrop_colours(look))
-        self.backdrop.set_art(self._cover_expanded, colour)
+        self._apply_backdrop(look)
+        self.backdrop.set_art(False, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
         self.wave.set_accent(colour)
@@ -2889,8 +2889,7 @@ class MainWindow(QMainWindow):
         self.cover_label.setText(f"{value} px")
         if self.settings.set("cover_size", int(value)):
             self._save_settings()
-        if not self._cover_expanded:
-            self.np_cover.set_max_side(value)
+        self.np_cover.set_max_side(value)
 
     def _fill_outputs(self):
         "List the sound outputs PipeWire offers; keep the chosen one selected."
@@ -3355,6 +3354,10 @@ class MainWindow(QMainWindow):
         accent = getattr(self, "_accent_shown", theme.LAVENDER)        # the diamond follows the accent colour
         self.like_btn.setIcon(QIcon(theme.toggle_icon("stash", accent if on else theme.MUTED, on)))
         self.like_btn.setToolTip(f"{labels.UNDO} this song" if on else f"{labels.VERB} this song")
+        self.np_stash_btn.setEnabled(self.like_btn.isEnabled())
+        self.np_stash_btn.setIcon(self.like_btn.icon())
+        self.np_stash_btn.setToolTip(self.like_btn.toolTip())
+        self.np_stash_btn.setAccessibleName(self.like_btn.toolTip())
 
     def _like_playlist(self):
         paths = [e.path for e in self._playlist_entries if e.exists]
@@ -4046,21 +4049,28 @@ class MainWindow(QMainWindow):
             return theme.accent_gradient(self._accent_shown)
         return self.settings.gradient
 
+    def _apply_backdrop(self, look):
+        "Fix the background colours the settings ask for; the accent-following 5-point gradient takes the cover's hues."
+        own = look in theme.CUSTOM_THEMES and self.settings.theme == look
+        blend = bool(self.settings.gradient is not None and self.settings.gradient_follow_accent
+                     and not own and not theme.look_backdrop(look))
+        self.backdrop.set_fixed(self._backdrop_colours(look), blend=blend)
+
     def _gradient_toggled(self, on):
         self._set_setting("gradient", self.gradient_editor.colours() if on else None)
         self.gradient_follow_box.setVisible(on)
         self.gradient_editor.setVisible(on and not self.settings.gradient_follow_accent)
-        self.backdrop.set_fixed(self._backdrop_colours(self._look))
+        self._apply_backdrop(self._look)
 
     def _gradient_follow_toggled(self, on):
         self._set_setting("gradient_follow_accent", on)
         self.gradient_editor.setVisible(self.gradient_box.isChecked() and not on)
-        self.backdrop.set_fixed(self._backdrop_colours(self._look))
+        self._apply_backdrop(self._look)
 
     def _gradient_changed(self):
         if self.gradient_box.isChecked():
             self._set_setting("gradient", self.gradient_editor.colours())
-            self.backdrop.set_fixed(self._backdrop_colours(self._look))
+            self._apply_backdrop(self._look)
 
     def _wave_strip(self):
         "The strip under the page while the player bar is hidden: time, the waveform (click or drag to seek), time."
@@ -4071,6 +4081,7 @@ class MainWindow(QMainWindow):
         self.wave_pos, self.wave_dur = QLabel("0:00"), QLabel("0:00")
         self.wave = WaveSeek()
         self.wave.seekRequested.connect(self._wave_seek)
+        self.wave.doubleClicked.connect(self.player.toggle)
         row.addWidget(self.wave_pos)
         row.addWidget(self.wave, 1)
         row.addWidget(self.wave_dur)
@@ -4154,7 +4165,7 @@ class MainWindow(QMainWindow):
         """The round buttons under the art, in the order of the panels: the button of a panel on the left sits on the
         left, of one on the right on the right, so each button is on the side of the panel it opens."""
         mine = ((self.tab_queue, self.settings.np_queue_side), (self.tab_lyrics, self.settings.np_lyrics_side))
-        return ([b for b, side in mine if side == "left"] + [self.expand_btn, self.full_btn]
+        return ([b for b, side in mine if side == "left"] + [self.np_stash_btn, self.full_btn]
                 + [b for b, side in mine if side == "right"])
 
     def _np_side_width(self, side):
@@ -4190,10 +4201,9 @@ class MainWindow(QMainWindow):
 
     def _np_apply_panels(self):
         "Show the panels the user asked for, as far as the page has room (the art keeps its share), then re-center."
-        expanded = getattr(self, "_cover_expanded", False)
-        queue = self.tab_queue.isChecked() and not expanded
-        lyrics = self.tab_lyrics.isChecked() and not expanded and (not queue or self._np_room_for_both())
-        if self.np_page.isVisible() and self.tab_lyrics.isChecked() and not expanded and not lyrics:
+        queue = self.tab_queue.isChecked()
+        lyrics = self.tab_lyrics.isChecked() and (not queue or self._np_room_for_both())
+        if self.np_page.isVisible() and self.tab_lyrics.isChecked() and not lyrics:
             self.tab_lyrics.blockSignals(True)               # no room: the button says so; the saved choice is kept
             self.tab_lyrics.setChecked(False)
             self.tab_lyrics.blockSignals(False)
@@ -4327,15 +4337,6 @@ class MainWindow(QMainWindow):
         super().resizeEvent(e)
         self._fit_side_art()
         QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
-
-    def _toggle_cover(self):
-        "Give the album art the whole page (playlist and song text hidden), or go back. The window never changes size."
-        self._cover_expanded = not self._cover_expanded
-        self._np_apply_panels()
-        self.backdrop.set_art(self._cover_expanded, self._accent_shown)      # a blurred copy of the cover behind it
-        self.np_cover.set_max_side(100_000 if self._cover_expanded else self.settings.cover_size)
-        self.expand_btn.setText("⤡" if self._cover_expanded else "⤢")
-        self.expand_btn.setToolTip("Shrink the album art" if self._cover_expanded else "Expand the album art")
 
     def _np_balance(self):
         "Keep the cover centered over the whole window, in line with the transport buttons: while a panel shows, the"
