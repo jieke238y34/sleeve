@@ -78,3 +78,24 @@ def test_a_custom_theme_can_hold_a_five_point_gradient(qapp):  # noqa: F811
     assert dlg.result_theme()["backdrop"] is None
     editor = GradientEditor(FIVE)
     assert editor.colours() == FIVE and len(editor._buttons) == 5
+
+
+def test_the_accent_following_gradient_takes_its_hues_from_the_cover(qapp):  # noqa: F811
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+
+    from sleeve import theme
+    pix = QPixmap(200, 200)
+    painter = QPainter(pix)
+    painter.fillRect(0, 0, 100, 200, QColor("#d02020"))
+    painter.fillRect(100, 0, 100, 200, QColor("#2040d0"))
+    painter.end()
+    back = theme.Backdrop()
+    back.set_fixed(theme.accent_gradient("#e0303a"), blend=True)
+    back.set_cover(pix)
+    hues = {round(QColor(c).hslHueF() * 12) % 12 for c in back._to}
+    assert len(back._to) == 5 and len(hues) >= 3, hues                  # red and blue and what lies between them
+    assert all(QColor(c).lightnessF() < 0.45 for c in back._to)         # still dark enough for the light text
+    plain = theme.Backdrop()
+    plain.set_fixed(theme.accent_gradient("#e0303a"))
+    plain.set_cover(pix)
+    assert {round(QColor(c).hslHueF() * 12) % 12 for c in plain._to} <= {11, 0, 1}      # without blend: the accent's hue
