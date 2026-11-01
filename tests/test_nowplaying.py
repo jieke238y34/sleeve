@@ -186,7 +186,7 @@ def test_the_wheel_glides_and_rows_can_be_centred(qapp, monkeypatch):  # noqa: F
 
 def test_many_distinct_accent_colours_and_a_chip_for_each(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     colours = list(settings.ACCENTS.values())
-    assert len(colours) == 16 and len(set(colours)) == len(colours)
+    assert len(colours) == 17 and len(set(colours)) == len(colours)
     assert all(re.fullmatch(r"#[0-9a-f]{6}", c) for c in colours) and {"Violet", "Sky", "Amber"} <= set(settings.ACCENTS)
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
@@ -295,8 +295,8 @@ def striped(colours, size=64):
     return pix
 
 
-def test_pearl_is_the_white_accent_and_there_are_sixteen_colours():
-    assert settings.ACCENTS["Pearl"] == "#f2efe9" and len(settings.ACCENTS) == 16
+def test_pearl_is_the_white_accent_and_there_are_seventeen_colours():
+    assert settings.ACCENTS["Pearl"] == "#f2efe9" and len(settings.ACCENTS) == 17
     assert {"Violet", "Sky", "Amber", "Pearl"} <= set(settings.ACCENTS)
 
 

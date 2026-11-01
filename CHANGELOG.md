@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Black** is an accent colour (and a custom accent may be as dark as you like). Text and icons on an accent surface turn
+  white when the accent is dark; where the accent is drawn straight on the window (sliders, switch labels, icons) a black
+  accent is shown as a light neutral so it never disappears.
+
+### Fixed
+
+- A black cover (such as *meet the grahams*) no longer makes the accent green from its faint colour noise: it gives a
+  black accent. Grey and white covers still give a soft white.
+- The updater tests no longer depend on which version the app is (they broke when 0.3.0 was cut).
+
 ## [0.3.0] - 2026-11-01
 
 *A new sleeve, same material.* A new look and layout, with your music, stash, history and settings carried over untouched.

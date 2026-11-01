@@ -136,14 +136,30 @@ def look_accent(name):
     "The accent that comes with a look, or the default accent when `name` is None."
     return LOOKS[name][3] if name else LAVENDER
 
+def on_accent(accent, dark=BG):
+    """The colour for text and icons drawn on an accent-coloured surface: the window's dark colour on a bright accent,
+    white on a dark one (a black accent), so they stay readable either way."""
+    c = QColor(accent)
+    luminance = (0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF())
+    return "#ffffff" if luminance < 0.30 else dark
+
+
+def visible_accent(accent):
+    """The accent as a colour to draw in directly on the dark window (text, lines, slider fills): the accent itself when
+    it is bright enough to see, a light neutral when it is black or nearly, so those never vanish."""
+    return "#d9d5ea" if on_accent(accent) == "#ffffff" else accent
+
+
 def build_style(accent=LAVENDER, palette=None):
     "The window stylesheet: an accent colour, and a (bg, text, muted) surface palette."
     bg, text, muted = palette if palette else (BG, TEXT, MUTED)
+    ink = on_accent(accent, bg)                                           # text on accent-coloured surfaces
+    lit = visible_accent(accent)                                          # the accent where it is drawn on the window
     rgb = ", ".join(str(int(accent[i:i + 2], 16)) for i in (1, 3, 5))     # for the see-through tints
     return f"""
 QMainWindow, QDialog {{ background: {bg}; }}
 QWidget {{ color: {text}; font-size: 10pt; }}QStackedWidget, QSplitter, QLabel, QCheckBox {{ background: transparent; }}
-QToolTip {{ background: #1a1624; color: {text}; border: 1px solid rgba({rgb}, 120); border-left: 3px solid {accent};
+QToolTip {{ background: #1a1624; color: {text}; border: 1px solid rgba({rgb}, 120); border-left: 3px solid {lit};
             padding: 5px 10px; font-size: 9pt; }}
 
 QListWidget, QTableView, QTableWidget, QPlainTextEdit {{
@@ -162,27 +178,27 @@ QListWidget#nav {{ background: transparent; border: none; border-radius: 0; padd
                     font-size: 11pt; }}
 QListWidget#nav::item {{ padding: 11px 14px; margin-bottom: 2px; border-radius: 10px; color: {muted}; }}
 QListWidget#nav::item:hover {{ background: rgba(255, 255, 255, 18); color: {text}; }}
-QListWidget#nav::item:selected {{ background: {accent}; color: {bg}; font-weight: 600; }}
+QListWidget#nav::item:selected {{ background: {accent}; color: {ink}; font-weight: 600; }}
 QListWidget#queue::item {{ padding: 6px 8px; }}
 QHeaderView {{ background: transparent; border: none; }}
 QHeaderView::section {{ background: transparent; color: {muted}; border: none; padding: 8px; font-weight: 600; }}
 QTableView::item, QTableWidget::item {{ padding: 4px 8px; }}
 QTableCornerButton::section {{ background: transparent; border: none; }}
 
-QListWidget[dropping="true"], QTableWidget[dropping="true"] {{ border: 2px dashed {accent}; }}
-QWidget#playlistspage[dropping="true"] {{ border: 2px dashed {accent}; border-radius: 12px; }}
+QListWidget[dropping="true"], QTableWidget[dropping="true"] {{ border: 2px dashed {lit}; }}
+QWidget#playlistspage[dropping="true"] {{ border: 2px dashed {lit}; border-radius: 12px; }}
 QLineEdit {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 15px;
-             padding: 6px 14px; selection-background-color: {accent}; selection-color: {bg}; }}
-QLineEdit:focus {{ border-color: {accent}; }}
+             padding: 6px 14px; selection-background-color: {accent}; selection-color: {ink}; }}
+QLineEdit:focus {{ border-color: {lit}; }}
 
 QPushButton {{ background: rgba(255, 255, 255, 24); border: none; border-radius: 15px; padding: 6px 16px; }}
 QPushButton:hover {{ background: rgba(255, 255, 255, 42); }}
-QPushButton:focus {{ border: 2px solid {accent}; padding: 4px 14px; }}
+QPushButton:focus {{ border: 2px solid {lit}; padding: 4px 14px; }}
 QPushButton#round:focus, QPushButton#play:focus {{ padding: 0; }}
 QPushButton#primary:focus {{ padding: 10px 28px; border-color: {CREAM}; }}
-QComboBox:focus, QSlider:focus {{ border: 1px solid {accent}; }}
+QComboBox:focus, QSlider:focus {{ border: 1px solid {lit}; }}
 QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
-QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
+QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {lit}; }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
                      padding: 0; font-size: 14pt; }}
@@ -190,20 +206,20 @@ QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
 QPushButton#chip {{ background: rgba(255, 255, 255, 20); border: none; border-radius: 14px; padding: 0 15px;
                     min-height: 28px; max-height: 28px; font-size: 9pt; }}
 QPushButton#chip:hover {{ background: rgba(255, 255, 255, 44); }}
-QPushButton#chip:pressed {{ background: {accent}; color: {bg}; }}
-QPushButton#chip:focus {{ border: 2px solid {accent}; padding: 0 13px; }}
+QPushButton#chip:pressed {{ background: {accent}; color: {ink}; }}
+QPushButton#chip:focus {{ border: 2px solid {lit}; padding: 0 13px; }}
 QPushButton#skip {{ border-radius: 22px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px;
                     padding: 0; font-size: 14pt; background: rgba(255, 255, 255, 18); }}
 QPushButton#skip:hover {{ background: rgba(255, 255, 255, 40); }}
-QPushButton#skip:focus {{ border: 2px solid {accent}; padding: 0; }}
+QPushButton#skip:focus {{ border: 2px solid {lit}; padding: 0; }}
 QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; padding: 0 12px; font-size: 9pt;
                        background: transparent; }}
 QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
-                    padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
+                    padding: 0; font-size: 18pt; background: {accent}; color: {ink}; }}
 QPushButton#play:hover {{ background: {CREAM}; }}
 
-QPushButton#primary {{ background: {accent}; color: {bg}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
+QPushButton#primary {{ background: {accent}; color: {ink}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
 QPushButton#primary:hover {{ background: {CREAM}; }}
 QPushButton#primary:disabled {{ background: rgba({rgb}, 46); color: rgba(255, 255, 255, 150); }}
@@ -212,7 +228,7 @@ QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
 QListWidget#activity::item:selected {{ background: transparent; }}
 
 QSlider::groove:horizontal {{ height: 6px; background: rgba(255, 255, 255, 40); border-radius: 3px; }}
-QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
+QSlider::sub-page:horizontal {{ background: {lit}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {CREAM}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }}
 
 QScrollBar:vertical {{ background: transparent; width: 14px; margin: 12px 3px; }}
@@ -226,16 +242,16 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QCheckBox {{ spacing: 10px; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 80);
                         background: rgba(255, 255, 255, 15); }}
-QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
+QCheckBox::indicator:checked {{ background: {lit}; border-color: {lit}; }}
 QComboBox {{ background: rgba(255, 255, 255, 18); border: 1px solid rgba(255, 255, 255, 28); border-radius: 13px;
              padding: 5px 14px; min-width: 120px; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
 QComboBox QAbstractItemView {{ background: rgba(22, 19, 31, 244); border: 1px solid rgba({rgb}, 80);
                                border-radius: 12px;
-                               padding: 6px; selection-background-color: rgba({rgb}, 60); selection-color: {accent};
+                               padding: 6px; selection-background-color: rgba({rgb}, 60); selection-color: {lit};
                                outline: 0; }}
 QProgressBar {{ background: rgba(255, 255, 255, 30); border: none; border-radius: 6px; text-align: center; }}
-QProgressBar::chunk {{ background: {accent}; border-radius: 6px; }}
+QProgressBar::chunk {{ background: {lit}; border-radius: 6px; }}
 QStatusBar {{ background: transparent; color: {muted}; }}
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
@@ -244,24 +260,24 @@ QSplitter::handle:hover {{ background: rgba(255, 255, 255, 30); }}
 
 QMenu {{ background: rgba(22, 19, 31, 244); border: 1px solid rgba({rgb}, 80); border-radius: 14px; padding: 8px; }}
 QMenu::item {{ padding: 8px 26px 8px 14px; margin: 1px 0; border-radius: 9px; border-left: 3px solid transparent; }}
-QMenu::item:selected {{ background: rgba({rgb}, 48); color: {accent}; border-left: 3px solid {accent}; }}
+QMenu::item:selected {{ background: rgba({rgb}, 48); color: {lit}; border-left: 3px solid {lit}; }}
 QMenu::item:disabled {{ color: rgba(255, 255, 255, 80); }}
 QMenu::separator {{ height: 1px; background: rgba({rgb}, 60); margin: 6px 12px; }}
 
 QWidget#playerbar {{ background: rgba(10, 8, 16, 170); }}
 QPushButton#seg {{ background: transparent; color: {muted}; border-radius: 14px; padding: 6px 18px; font-weight: 600; }}
 QPushButton#seg:hover {{ background: rgba(255, 255, 255, 22); color: {text}; }}
-QPushButton#seg:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
+QPushButton#seg:checked {{ background: rgba(255, 255, 255, 34); color: {lit}; }}
 QListWidget#lyrics {{ font-size: 13pt; background: rgba(10, 8, 16, 90); }}
 QListWidget#lyrics::item {{ padding: 9px 8px; color: {muted}; border-radius: 8px; }}
-QListWidget#lyrics::item:selected {{ background: transparent; color: {accent}; font-weight: 700; }}
+QListWidget#lyrics::item:selected {{ background: transparent; color: {lit}; font-weight: 700; }}
 QLabel#title {{ font-size: 20pt; font-weight: 700; }}
 QLabel#nowtitle {{ font-size: 11.5pt; font-weight: 700; }}
 QLabel#nowartist {{ font-size: 10pt; color: {muted}; }}
 QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {muted}; }}
 QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
-QLabel#subhead {{ font-size: 11pt; font-weight: 700; color: {accent}; }}
+QLabel#subhead {{ font-size: 11pt; font-weight: 700; color: {lit}; }}
 """
 
 
@@ -483,12 +499,23 @@ def palette_from(pix, count=3):
     return out
 
 
+def _is_black(pix):
+    "True for a cover that is (nearly) all black: under 6% of its pixels are anything but dark."
+    img = pix.toImage().scaled(24, 24, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    img = img.convertToFormat(QImage.Format_RGB32)
+    lit = sum(1 for y in range(img.height()) for x in range(img.width())
+              if QColor(img.pixel(x, y)).getHsvF()[2] > 0.22)
+    return lit < 0.06 * img.width() * img.height()
+
+
 def accent_from_cover(pix):
     """A bright accent colour (#rrggbb) in the hue of the cover's main colour, so the interface matches the song.
-    A cover with no real colour (black and white) gets a soft white. None for a missing cover."""
+    A black cover gets a black accent, a grey or white one a soft white. None for a missing cover."""
     colours = palette_from(pix, 1)
     if not colours:
         return None
+    if _is_black(pix):                                     # a black cover: black, not the green of its faint noise
+        return "#000000"
     h, s, _v, _a = colours[0].getHsvF()
     if s < 0.16:                                           # grey cover: no hue to follow
         return "#f2efe9"
