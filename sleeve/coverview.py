@@ -28,6 +28,8 @@ class CoverView(QWidget):
         self._pix = None
         self._cache = None                    # ((cache key, side), the rounded, scaled picture)
         self._rows, self._btns, self._art_y, self.x_shift = [], [], 0, 0
+        self._tr_on = False
+        self._transport = []                  # previous / play-pause / next, a row above the round buttons
         self._side = 0                        # the square's side, set whenever the words are placed
         self.top_inset = 0                    # the art never starts above this many pixels from the top
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)     # the window owns the room; the art fits in it
@@ -44,6 +46,14 @@ class CoverView(QWidget):
         self._rows = list(labels)
         self._btns = list(buttons)
         for w in (*self._rows, *self._btns):
+            w.setParent(self)
+            w.show()
+        self._place_info()
+
+    def set_transport(self, buttons):
+        "Previous, play/pause and next sit in their own row between the words and the round buttons."
+        self._transport = list(buttons)
+        for w in self._transport:
             w.setParent(self)
             w.show()
         self._place_info()
@@ -67,14 +77,23 @@ class CoverView(QWidget):
     def sizeHint(self):
         return QSize(self.max_side, self.max_side)      # the space it wants; the layout never gives more than fits
 
+    def _transport_fits(self, info):
+        "The transport row yields to the art: it only shows while the art keeps at least 160 px without squeezing."
+        return bool(self._transport) and self.height() - self.top_inset - info - 8 - max(
+            b.minimumSizeHint().height() for b in self._transport) >= 160
+
     def _info_height(self):
         "The height of the words and buttons below the art, all of them at the width the group may use now."
         span = self.width() - 2 * abs(self.x_shift)
         if not self._rows or span <= 8:
+            self._tr_on = False
             return 0
         total = 26                                          # the gap between the art and the words
         for w in self._rows:
             total += w.heightForWidth(span - 12) or w.sizeHint().height()
+        self._tr_on = self._transport_fits(total)
+        if self._tr_on:
+            total += 8 + max(b.minimumSizeHint().height() for b in self._transport)
         total += 8 + max((b.minimumSizeHint().height() for b in self._btns), default=0)
         return total
 
@@ -89,11 +108,22 @@ class CoverView(QWidget):
         # beside a panel the art starts level with the top of its list; with no panel it is centered in the page
         self._art_y = self.top_inset if self.top_inset > 0 else max(0, (room - side - info) // 2)
         y = self._art_y + side + 26
+        shown = self._tr_on
         span -= 12                                          # the words keep the same edge room as before
         for w in self._rows:
             h = w.heightForWidth(max(10, span)) or w.sizeHint().height()
             w.setGeometry(cx - span // 2, y, span, h)
             y += h
+        for b in self._transport:
+            b.setVisible(shown)
+        if shown:
+            widest = max(b.minimumSizeHint().width() for b in self._transport)
+            row = widest * len(self._transport) + 8 * (len(self._transport) - 1)
+            x = max(0, min(cx - row // 2, wid - row))
+            for b in self._transport:
+                b.setGeometry(x, y + 8, widest, b.minimumSizeHint().height())
+                x += widest + 8
+            y += 8 + max(b.minimumSizeHint().height() for b in self._transport)
         if self._btns:
             widest = max(b.minimumSizeHint().width() for b in self._btns)
             row = widest * len(self._btns) + 8 * (len(self._btns) - 1)
