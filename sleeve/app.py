@@ -2735,7 +2735,7 @@ class MainWindow(QMainWindow):
         for side in (left, right):                   # same limits and stretch: kept equal
             side.setMinimumWidth(140)
             side.setMaximumWidth(420)
-        lay.setContentsMargins(20, 6, 20, 6)                  # the song's name keeps clear of the sidebar's edge
+        lay.setContentsMargins(14, 6, 14, 6)                  # the song's name sits close to the sidebar, no gap
         lay.addWidget(left, 1)
         middle = QVBoxLayout()
         middle.setSpacing(4)
@@ -3794,12 +3794,13 @@ class MainWindow(QMainWindow):
         row = self.queue_list.row(item) if item is not None else self.queue_list.currentRow()
         songs = self._songs_for([self.player.queue[row]]) if 0 <= row < len(self.player.queue) else []
         m = theme.Menu(self)
+        if songs:                                                   # stash first, then the rest
+            m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
+                        lambda: self._toggle_like([songs[0].path]))
         if 0 <= row < len(self.player.queue):
             act = m.addAction("Remove from queue", lambda: self.player.remove_at(row))
             act.setToolTip("Takes it off this list only; the song stays where it is on disk")
         if songs:
-            m.addAction(labels.UNDO if songs[0].path in self.likes else labels.VERB,
-                        lambda: self._toggle_like([songs[0].path]))
             self._add_to_playlist_menu(m, songs)
         m.addAction("Save the whole queue as a playlist…", self._save_queue_as_playlist)
         m.exec(self.queue_list.viewport().mapToGlobal(pos))
@@ -4949,6 +4950,9 @@ class MainWindow(QMainWindow):
             super().closeEvent(event)
             return
         self._closing = True                         # no new scans from here on
+        self.hide()                                  # gone at once; the tidying up below is not waited for
+        for runner in (self.runner, self.lyrics_win.runner):
+            runner.request_stop()                    # both downloaders are asked together, so their waits overlap
         if self._wave_worker is not None:             # a waveform being worked out: it is short, let it end
             self._wave_worker.wait(3000)
         for worker in list(self._nd_workers):         # a call to the server in flight: let it end (it times out)

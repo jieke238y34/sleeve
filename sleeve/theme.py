@@ -239,7 +239,7 @@ QProgressBar::chunk {{ background: {accent}; border-radius: 6px; }}
 QStatusBar {{ background: transparent; color: {muted}; }}
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
-QSplitter::handle {{ background: transparent; }}
+QSplitter::handle {{ background: rgba(10, 8, 16, 170); }}
 QSplitter::handle:hover {{ background: rgba(255, 255, 255, 30); }}
 
 QMenu {{ background: rgba(22, 19, 31, 244); border: 1px solid rgba({rgb}, 80); border-radius: 14px; padding: 8px; }}
