@@ -71,19 +71,19 @@ def local_build():
     return info[0] if info else 0
 
 
-def is_newer(remote, remote_build=0, local=__version__, local_build_number=None):
+def is_newer(remote, remote_build=0, local=None, local_build_number=None):
     "True when the release has a higher version, or the same version with a higher build number."
-    r, v = parse_version(remote), parse_version(local)
+    r, v = parse_version(remote), parse_version(local or __version__)
     if not (r and v):
         return False
     mine = local_build() if local_build_number is None else local_build_number
     return (r, remote_build) > (v, mine)
 
 
-def relation(release, local=__version__, local_build_number=None):
+def relation(release, local=None, local_build_number=None):
     """How this copy stands against the newest published release: 'older' (there is an update), 'same', or 'ahead'
     (built from newer work than any release, as a development copy is)."""
-    r, v = parse_version(release["version"]), parse_version(local)
+    r, v = parse_version(release["version"]), parse_version(local or __version__)
     mine = local_build() if local_build_number is None else local_build_number
     if not (r and v):
         return "same"

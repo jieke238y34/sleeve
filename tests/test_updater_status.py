@@ -22,6 +22,7 @@ def test_the_relation_and_is_newer_never_disagree():
 
 
 def test_the_status_sentence_says_ahead_instead_of_newest_for_a_development_copy(monkeypatch):
+    monkeypatch.setattr(updater, "__version__", "0.2.0")                   # these releases are 0.2.0 whatever the app is
     monkeypatch.setattr(updater, "local_build", lambda: 129)
     text = updater.status_text(RELEASE, "0.2.0 · build 129")
     assert "newer than the newest published release" in text and "0.2.0 · build 117" in text
@@ -31,6 +32,7 @@ def test_the_status_sentence_says_ahead_instead_of_newest_for_a_development_copy
 
 
 def test_the_command_line_says_the_same(monkeypatch):
+    monkeypatch.setattr(updater, "__version__", "0.2.0")
     monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
     monkeypatch.setattr(updater, "local_build", lambda: 129)
     monkeypatch.setattr(updater, "latest_release", lambda opener=None: dict(RELEASE))
