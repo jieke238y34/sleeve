@@ -10,11 +10,13 @@ inside Sleeve and are turned into a stream address only at the moment they are p
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from .library import Song
 
@@ -25,6 +27,9 @@ MAX_BYTES = 8_000_000                  # a reply larger than this is not a music
 TIMEOUT = 15
 _ID = re.compile(r"[A-Za-z0-9._\-]{1,80}")
 _HEX = re.compile(r"[0-9a-f]+")
+MAX_COVER = 3_000_000                  # a cover picture larger than this is not shown
+MAX_SONG = 2_000_000_000               # nor is a track larger than 2 GB saved
+COVERS = {}                            # track path -> the server's cover id for it (filled as songs are listed)
 
 
 class NavidromeError(Exception):
@@ -144,6 +149,10 @@ class Client:
         "A library Song for one track the server listed, named navidrome:<id>."
         sid = str(data["id"])
         fmt = str(data.get("suffix") or "").upper()
+        if _ID.fullmatch(str(data.get("coverArt", ""))):
+            if len(COVERS) > 5000:
+                COVERS.clear()
+            COVERS[track_path(sid)] = str(data["coverArt"])
         return Song(track_path(sid), title=str(data.get("title") or ""), artist=str(data.get("artist") or ""),
                     album=str(data.get("album") or ""), genre=str(data.get("genre") or ""),
                     length=float(data.get("duration") or 0), bitrate=int(data.get("bitRate") or 0),
@@ -159,9 +168,60 @@ class Client:
     def cover_url(self, cover_id, size=300):
         return f"{self.url}/rest/getCoverArt.view?{self._query(id=cover_id, size=size)}"
 
+    def _request(self, url):
+        return urllib.request.Request(url, headers={"User-Agent": f"{CLIENT}/navidrome"})  # noqa: S310  # nosec B310
+
+    def cover(self, cover_id, size=96):
+        "The bytes of a small cover picture (at most MAX_COVER), or b'' when the server has none."
+        if not _ID.fullmatch(str(cover_id)):
+            return b""
+        try:
+            with self._opener(self._request(self.cover_url(cover_id, size)), timeout=TIMEOUT) as resp:
+                data = resp.read(MAX_COVER + 1)
+        except (urllib.error.URLError, OSError, ValueError):
+            return b""
+        return data if len(data) <= MAX_COVER else b""
+
+    def download(self, song_id, dest):
+        """Save a track's original file to `dest` (written as dest.part first, so a broken download never looks like a
+        song). Returns the path; raises NavidromeError when the server cannot be reached or the file is too big."""
+        req = self._request(self.stream_url(song_id))
+        dest = Path(dest)
+        part, size = dest.with_name(dest.name + ".part"), 0
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with self._opener(req, timeout=TIMEOUT) as resp, open(part, "wb") as out:
+                if "json" in str(getattr(resp, "headers", {}).get("Content-Type", "")):   # an error answer
+                    raise NavidromeError("The server would not send that track.")
+                while chunk := resp.read(1 << 16):
+                    size += len(chunk)
+                    if size > MAX_SONG:
+                        raise NavidromeError("That file is larger than 2 GB.")
+                    out.write(chunk)
+            os.replace(part, dest)
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            raise NavidromeError("Could not download that track.") from e
+        finally:
+            part.unlink(missing_ok=True)
+        return dest
+
     def scrobble(self, song_id, submission=True):
         "Tell the server a track was heard (or, with submission False, that it is playing now)."
         self._get("scrobble", id=song_id, submission="true" if submission else "false")
+
+
+def _safe(text, fallback):
+    "One folder or file name made from tag text: no slashes or control characters, not hidden, not too long."
+    text = re.sub(r'[\x00-\x1f/\\:*?"<>|]+', " ", str(text)).strip(" .")
+    return re.sub(r" {2,}", " ", text)[:80].strip(" .") or fallback
+
+
+def stash_path(music_dir, song):
+    "Where a server track is saved: <music folder>/Navidrome/<artist>/<album>/<track> <title>.<format>."
+    ext = re.sub(r"[^a-z0-9]", "", song.fmt.lower())[:5] or "audio"
+    name = _safe(f"{song.track:02d} {song.name}" if song.track else song.name, "track")
+    return (Path(music_dir) / "Navidrome" / _safe(song.artist, "Unknown artist")
+            / _safe(song.album, "Unknown album") / f"{name}.{ext}")
 
 
 def _album(a):
