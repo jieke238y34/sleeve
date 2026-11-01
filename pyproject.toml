@@ -26,7 +26,10 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Players",
 ]
 dependencies = [
-    "PySide6>=6.6,<7",
+    # PySide6 6.12.0 aborts Python 3.10 ("none_dealloc: deallocating None", seen painting the album grid in CI), so
+    # 3.10 stays on the 6.11 series; every newer Python takes the latest.
+    "PySide6>=6.6,<6.12; python_version < '3.11'",
+    "PySide6>=6.6,<7; python_version >= '3.11'",
     "mutagen>=1.47,<2",
 ]
 
