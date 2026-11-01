@@ -2239,6 +2239,7 @@ class MainWindow(QMainWindow):
         self.backdrop.set_art(False, colour)
         self.setStyleSheet(theme.build_style(colour, theme.look_palette(look)))
         Switch.set_accent(colour)
+        self._update_transport_icons()                                      # the play icon is white on a black accent
         self.wave.set_accent(colour)
         self.identity_page.set_accent(colour)
         self._vol_bubble.set_accent(colour)
@@ -4810,11 +4811,14 @@ class MainWindow(QMainWindow):
 
     def _update_transport_icons(self):
         "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
+        if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
+            return                                                          # the accent is first set while building
         playing = getattr(self, "_is_playing", False)
+        on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
         for prev, play, nxt in sets:
             for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
-                                            (play, "pause" if playing else "play", theme.BG, 38)):
+                                            (play, "pause" if playing else "play", on_play, 38)):
                 btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
                 btn.setIconSize(QSize(side, side))
 

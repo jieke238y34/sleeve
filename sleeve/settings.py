@@ -1,6 +1,5 @@
 """Sleeve's own preferences, kept in ~/.config/sleeve/settings.json (never in dl.py's files)."""
 
-import colorsys
 import json
 import os
 import re
@@ -15,7 +14,7 @@ ACCENTS = {                        # bold, in the order of the colour wheel, the
     "Crimson": "#ff4d6d", "Coral": "#ff7a6b", "Tangerine": "#ff8a1f", "Amber": "#e8cf9f",
     "Sunflower": "#ffc533", "Lime": "#a6e22e", "Emerald": "#2ee59d", "Aqua": "#1fd1c8", "Sky": "#a9c8e8",
     "Azure": "#2f9bff", "Cobalt": "#5b7cff", "Indigo": "#7a5cff", "Violet": "#a595f0", "Magenta": "#e040fb",
-    "Hot Pink": "#ff4fa3", "Pearl": "#f2efe9",
+    "Hot Pink": "#ff4fa3", "Pearl": "#f2efe9", "Black": "#000000",
 }
 CUSTOM = "Custom"                  # the accent name when the user picked their own colour (see accent_custom)
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
@@ -65,14 +64,6 @@ DEFAULTS = {
     "music_dir": "",                   # the music folder, when there is no dl.py to say where it is
     "dl_path": "",                     # a dl.py the user picked in Sleeve (the usual places are searched anyway)
 }
-
-
-def legible(colour):
-    "The colour, lightened if needed so that dark text on it stays readable (accents are used as fills)."
-    h, s, v = colorsys.rgb_to_hsv(*(int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)))
-    v = max(v, 0.78)
-    r, g, b = colorsys.hsv_to_rgb(h, s, v)
-    return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
 def _valid_custom_theme(value):
@@ -187,9 +178,9 @@ class Settings:
 
     @property
     def accent_color(self):
-        "The accent as #rrggbb (a custom colour is lightened if it is too dark to carry dark text)."
+        "The accent as #rrggbb. A custom colour may be as dark as black: text on it turns white (theme.on_accent)."
         if self.values["accent"] == CUSTOM:
-            return legible(self.values["accent_custom"])
+            return self.values["accent_custom"]
         return ACCENTS[self.values["accent"]]
 
     def save(self):
