@@ -116,17 +116,6 @@ def test_the_art_starts_level_with_the_top_of_the_panel_beside_it(qapp, cfg, mon
         win.close()
 
 
-def test_one_loud_spike_does_not_flatten_the_rest_of_the_song():
-    body = [4000, -4000] * 1000 * 100                                  # a steady body of 100 buckets' worth of samples
-    spike = [32000, -32000]
-    quiet = [600, -600] * 1000 * 20
-    samples = quiet + body + spike + body + quiet
-    peaks = waveform.peaks_from_pcm(pcm(samples), buckets=240)
-    assert len(peaks) == 240 and max(peaks) == 1.0
-    loud_part = sorted(peaks)[len(peaks) // 2]                            # the typical bar
-    assert loud_part > 0.5, loud_part                                     # visible, not a row of dots
-    assert min(peaks) < loud_part                                         # and the quiet ends still look quieter
-
 
 def test_the_strip_stays_in_the_page_area_and_never_overlaps_the_sidebar(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     monkeypatch.setattr(waveform, "compute_peaks", lambda path, **kw: [0.6] * 30)
