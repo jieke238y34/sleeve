@@ -539,7 +539,7 @@ class MainWindow(QMainWindow):
         Switch.set_accent(self._accent_shown)
         root = self.backdrop = theme.Backdrop()
         root.set_fixed(self._backdrop_colours(self._look))
-        outer = QVBoxLayout(root)
+        outer = self._outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         self.nav = QListWidget()
@@ -582,7 +582,7 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.side)
         self.wave_strip = self._wave_strip()                  # shown while the player bar is folded away: pages only
         content = QWidget()                                   # the pages and the strip under them, beside the sidebar
-        column = QVBoxLayout(content)
+        column = self._column = QVBoxLayout(content)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         column.addWidget(self.stack, 1)
@@ -610,6 +610,8 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.bar_fold_btn)
         QShortcut(QKeySequence("Ctrl+B"), self, self._toggle_bar)
         self._set_bar_hidden(self.settings.player_bar_hidden, save=False)
+        self._legacy_applied = False
+        self._apply_layout()
         if self.settings.library_view == "albums":
             self.view_albums_btn.setChecked(True)
         names = [self.nav.item(i).text() for i in range(self.nav.count())]
@@ -1475,6 +1477,16 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        self.side_art_box = Switch("Show the small album art under the sidebar")
+        self.side_art_box.setChecked(self.settings.side_art)
+        self.side_art_box.toggled.connect(lambda on: (self._set_setting("side_art", on), self._apply_layout()))
+        lay.addWidget(self.side_art_box)
+        self.legacy_box = Switch("Classic layout (the way Sleeve used to look)")
+        self.legacy_box.setChecked(self.settings.legacy_layout)
+        self.legacy_box.toggled.connect(lambda on: (self._set_setting("legacy_layout", on), self._apply_layout()))
+        lay.addWidget(self.legacy_box)
+        lay.addWidget(hint("Classic: the player bar runs across the whole window under the sidebar, and the small "
+                           "album art sits at its left end instead of under the page list."))
         row = QHBoxLayout()
         self.queue_side_box, self.lyrics_side_box = QuietCombo(), QuietCombo()
         for box, current, label in ((self.queue_side_box, self.settings.np_queue_side, "Playlist panel"),
@@ -4655,9 +4667,32 @@ class MainWindow(QMainWindow):
                 return True
         return False
 
+    def _apply_layout(self):
+        """Put the player bar and the small album art where the settings say: the new layout (bar under the pages, art
+        under the sidebar list) or the classic one (bar across the window, art in the bar), and show or hide the art."""
+        legacy = self.settings.legacy_layout
+        if legacy != self._legacy_applied:
+            self._legacy_applied = legacy
+            bar_lay = self.bar.layout()
+            if legacy:
+                self._column.removeWidget(self.bar)
+                self._outer.addWidget(self.bar)
+                self.side_lay.removeWidget(self.cover)
+                bar_lay.insertWidget(0, self.cover)
+                self.cover.setFixedSize(SIDE_ART_MIN, SIDE_ART_MIN)
+                self._render_side_art()
+            else:
+                self._outer.removeWidget(self.bar)
+                self._column.addWidget(self.bar)
+                bar_lay.removeWidget(self.cover)
+                self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
+                self._fit_side_art()
+            self._set_bar_hidden(self._on_np or self.settings.player_bar_hidden, save=False)   # a moved widget hides
+        self.cover.setVisible(self.settings.side_art)
+
     def _fit_side_art(self):
         "Size the album art to the room under the page list: as wide as the sidebar allows, never squeezing the list."
-        if not hasattr(self, "side"):
+        if not hasattr(self, "side") or self.settings.legacy_layout:
             return
         rows = self.nav.count() * max(self.nav.sizeHintForRow(0), 28) + 16
         room = self.side.height() - rows - 20
