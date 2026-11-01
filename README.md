@@ -20,8 +20,8 @@ On a wide window the playlist, the art and the lyrics sit side by side, and each
 
 ![Now Playing on a wide window: playlist, art and synced lyrics](docs/screenshots/now-playing-wide.png)
 
-> **Status: alpha (v0.2.0, not yet released).** Linux is the supported platform. Settings shows the version with its build number, for
-> example `0.2.0 · build 104`, so a bug report can name the exact build. Back up your music before using the tag editor, and
+> **Status: alpha (v0.3.0, "A new sleeve, same material").** Linux is the supported platform. Settings shows the version with its
+> build number, for example `0.3.0 · build 247`, so a bug report can name the exact build. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
@@ -286,7 +286,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 ## Roadmap and not yet
 
-These are not in v0.2.0:
+These are not in v0.3.0:
 
 - A tag editor for the Health page's problems (today it shows them and starts the matching `dl.py` job).
 - A Windows build and installer.

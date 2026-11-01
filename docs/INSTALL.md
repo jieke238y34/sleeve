@@ -1,6 +1,6 @@
 # Installing Sleeve
 
-Sleeve is a Python application. Linux is the supported platform for v0.2.0.
+Sleeve is a Python application. Linux is the supported platform for v0.3.0.
 
 ## The easy way
 
@@ -33,21 +33,21 @@ That installs the newest published release, so `sleeve --update` and your copy a
 
 ## From the GitHub release
 
-No release has been published yet (v0.2.0 is still unreleased). Once it is, this works:
+The newest release is v0.3.0:
 
 1. Open the [Releases page](https://github.com/jieke238y34/sleeve/releases) and download
-   `sleeve-0.2.0-py3-none-any.whl`.
+   `sleeve-0.3.0-py3-none-any.whl`.
 2. Optionally verify it, see [RELEASING.md](RELEASING.md#verifying-a-download).
 3. Install it:
 
 ```sh
-pipx install ./sleeve-0.2.0-py3-none-any.whl
+pipx install ./sleeve-0.3.0-py3-none-any.whl
 ```
 
 With plain pip, use a virtual environment or `--user`:
 
 ```sh
-pip install --user ./sleeve-0.2.0-py3-none-any.whl
+pip install --user ./sleeve-0.3.0-py3-none-any.whl
 ```
 
 4. Start it with `sleeve`. `pip` does not create a desktop menu entry; the launcher file in
