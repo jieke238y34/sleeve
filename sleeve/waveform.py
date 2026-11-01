@@ -76,6 +76,8 @@ class WaveSeek(QWidget):
     "Bars for the song with the played part lit. `seekRequested(fraction)` on a click, or when a drag ends."
 
     seekRequested = Signal(float)
+    doubleClicked = Signal()                       # play or pause
+    rightClicked = Signal()                        # pause (or play again)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,7 +85,7 @@ class WaveSeek(QWidget):
         self.accent = QColor("#b7afe0")
         self.setMinimumHeight(40)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Click or drag to seek")
+        self.setToolTip("Click or drag to seek, double-click or right-click to play or pause")
         self.setMouseTracking(True)
 
     def set_peaks(self, peaks):
@@ -119,6 +121,13 @@ class WaveSeek(QWidget):
         if e.button() == Qt.LeftButton:
             self._drag = self._fraction_at(e.position().x())
             self.update()
+        elif e.button() == Qt.RightButton:
+            self.rightClicked.emit()
+
+    def mouseDoubleClickEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self._drag = None
+            self.doubleClicked.emit()
 
     def mouseMoveEvent(self, e):
         if self._drag is not None:

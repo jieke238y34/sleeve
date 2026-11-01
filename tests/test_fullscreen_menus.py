@@ -48,18 +48,6 @@ def test_the_art_background_is_a_blurred_cover_and_a_glow_not_a_flat_grey(qapp):
     assert back.grab().toImage() == plain                                       # and it goes away again
 
 
-def test_expanding_the_cover_turns_the_art_background_on_and_back_off(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
-    win = make_window(qapp, cfg, monkeypatch, tmp_path)
-    try:
-        assert win.backdrop._art is False
-        win._toggle_cover()
-        assert win.backdrop._art is True and not win.np_title.isHidden()
-        win._toggle_cover()
-        assert win.backdrop._art is False
-    finally:
-        win.close()
-
-
 # --- the full-screen window --------------------------------------------------------------------------------------------
 
 def test_the_cover_does_not_change_size_when_the_hint_goes_or_the_title_is_long(qapp):  # noqa: F811

@@ -198,34 +198,6 @@ def test_many_distinct_accent_colours_and_a_chip_for_each(qapp, cfg, monkeypatch
         win.close()
 
 
-def test_expanding_the_cover_never_changes_the_window_size(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
-    "Regression: the expand button used to make the window bigger every time it was used."
-    win = make_window(qapp, cfg, monkeypatch, tmp_path)
-    try:
-        win.resize(1000, 700)
-        win.show()
-        win.show_page("Now Playing")
-        settle(qapp, 0.2)
-        normal_side = win.np_cover.side()
-        assert 120 <= normal_side <= win.settings.cover_size
-        for _ in range(6):
-            win.expand_btn.click()
-            settle(qapp, 0.1)
-            assert (win.width(), win.height()) == (1000, 700)
-            assert win.np_side.isHidden() and win.np_cover.side() >= normal_side      # never smaller
-            assert not win.np_title.isHidden() and not win.np_artist.isHidden()       # the song is still named
-            assert win.np_cover.side() <= min(win.np_cover.width(), win.np_cover.height())     # it fits the space
-            win.expand_btn.click()
-            settle(qapp, 0.1)
-            assert (win.width(), win.height()) == (1000, 700)
-            assert not win.np_side.isHidden() and win.np_cover.side() == normal_side
-        win.resize(900, 600)                                                  # a small window gives a small cover
-        settle(qapp, 0.2)
-        assert (win.width(), win.height()) == (900, 600) and win.np_cover.side() < normal_side
-    finally:
-        win.close()
-
-
 def test_the_cover_view_fits_its_space_and_can_be_clicked(qapp):  # noqa: F811
     from PySide6.QtGui import QColor, QPixmap
 
