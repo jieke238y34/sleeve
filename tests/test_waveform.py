@@ -145,3 +145,24 @@ def test_the_strip_stays_in_the_page_area_and_never_overlaps_the_sidebar(qapp, c
         win.grab().save(str(tmp_path / "hidden.png"))                              # for a look by hand
     finally:
         win.close()
+
+
+def test_now_playing_folds_the_bar_by_itself_and_leaving_restores_the_saved_choice(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1500, 900)
+        win.show()
+        assert win.bar.isVisible()
+        win.show_page("Now Playing")
+        assert not win.bar.isVisible() and win.wave_strip.isVisible()
+        assert win.np_play.isVisible() and win.np_prev.isVisible() and win.np_next.isVisible()
+        win.bar_fold_btn.click()                                           # "Show player" still brings it back
+        assert win.bar.isVisible() and not win.settings.player_bar_hidden
+        win.show_page("Downloads")
+        assert win.bar.isVisible()
+        win.bar_fold_btn.click()
+        win.show_page("Now Playing")
+        win.show_page("Downloads")
+        assert not win.bar.isVisible() and win.settings.player_bar_hidden    # the saved choice, not the page's
+    finally:
+        win.close()

@@ -482,6 +482,7 @@ class MainWindow(QMainWindow):
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
         self.player = player or Player(parent=self)
+        self._on_np = False                                   # Now Playing is on show: the player bar folds by itself
         self._get_dl_proc = None                             # the running `git clone` of dl.py
         self._lookup, self._found = None, []                 # the running MusicBrainz lookup and what it has found
         self._art_cache, self._art_worker = ArtCache(), None
@@ -602,9 +603,9 @@ class MainWindow(QMainWindow):
         self.status = self.statusBar()
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
         self.bar_fold_btn.setObjectName("barfold")
-        self.bar_fold_btn.clicked.connect(lambda: self._set_bar_hidden(self.bar.isVisible()))
+        self.bar_fold_btn.clicked.connect(self._toggle_bar)
         self.status.addPermanentWidget(self.bar_fold_btn)
-        QShortcut(QKeySequence("Ctrl+B"), self, lambda: self._set_bar_hidden(self.bar.isVisible()))
+        QShortcut(QKeySequence("Ctrl+B"), self, self._toggle_bar)
         self._set_bar_hidden(self.settings.player_bar_hidden, save=False)
         if self.settings.library_view == "albums":
             self.view_albums_btn.setChecked(True)
@@ -1020,6 +1021,15 @@ class MainWindow(QMainWindow):
         self.full_btn.setToolTip("Album art fullscreen (F11)")
         self.full_btn.clicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
+        self.np_prev, self.np_play, self.np_next = (QPushButton(g) for g in ("⏮", "▶", "⏭"))
+        for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "round"),
+                                   (self.np_play, "Play / pause", self.player.toggle, "play"),
+                                   (self.np_next, "Next", self.player.next, "round")):
+            b.setObjectName(name)
+            b.setToolTip(tip)
+            b.setAccessibleName(tip)
+            b.clicked.connect(slot)
+        self.np_cover.set_transport((self.np_prev, self.np_play, self.np_next))
         right.addWidget(self.np_cover, 1)                            # fills the column; the shift centers the group
         self._np_pix, self._cover_expanded, self._cover_screen = None, False, None
         lyrics_side = self.np_lyrics_side = QWidget()               # the lyrics panel (right side unless moved)
@@ -3991,6 +4001,10 @@ class MainWindow(QMainWindow):
         if wanted and wanted not in self._wave_peaks and wanted == self._current_path:
             self._wave_request()                               # the song changed while it was working: do that one now
 
+    def _toggle_bar(self):
+        "Hide or show the bar; on Now Playing (where it folds by itself) the choice lasts only until the page is left."
+        self._set_bar_hidden(self.bar.isVisible(), save=not self._on_np)
+
     def _set_bar_hidden(self, hidden, save=True):
         "Fold the player bar away (more room for the page; the media keys still work) or bring it back."
         self.bar.setVisible(not hidden)
@@ -4521,7 +4535,11 @@ class MainWindow(QMainWindow):
     # --- player bar ---------------------------------------------------------
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
-        if self.nav.item(row) is not None and self.nav.item(row).text() == "Now Playing":
+        on_np = self.nav.item(row) is not None and self.nav.item(row).text() == "Now Playing"
+        if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
+            self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
+            self._set_bar_hidden(True if on_np else self.settings.player_bar_hidden, save=False)
+        if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
 
@@ -4658,6 +4676,7 @@ class MainWindow(QMainWindow):
     def _on_playing(self, playing):
         self._is_playing = bool(playing)
         self.play_btn.setText("⏸" if playing else "▶")
+        self.np_play.setText(self.play_btn.text())
         self._update_presence()
 
     def _on_track(self, index, path):
