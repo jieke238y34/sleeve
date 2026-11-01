@@ -268,6 +268,45 @@ QLabel#subhead {{ font-size: 11pt; font-weight: 700; color: {accent}; }}
 STYLE = build_style()
 
 
+def transport_icon(kind, color, size=24):
+    """A painted icon for the transport buttons ("play", "pause", "prev" or "next"): solid shapes with softly rounded
+    corners, crisp at any scale, drawn in `color`. Play is nudged right and the skips are a bar and a triangle, so each
+    reads as one shape at the same weight."""
+    scale = 3
+    pix = QPixmap(size * scale, size * scale)
+    pix.setDevicePixelRatio(scale)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.scale(size / 24, size / 24)
+    ink = QColor(color)
+    p.setPen(QPen(ink, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))      # the stroke rounds every corner
+    p.setBrush(ink)
+
+    def triangle(x0, x1, forward):
+        "A triangle between x0 and x1 (the tip at x1 when forward), 13 high, centred on y 12."
+        tip, base = (x1, x0) if forward else (x0, x1)
+        path = QPainterPath(QPointF(base, 5.5))
+        path.lineTo(QPointF(tip, 12))
+        path.lineTo(QPointF(base, 18.5))
+        path.closeSubpath()
+        p.drawPath(path)
+
+    if kind == "play":
+        triangle(8.2, 18.2, True)
+    elif kind == "pause":
+        for x in (7.6, 14.4):
+            p.drawRoundedRect(QRectF(x, 5.8, 2.4, 12.4), 1.2, 1.2)
+    elif kind == "prev":
+        p.drawRoundedRect(QRectF(5.2, 5.8, 2.2, 12.4), 1.1, 1.1)
+        triangle(10.4, 18.8, False)
+    else:                                        # next
+        p.drawRoundedRect(QRectF(16.6, 5.8, 2.2, 12.4), 1.1, 1.1)
+        triangle(5.2, 13.6, True)
+    p.end()
+    return pix
+
+
 def toggle_icon(kind, color, on, one=False, size=22):
     """A painted icon for the shuffle, repeat and stash buttons ("shuffle", "repeat" or "stash"): crisp at any scale,
     drawn in `color`. Shuffle changes shape (straight arrows in order, crossed when shuffled); repeat gets a dot under

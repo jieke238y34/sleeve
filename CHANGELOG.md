@@ -74,6 +74,8 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 
 ### Changed
 
+- Previous, play/pause and next are painted icons (solid, softly rounded shapes) instead of text symbols, on the player bar
+  and on Now Playing.
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
 - Resuming after a long pause no longer skips to the next song.
 - The sidebar runs the whole height of the window, in one dark column behind the page list and the album art; the player
