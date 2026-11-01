@@ -5,6 +5,12 @@ import re
 import unicodedata
 
 MAX_BYTES = 1_000_000                     # larger files are not lyrics
+_JUNK = re.compile(
+    r"^(?:(?:lyrics?|lrc|lyric|translation|translated|transcribed|synced?|timed|edited|subtitles?|music|composer|"
+    r"written|words|arranged|produced)\s*(?:and\s+\w+\s*)?(?:by|provided by|from|:|-)\s*\S|"
+    r"(?:作词|作曲|编曲|歌词|作詞|作曲)\s*[:：]|.*(?:www\.|https?://|musixmatch|lrclib|©|\(c\)\s*\d))",
+    re.I)
+EDGE = 4                                  # junk is only looked for this many lines in from the start and the end
 _TIME = re.compile(r"\[(\d{1,4}):(\d{1,3}(?:\.\d{1,4})?)\]")
 
 
@@ -58,7 +64,24 @@ def parse_lrc(text):
         for m, s in stamps:
             out.append((int(m) * 60 + float(s), line))
     out.sort(key=lambda x: x[0])
-    return out
+    return strip_junk(out)
+
+
+def strip_junk(lines):
+    """Credit and boilerplate lines ("Lyrics by …", a web address, a copyright line) at the very start or end of the
+    file are dropped; a line in the middle is never touched, and the song's own words never match at the edges."""
+    lines = list(lines)
+    for _ in range(EDGE):
+        if lines and _JUNK.match(lines[0][1]):
+            del lines[0]
+        else:
+            break
+    for _ in range(EDGE):
+        if lines and _JUNK.match(lines[-1][1]):
+            lines.pop()
+        else:
+            break
+    return lines
 
 
 def current_index(lines, position):
