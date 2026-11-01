@@ -4,6 +4,7 @@ import io
 import json
 import shlex
 import urllib.error
+import urllib.parse
 from types import SimpleNamespace
 
 import pytest
@@ -203,7 +204,8 @@ def test_update_with_a_sha256_installs_only_a_wheel_that_matches(monkeypatch):
     release = answer("v9.0.0")
 
     def opener(req, timeout):
-        return release(req, timeout) if "api.github.com" in req.full_url else FakeDownload(wheel)
+        return release(req, timeout) if urllib.parse.urlsplit(req.full_url).hostname == "api.github.com" \
+            else FakeDownload(wheel)
 
     ran, lines = [], []
 

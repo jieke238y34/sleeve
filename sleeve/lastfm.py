@@ -52,6 +52,7 @@ def should_scrobble(listened, length):
 def sign(params, secret):
     "The api_sig of a call: md5 of every parameter (not `format`) as name+value in name order, then the secret."
     text = "".join(f"{k}{v}" for k, v in sorted(params.items()) if k not in ("format", "callback")) + secret
+    # last.fm defines api_sig as an md5 of this text (www.last.fm/api/authspec); it is a request signature, not storage
     return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
