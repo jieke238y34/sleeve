@@ -135,6 +135,11 @@ class SyncRunner(QObject):
             self._proc.terminate()
             self._kill_timer.start(5000)  # one timer for this process; _done stops it
 
+    def request_stop(self):
+        "Ask dl.py to stop without waiting, so a window that closes can ask every process first and wait once."
+        if self.running:
+            self._proc.terminate()
+
     def shutdown(self, wait_ms=3000):
         "Stop dl.py and wait for it, killing it if it ignores the request. For when the app is closing."
         if self.running:
