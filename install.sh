@@ -96,6 +96,9 @@ kde_env_line() {
   fi
 }
 
+kde_env
+say "$(kde_env_line)"
+
 # --- where to install from: this checkout if there is one, else GitHub ---------------------------------------------------
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
 if [ -n "${SLEEVE_SOURCE:-}" ]; then SOURCE="$SLEEVE_SOURCE"
