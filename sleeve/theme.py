@@ -81,20 +81,33 @@ def synced_colours(custom):
     return muted, backdrop
 
 
-def set_custom(custom):
-    "Make the user's own theme (a dict from Settings, or None) one of the looks. It is called 'custom'."
+def set_custom(custom, key="custom"):
+    "Make one of the user's own themes (a dict from Settings, or None to remove it) a look, under the name `key`."
     if not custom:
-        LOOKS.pop("custom", None)
-        BACKDROPS.pop("custom", None)
-        CUSTOM_THEMES.pop("custom", None)
+        LOOKS.pop(key, None)
+        BACKDROPS.pop(key, None)
+        CUSTOM_THEMES.pop(key, None)
         return
     muted, backdrop = synced_colours(custom)
-    LOOKS["custom"] = (custom["bg"], custom["text"], muted, custom["accent"])
-    CUSTOM_THEMES["custom"] = custom.get("name") or "My theme"
+    LOOKS[key] = (custom["bg"], custom["text"], muted, custom["accent"])
+    CUSTOM_THEMES[key] = custom.get("name") or "My theme"
     if backdrop:
-        BACKDROPS["custom"] = tuple(backdrop)
+        BACKDROPS[key] = tuple(backdrop)
     else:
-        BACKDROPS.pop("custom", None)
+        BACKDROPS.pop(key, None)
+
+
+def custom_key(custom):
+    "The look name of a saved theme: custom-<id>."
+    return f"custom-{custom['id']}"
+
+
+def set_customs(customs):
+    "Replace every one of the user's own themes with this list (each a dict with an id)."
+    for key in [k for k in LOOKS if k == "custom" or k.startswith("custom-")]:
+        set_custom(None, key)
+    for custom in customs or ():
+        set_custom(custom, custom_key(custom))
 
 
 def problems(bg, text, muted, accent):

@@ -57,23 +57,46 @@ def test_the_dialog_blocks_saving_unreadable_colours(qapp):  # noqa: F811
     assert dlg.result_theme()["backdrop"] is None and dlg.result_theme()["name"] == "Night bus"
 
 
-def test_settings_wears_and_removes_your_theme(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_settings_keeps_several_themes_edits_one_and_removes_one(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        assert win.theme_make_btn.text() == "Create your own…" and win.theme_box.findData("custom") < 0
+        assert win.theme_edit_btn.isHidden() and win.settings.custom_themes == []
         monkeypatch.setattr(ThemeDialog, "exec", lambda self: ThemeDialog.Accepted)
         monkeypatch.setattr(ThemeDialog, "result_theme", lambda self: dict(MINE))
-        win._make_theme()
-        assert win.settings.theme == "custom" and win.settings.custom_theme["accent"] == "#7fd1ae"
-        assert win._look == "custom" and win.theme_box.currentData() == "custom"
-        assert win.theme_box.currentText() == "Night bus" and win.theme_make_btn.text() == "Edit my theme…"
-        assert settings.Settings(win.settings.file).custom_theme["bg"] == "#101820"        # kept for next time
+        win._make_theme()                                                       # a first theme
+        first = win.settings.theme
+        assert first.startswith("custom-") and win._look == first and win.theme_box.currentData() == first
+        assert win.theme_box.currentText() == "Night bus" and not win.theme_edit_btn.isHidden()
+        monkeypatch.setattr(ThemeDialog, "result_theme", lambda self: {**MINE, "name": "Day bus", "bg": "#f0f0f0"})
+        win._make_theme()                                                       # a second one does NOT replace it
+        second = win.settings.theme
+        assert second != first and [t["name"] for t in win.settings.custom_themes] == ["Night bus", "Day bus"]
+        assert win.theme_box.findData(first) >= 0 and win.theme_box.findData(second) >= 0
+        assert [t["name"] for t in settings.Settings(win.settings.file).custom_themes] == ["Night bus", "Day bus"]
+        monkeypatch.setattr(ThemeDialog, "result_theme", lambda self: {**MINE, "name": "Day bus 2"})
+        win._make_theme(edit=True)                                              # editing changes the one worn
+        assert [t["name"] for t in win.settings.custom_themes] == ["Night bus", "Day bus 2"]
+        assert win.settings.theme == second
         monkeypatch.setattr(ThemeDialog, "exec", lambda self: setattr(self, "removed", True) or ThemeDialog.Accepted)
-        win._make_theme()
-        assert win.settings.theme == "default" and win.settings.custom_theme is None and win._look != "custom"
+        win._make_theme(edit=True)                                              # removing takes only that one away
+        assert [t["name"] for t in win.settings.custom_themes] == ["Night bus"]
+        assert win.settings.theme == "default" and win.theme_box.findData(first) >= 0
     finally:
-        theme.set_custom(None)
+        theme.set_customs([])
         win.close()
+
+
+def test_a_single_theme_from_an_older_version_becomes_the_first_saved_theme(tmp_path):
+    import json
+    file = tmp_path / "settings.json"
+    file.write_text(json.dumps({"custom_theme": dict(MINE), "theme": "custom"}))
+    loaded = settings.Settings(file)
+    assert loaded.custom_theme is None and len(loaded.custom_themes) == 1
+    saved = loaded.custom_themes[0]
+    assert saved["name"] == "Night bus" and loaded.theme == f"custom-{saved['id']}"
+    assert settings._valid("custom_themes", loaded.custom_themes)
+    assert not settings._valid("custom_themes", [dict(MINE)])                    # a saved theme needs its id
+    assert not settings._valid("custom_themes", [{**MINE, "id": "x"}] * 2)       # and ids are bad when repeated
 
 
 def test_the_wheel_does_not_change_a_settings_drop_down(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
