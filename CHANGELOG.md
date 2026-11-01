@@ -72,10 +72,15 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 
 - Settings has an **↑ Top** button (bottom right, shown once you have scrolled down) that goes back to the top.
 
+- Library: a **＋ Queue** button (and Shift+Enter) adds the selected songs to the end of the queue and says so; the right-click
+  menu's *Add to queue* and *Play next* say so too.
+- Now Playing: a **shuffle** button replaces the fullscreen button (fullscreen is still F11), and **double-clicking the album
+  art** goes fullscreen. The small art under the sidebar steps aside on this page.
+
 ### Changed
 
-- Previous, play/pause and next are painted icons (solid, softly rounded shapes) instead of text symbols, on the player bar
-  and on Now Playing.
+- Previous, play/pause and next are painted icons of Sleeve's own: a plump pick-shaped play triangle, two round pills
+  for pause, and chevrons with a fading trail for the skips; on the player bar and on Now Playing.
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
 - Resuming after a long pause no longer skips to the next song.
 - The sidebar runs the whole height of the window, in one dark column behind the page list and the album art; the player

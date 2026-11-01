@@ -707,6 +707,10 @@ class MainWindow(QMainWindow):
         self.search.textChanged.connect(self._apply_filter)
         rescan = QPushButton("Rescan")
         rescan.clicked.connect(self.rescan)
+        self.queue_sel_btn = QPushButton("＋  Queue")
+        self.queue_sel_btn.setToolTip("Add the selected songs to the end of the queue (Shift+Enter)")
+        self.queue_sel_btn.setEnabled(False)
+        self.queue_sel_btn.clicked.connect(lambda: self._queue_selected())
         self.view_songs_btn, self.view_albums_btn = QPushButton("Songs"), QPushButton("Albums")
         for b in (self.view_songs_btn, self.view_albums_btn):
             b.setObjectName("seg")
@@ -716,11 +720,16 @@ class MainWindow(QMainWindow):
         top.addWidget(self.search, 1)
         top.addWidget(self.view_songs_btn)
         top.addWidget(self.view_albums_btn)
+        top.addWidget(self.queue_sel_btn)
         top.addWidget(rescan)
         self.model = SongModel()
         self.model.stashed = self.stash.paths
         self.table = QTableView()
         self.table.setModel(self.model)
+        self.table.selectionModel().selectionChanged.connect(
+            lambda *_: self.queue_sel_btn.setEnabled(bool(self.table.selectionModel().selectedRows())))
+        queue_key = QShortcut(QKeySequence("Shift+Return"), self.table, lambda: self._queue_selected())
+        queue_key.setContext(Qt.WidgetShortcut)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(False)             # a clean list: no stripes
@@ -1055,10 +1064,11 @@ class MainWindow(QMainWindow):
         self.np_stash_btn.setObjectName("round")
         self.np_stash_btn.setEnabled(False)
         self.np_stash_btn.clicked.connect(self._stash_current)
-        self.full_btn = QPushButton("⛶")
-        self.full_btn.setObjectName("round")
-        self.full_btn.setToolTip("Album art fullscreen (F11)")
-        self.full_btn.clicked.connect(self._toggle_fullscreen)
+        self.np_shuffle_btn = QPushButton("")                  # the bar's shuffle, here too (fullscreen: F11, or
+        self.np_shuffle_btn.setObjectName("round")             # double-click the album art)
+        self.np_shuffle_btn.setCheckable(True)
+        self.np_shuffle_btn.clicked.connect(lambda: self.shuffle_btn.click())
+        self.np_cover.doubleClicked.connect(self._toggle_fullscreen)
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
         self.np_prev, self.np_play, self.np_next = (QPushButton("") for _ in range(3))
         for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
@@ -3015,14 +3025,23 @@ class MainWindow(QMainWindow):
         rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
         return [self.model.songs[r] for r in rows]
 
+    def _queue_selected(self, next_up=False):
+        "Add the selected library songs to the end of the queue (or right after the playing one), and say so."
+        sel = self._selected()
+        if not sel:
+            return
+        self.player.enqueue([s.path for s in sel], next_up=next_up)
+        what = f"“{sel[0].name}”" if len(sel) == 1 else f"{len(sel)} songs"
+        self.status.showMessage(f"{'Playing next' if next_up else 'Added to the queue'}: {what}", 4000)
+
     def _song_menu(self, pos):
         sel = self._selected()
         if not sel:
             return
         m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in sel], 0, self._folder_source()))
-        m.addAction("Play next", lambda: self.player.enqueue([s.path for s in sel], next_up=True))
-        m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in sel]))
+        m.addAction("Play next", lambda: self._queue_selected(next_up=True))
+        m.addAction("Add to queue", lambda: self._queue_selected())
         all_stashed = all(s.path in self.stash for s in sel)
         m.addAction(labels.UNDO if all_stashed else labels.VERB, lambda: self._toggle_stash([s.path for s in sel]))
         self._add_to_playlist_menu(m, sel)
@@ -4208,7 +4227,7 @@ class MainWindow(QMainWindow):
         """The round buttons under the art, in the order of the panels: the button of a panel on the left sits on the
         left, of one on the right on the right, so each button is on the side of the panel it opens."""
         mine = ((self.tab_queue, self.settings.np_queue_side), (self.tab_lyrics, self.settings.np_lyrics_side))
-        return ([b for b, side in mine if side == "left"] + [self.np_stash_btn, self.full_btn]
+        return ([b for b, side in mine if side == "left"] + [self.np_stash_btn, self.np_shuffle_btn]
                 + [b for b, side in mine if side == "right"])
 
     def _np_side_width(self, side):
@@ -4699,6 +4718,7 @@ class MainWindow(QMainWindow):
         if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
             self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
             self._set_bar_hidden(True if on_np else self.settings.player_bar_hidden, save=False)
+            self._apply_layout()                              # and the small art steps aside for the big one
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
@@ -4732,7 +4752,7 @@ class MainWindow(QMainWindow):
                 self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
                 self._fit_side_art()
             self._set_bar_hidden(self._on_np or self.settings.player_bar_hidden, save=False)   # a moved widget hides
-        self.cover.setVisible(self.settings.side_art)
+        self.cover.setVisible(self.settings.side_art and not self._on_np)      # Now Playing has the big one
 
     def _fit_side_art(self):
         "Size the album art to the room under the page list: as wide as the sidebar allows, never squeezing the list."
@@ -4793,8 +4813,8 @@ class MainWindow(QMainWindow):
         playing = getattr(self, "_is_playing", False)
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
         for prev, play, nxt in sets:
-            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 20), (nxt, "next", theme.TEXT, 20),
-                                            (play, "pause" if playing else "play", theme.BG, 30)):
+            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
+                                            (play, "pause" if playing else "play", theme.BG, 38)):
                 btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
                 btn.setIconSize(QSize(side, side))
 
@@ -4804,6 +4824,10 @@ class MainWindow(QMainWindow):
         shuffle_on = self.shuffle_btn.isChecked()
         self.shuffle_btn.setIcon(QIcon(theme.toggle_icon("shuffle", accent if shuffle_on else theme.MUTED, shuffle_on)))
         self.shuffle_btn.setToolTip("Shuffle: on" if shuffle_on else "Shuffle: off")
+        self.np_shuffle_btn.setChecked(shuffle_on)
+        self.np_shuffle_btn.setIcon(self.shuffle_btn.icon())
+        self.np_shuffle_btn.setToolTip(self.shuffle_btn.toolTip())
+        self.np_shuffle_btn.setAccessibleName(self.shuffle_btn.toolTip())
         self.repeat_btn.setIcon(QIcon(theme.toggle_icon("repeat", accent if mode else theme.MUTED, mode != 0,
                                                         one=mode == REPEAT_ONE)))
         self.repeat_btn.setToolTip("Repeat: " + {0: "off", REPEAT_ALL: "all songs", REPEAT_ONE: "this song"}[mode])

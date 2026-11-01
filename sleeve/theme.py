@@ -269,9 +269,9 @@ STYLE = build_style()
 
 
 def transport_icon(kind, color, size=24):
-    """A painted icon for the transport buttons ("play", "pause", "prev" or "next"): solid shapes with softly rounded
-    corners, crisp at any scale, drawn in `color`. Play is nudged right and the skips are a bar and a triangle, so each
-    reads as one shape at the same weight."""
+    """A painted icon for the transport buttons ("play", "pause", "prev" or "next"), drawn in `color` and crisp at any
+    scale. Sleeve's own shapes rather than the usual ones: play is a plump guitar-pick triangle, pause two round pills,
+    and the skips are chevrons with a fading trail behind the leading one, so they point the way the music moves."""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
@@ -280,29 +280,32 @@ def transport_icon(kind, color, size=24):
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(size / 24, size / 24)
     ink = QColor(color)
-    p.setPen(QPen(ink, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))      # the stroke rounds every corner
-    p.setBrush(ink)
-
-    def triangle(x0, x1, forward):
-        "A triangle between x0 and x1 (the tip at x1 when forward), 13 high, centred on y 12."
-        tip, base = (x1, x0) if forward else (x0, x1)
-        path = QPainterPath(QPointF(base, 5.5))
-        path.lineTo(QPointF(tip, 12))
-        path.lineTo(QPointF(base, 18.5))
-        path.closeSubpath()
-        p.drawPath(path)
-
-    if kind == "play":
-        triangle(8.2, 18.2, True)
-    elif kind == "pause":
-        for x in (7.6, 14.4):
-            p.drawRoundedRect(QRectF(x, 5.8, 2.4, 12.4), 1.2, 1.2)
-    elif kind == "prev":
-        p.drawRoundedRect(QRectF(5.2, 5.8, 2.2, 12.4), 1.1, 1.1)
-        triangle(10.4, 18.8, False)
-    else:                                        # next
-        p.drawRoundedRect(QRectF(16.6, 5.8, 2.2, 12.4), 1.1, 1.1)
-        triangle(5.2, 13.6, True)
+    if kind == "play":                           # a small triangle fattened by a thick round-joined stroke: a pick
+        p.setPen(QPen(ink, 5.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(ink)
+        tri = QPainterPath(QPointF(8.8, 6.2))
+        tri.lineTo(QPointF(18.2, 12))
+        tri.lineTo(QPointF(8.8, 17.8))
+        tri.closeSubpath()
+        p.drawPath(tri)
+    elif kind == "pause":                        # two pills, the second a little shorter: a rest, not a block
+        p.setPen(Qt.NoPen)
+        p.setBrush(ink)
+        p.drawRoundedRect(QRectF(6.2, 4.4, 4.2, 15.2), 2.1, 2.1)
+        p.drawRoundedRect(QRectF(13.6, 6.6, 4.2, 10.8), 2.1, 2.1)
+    else:                                        # prev / next: two chevrons, the leading one solid, the trail faded
+        forward = kind == "next"
+        trail = QColor(ink)
+        trail.setAlphaF(0.38)
+        for shift, colour in ((-5.2, trail), (2.4, ink)) if forward else ((5.2, trail), (-2.4, ink)):
+            p.setPen(QPen(colour, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            p.setBrush(Qt.NoBrush)
+            x = 12 + shift
+            tip, back = (x + 4.0, x - 4.0) if forward else (x - 4.0, x + 4.0)
+            chevron = QPainterPath(QPointF(back, 5.6))
+            chevron.lineTo(QPointF(tip, 12))
+            chevron.lineTo(QPointF(back, 18.4))
+            p.drawPath(chevron)
     p.end()
     return pix
 

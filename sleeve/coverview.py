@@ -21,6 +21,7 @@ class CoverView(QWidget):
     "A cover drawn as the biggest rounded square that fits, no bigger than max_side. Clicking it says `clicked`."
 
     clicked = Signal()
+    doubleClicked = Signal()                       # on the album art itself, not on the words around it
 
     def __init__(self, max_side=440, parent=None):
         super().__init__(parent)
@@ -150,6 +151,13 @@ class CoverView(QWidget):
         super().changeEvent(e)
         if e.type() == QEvent.FontChange:
             self._place_info()
+
+    def mouseDoubleClickEvent(self, e):
+        side = self._side
+        left = self.width() // 2 - self.x_shift - side // 2
+        if e.button() == Qt.LeftButton and left <= e.position().x() <= left + side \
+                and self._art_y <= e.position().y() <= self._art_y + side:
+            self.doubleClicked.emit()
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
