@@ -117,3 +117,8 @@ def test_switches_say_on_or_off_and_look_different(qapp):  # noqa: F811
     plain = Switch("x")
     plain.setChecked(True)                                                     # before it is shown: no animation
     assert plain._pos == 1.0
+
+
+def test_the_player_bar_starts_hidden_by_default(tmp_path):
+    assert settings.DEFAULTS["player_bar_hidden"] is True
+    assert settings.Settings(tmp_path / "fresh.json").player_bar_hidden is True

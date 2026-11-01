@@ -2723,6 +2723,7 @@ class MainWindow(QMainWindow):
         for side in (left, right):                   # same limits and stretch: kept equal
             side.setMinimumWidth(140)
             side.setMaximumWidth(420)
+        lay.setContentsMargins(20, 6, 20, 6)                  # the song's name keeps clear of the sidebar's edge
         lay.addWidget(left, 1)
         middle = QVBoxLayout()
         middle.setSpacing(4)

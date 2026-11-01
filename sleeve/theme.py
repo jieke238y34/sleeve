@@ -172,10 +172,8 @@ QPushButton:pressed {{ background: rgba(255, 255, 255, 60); }}
 QPushButton:checked {{ background: rgba(255, 255, 255, 34); color: {accent}; }}
 QPushButton:disabled {{ background: rgba(255, 255, 255, 10); color: rgba(255, 255, 255, 125); }}
 QPushButton#round {{ border-radius: 20px; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;
-                     padding: 0; font-size: 14pt; background: transparent; border: 1px solid rgba(255, 255, 255, 46); }}
-QPushButton#round:hover {{ background: rgba(255, 255, 255, 30); border-color: rgba(255, 255, 255, 80); }}
-QPushButton#round:checked {{ background: rgba(255, 255, 255, 26); border-color: {accent}; }}
-QPushButton#round:focus {{ border: 2px solid {accent}; }}
+                     padding: 0; font-size: 14pt; }}
+QPushButton#round:checked {{ background: rgba(255, 255, 255, 24); }}
 QPushButton#chip {{ background: rgba(255, 255, 255, 20); border: none; border-radius: 14px; padding: 0 15px;
                     min-height: 28px; max-height: 28px; font-size: 9pt; }}
 QPushButton#chip:hover {{ background: rgba(255, 255, 255, 44); }}

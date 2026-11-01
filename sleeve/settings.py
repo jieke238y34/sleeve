@@ -54,7 +54,7 @@ DEFAULTS = {
     "gradient": None,                  # your own 5-colour background (a list of #rrggbb), or None: follow the cover
     "np_queue_side": "left",           # Now Playing: which side the playlist panel is on
     "np_lyrics_side": "right",         # Now Playing: which side the lyrics panel is on
-    "player_bar_hidden": False,        # the player bar at the bottom is folded away (one click brings it back)
+    "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
     "lastfm_on": False,                # send what is played to last.fm (needs a connected account, see lastfm.py)
