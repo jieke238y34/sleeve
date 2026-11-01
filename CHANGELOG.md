@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.3.0] - Unreleased
 
+*A new sleeve, same material.* A new look and layout, with your music, stash, history and settings carried over untouched.
+
 Work towards the next stable release. Releases stay stable-only: a build is published when it is ready, not per commit.
 
 ### Added
