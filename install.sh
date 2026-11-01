@@ -64,34 +64,38 @@ done
 [ -n "$PY" ] || fail "Python 3.10 or newer is needed. Fedora: sudo dnf install python3 · Debian/Ubuntu: sudo apt install python3 python3-venv"
 "$PY" -c 'import venv, ensurepip' 2>/dev/null || fail "Python's venv module is missing. Debian/Ubuntu: sudo apt install python3-venv"
 
-# --- the KDE stack, so install logs show what this machine runs -----------------------------------------------------------
-# Report the KDE stack (read-only: only asks installed programs for their versions).
+# by visadaking (github.com/visadaking)
+# --- optional KDE version info for the install log 
+# Report detected KDE versions when available; missing tools must not stop installation.
 kde_env() {
-  local plasma fw qt kc
-  plasma=$(plasmashell --version 2>/dev/null | awk 'NR==1{print $2}')
-  [ -n "$plasma" ] || plasma=$(kwin_wayland --version 2>/dev/null | awk 'NR==1{print $2}')
-  fw=$(kf6-config --version 2>/dev/null)
-  [ -n "$fw" ] || fw=$(pkg-config --modversion KF6CoreAddons 2>/dev/null)
-  [ -n "$fw" ] || fw=$(rpm -q --qf '%{VERSION}' kf6-kcoreaddons 2>/dev/null)
-  [ -n "$fw" ] || fw=$(dpkg-query -W -f='${Version}' libkf6coreaddons6 2>/dev/null)
-  [ -n "$fw" ] || fw=$(pacman -Q kf6-kcoreaddons 2>/dev/null | awk '{print $2}')
-  qt=$(qmake6 -query QT_VERSION 2>/dev/null)
-  [ -n "$qt" ] || qt=$(qtpaths6 --qt-version 2>/dev/null)
-  [ -n "$qt" ] || qt=$(pkg-config --modversion Qt6Core 2>/dev/null)
-  kc=$(kdeconnectd --version 2>/dev/null | awk 'NR==1{print $NF}')
-  [ -n "$kc" ] || kc=$(kdeconnect-cli --version 2>/dev/null | awk 'NR==1{print $NF}')
+  local plasma fw qt
+
+  plasma=$(plasmashell --version 2>/dev/null | awk 'NR==1{print $2}') || plasma=""
+  [ -n "$plasma" ] || plasma=$(kwin_wayland --version 2>/dev/null | awk 'NR==1{print $2}') || plasma=""
+
+  fw=$(kf6-config --version 2>/dev/null) || fw=""
+  [ -n "$fw" ] || fw=$(pkg-config --modversion KF6CoreAddons 2>/dev/null) || fw=""
+  [ -n "$fw" ] || fw=$(rpm -q --qf '%{VERSION}' kf6-kcoreaddons 2>/dev/null) || fw=""
+  [ -n "$fw" ] || fw=$(dpkg-query -W -f='${Version}' libkf6coreaddons6 2>/dev/null) || fw=""
+  [ -n "$fw" ] || fw=$(pacman -Q kf6-kcoreaddons 2>/dev/null | awk '{print $2}') || fw=""
+
+  qt=$(qmake6 -query QT_VERSION 2>/dev/null) || qt=""
+  [ -n "$qt" ] || qt=$(qtpaths6 --qt-version 2>/dev/null) || qt=""
+  [ -n "$qt" ] || qt=$(pkg-config --modversion Qt6Core 2>/dev/null) || qt=""
+
   KDE_PLASMA="$plasma"
   KDE_FRAMEWORKS="$fw"
   KDE_QT="$qt"
-  KDE_CONNECT="$kc"
 }
+
 kde_env_line() {
-  if [ -z "${KDE_PLASMA:-}${KDE_FRAMEWORKS:-}${KDE_QT:-}${KDE_CONNECT:-}" ]; then
+  if [ -z "${KDE_PLASMA:-}${KDE_FRAMEWORKS:-}${KDE_QT:-}" ]; then
     echo "KDE: not detected (non-KDE session or tools missing)"
   else
-    echo "KDE: Plasma ${KDE_PLASMA:-?} | Frameworks ${KDE_FRAMEWORKS:-?} | Qt ${KDE_QT:-?} | KDE Connect ${KDE_CONNECT:-not installed}"
+    echo "KDE: Plasma ${KDE_PLASMA:-?} | Frameworks ${KDE_FRAMEWORKS:-?} | Qt ${KDE_QT:-?}"
   fi
 }
+
 kde_env
 say "$(kde_env_line)"
 
