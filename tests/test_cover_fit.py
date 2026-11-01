@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QRect
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 LONG = "A very long song title that has to wrap onto a second line in the middle column"
 

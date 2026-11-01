@@ -4,7 +4,7 @@ import json
 
 from PySide6.QtGui import QColor
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import settings, theme
 from sleeve.themedialog import GradientEditor, ThemeDialog

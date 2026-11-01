@@ -19,7 +19,7 @@ and a package build. `.github/workflows/security.yml` runs bandit, pip-audit and
 
 | Area | Files |
 |---|---|
-| Library, tags, health, lyrics, playlists | `test_core.py`, `test_import.py`, `test_myplaylists.py`, `test_likes.py` |
+| Library, tags, health, lyrics, playlists | `test_core.py`, `test_import.py`, `test_myplaylists.py`, `test_stash.py` |
 | Player queue, gapless hand-over, real playback | `test_player.py` |
 | Same-volume levelling | `test_loudness.py`, `test_loudness_wiring.py` |
 | MPRIS | `test_mpris.py` |

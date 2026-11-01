@@ -10,7 +10,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 from sleeve import musicbrainz as mb  # noqa: E402
 from sleeve.library import Song  # noqa: E402

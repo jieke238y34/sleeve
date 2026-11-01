@@ -4,7 +4,7 @@ sits below Downloads in the sidebar."""
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QLabel
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 
 def test_the_keys_secrets_and_passwords_are_under_the_apis_heading(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

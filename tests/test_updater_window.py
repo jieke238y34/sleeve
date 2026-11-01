@@ -7,7 +7,7 @@ from PySide6.QtCore import QProcess
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import updater
 

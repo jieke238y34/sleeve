@@ -182,7 +182,7 @@ def build_demo_window(tmp):
     mutagen.File = fake
     art.cover_bytes = lambda path, mutagen_file=None: album_cover(cover_of[os.path.basename(path)])
     cfg = config.load(tmp / "dl.py")
-    win = sa.MainWindow(cfg, StubPlayer(), likes_file=tmp / "liked.json", settings_file=tmp / "settings.json")
+    win = sa.MainWindow(cfg, StubPlayer(), stash_file=tmp / "liked.json", settings_file=tmp / "settings.json")
     return win, albums
 
 

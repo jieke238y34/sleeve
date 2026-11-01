@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QPoint
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 SIZES = [(800, 600), (1000, 700), (1180, 760), (1600, 900), (2000, 1100), (2560, 1440)]
 

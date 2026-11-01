@@ -8,7 +8,7 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtTest import QTest
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 import sleeve
 from sleeve import plgrid, theme

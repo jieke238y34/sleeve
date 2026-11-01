@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QPushButton
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import plgrid, plstyle
 from sleeve.library import Song

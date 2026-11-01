@@ -1,7 +1,7 @@
 """Settings has a button that scrolls back to the top once the page is scrolled down."""
 
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 
 def test_the_top_button_shows_after_scrolling_and_goes_back_up(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

@@ -231,7 +231,7 @@ def build_window(args, tmp):
             shutil.copy(real, sa.CACHE_FILE)                 # a copy: the real cache is never written to
         cfg = config.load(args.dl)
     liked = tmp / "liked.json"
-    win = sa.MainWindow(cfg, StubPlayer(), likes_file=liked, settings_file=tmp / "settings.json")
+    win = sa.MainWindow(cfg, StubPlayer(), stash_file=liked, settings_file=tmp / "settings.json")
     return win
 
 

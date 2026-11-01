@@ -1,19 +1,21 @@
-"""Liked songs: a set of file paths kept in Sleeve's own config file.
+"""Stashed songs: a set of file paths kept in Sleeve's own config file.
 
-Sleeve never writes to dl.py's files or your playlists, so a like lives here and nowhere else.
+Sleeve never writes to dl.py's files or your playlists, so a stash lives here and nowhere else.
+
+The file is still called liked.json and keeps its "liked" key, so existing data and backups keep working.
 """
 
 import json
 import os
 from pathlib import Path
 
-LIKES_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "liked.json"
-MAX_BYTES = 20_000_000          # a likes file larger than this is not ours
+STASH_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sleeve" / "liked.json"
+MAX_BYTES = 20_000_000          # a stash file larger than this is not ours
 
 
-class Likes:
+class Stash:
     def __init__(self, file=None):
-        self.file = Path(file or LIKES_FILE)
+        self.file = Path(file or STASH_FILE)
         self.paths = set()      # mutated in place, so a view holding a reference sees every change
         self.load()
 
@@ -44,7 +46,7 @@ class Likes:
         return len(self.paths)
 
     def add(self, paths):
-        "Like these songs. Returns how many were new."
+        "Stash these songs. Returns how many were new."
         new = {str(p) for p in paths} - self.paths
         if new:
             self.paths |= new
@@ -52,7 +54,7 @@ class Likes:
         return len(new)
 
     def remove(self, paths):
-        "Unlike these songs. Returns how many were liked before."
+        "Unstash these songs. Returns how many were stashed before."
         gone = {str(p) for p in paths} & self.paths
         if gone:
             self.paths -= gone
@@ -60,8 +62,8 @@ class Likes:
         return len(gone)
 
     def toggle(self, paths):
-        """Like every song in paths unless all of them are already liked, in which case unlike them.
-        Returns True if they are liked afterwards."""
+        """Stash every song in paths unless all of them are already stashed, in which case unstash them.
+        Returns True if they are stashed afterwards."""
         paths = [str(p) for p in paths]
         if paths and all(p in self.paths for p in paths):
             self.remove(paths)

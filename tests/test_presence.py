@@ -12,7 +12,7 @@ from PySide6.QtNetwork import QLocalServer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from test_app import cfg, qapp  # noqa: E402,F401  (fixtures)
-from test_likes import make_window  # noqa: E402
+from test_stash import make_window  # noqa: E402
 
 from sleeve import presence  # noqa: E402
 

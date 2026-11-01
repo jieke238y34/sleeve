@@ -4,7 +4,7 @@ leaves the Settings drop-downs alone."""
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import settings, theme
 from sleeve.themedialog import ThemeDialog

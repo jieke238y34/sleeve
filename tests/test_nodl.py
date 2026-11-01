@@ -69,7 +69,7 @@ def make(qapp, monkeypatch, tmp_path, music):  # noqa: F811
         (music / name).write_bytes(b"x")
     monkeypatch.setattr(sleeve_app, "CACHE_FILE", tmp_path / "cache.json")
     monkeypatch.setattr(mutagen, "File", lambda path, easy=False: FakeAudio("T " + os.path.basename(path), "Band", "Rock"))
-    win = sleeve_app.MainWindow(config.without_dl(music), StubPlayer(), likes_file=tmp_path / "liked.json")
+    win = sleeve_app.MainWindow(config.without_dl(music), StubPlayer(), stash_file=tmp_path / "liked.json")
     assert wait(qapp, lambda: len(win.songs) == 2)
     return win
 

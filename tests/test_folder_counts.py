@@ -1,7 +1,7 @@
 """The song count beside each folder in the Library list: all songs, stashed songs, recently played, genre folders."""
 
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
-from test_likes import make_window
+from test_stash import make_window
 
 from sleeve import app as sleeve_app
 
@@ -27,12 +27,12 @@ def test_the_stashed_count_follows_stashing_and_unstashing(qapp, cfg, monkeypatc
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         first, second = win.songs[0], win.songs[1]
-        win._toggle_like([first.path, second.path])
+        win._toggle_stash([first.path, second.path])
         assert counts(win)[sleeve_app.LIKED] == 2
-        win._toggle_like([first.path])                                              # unstash one
+        win._toggle_stash([first.path])                                              # unstash one
         assert counts(win)[sleeve_app.LIKED] == 1
-        win.likes.add(["/music/not-in-the-library.mp3"])                            # a stashed file that is gone
-        win._likes_changed()
+        win.stash.add(["/music/not-in-the-library.mp3"])                            # a stashed file that is gone
+        win._stash_changed()
         assert counts(win)[sleeve_app.LIKED] == 1                                   # only songs Sleeve can play count
     finally:
         win.close()
