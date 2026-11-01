@@ -59,8 +59,14 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
 - Lyrics files: credit and boilerplate lines at the very start or end (Lyrics by, Music:, web addresses, copyright
   lines, 作词：) are no longer shown as lyrics.
 
+- Settings > Look: **Show the small album art** can be switched off, and **Classic layout** brings back the old look (the
+  player bar across the whole window with the small art at its left end).
+- `install.sh` prints the KDE stack it finds (Plasma, Frameworks, Qt, KDE Connect) so install logs show what runs.
+
 ### Changed
 
+- The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
+- Resuming after a long pause no longer skips to the next song.
 - The sidebar runs the whole height of the window, in one dark column behind the page list and the album art; the player
   bar sits under the pages only. Round buttons are outlined, and the Now Playing skip buttons have their own size.
 - The waveform strip is back to its earlier look (peaks scaled by the loudest part, small bars, 40 px).
