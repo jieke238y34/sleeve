@@ -3,7 +3,7 @@
 import struct
 from types import SimpleNamespace
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_likes import make_window
@@ -169,3 +169,16 @@ def test_double_clicking_the_strip_plays_or_pauses(qapp):  # noqa: F811
     strip.mouseDoubleClickEvent(QMouseEvent(QEvent.MouseButtonDblClick, pos, pos, Qt.LeftButton, Qt.LeftButton,
                                             Qt.NoModifier))
     assert asked == [1] and not seeks and strip._drag is None
+
+
+def test_right_clicking_the_strip_plays_or_pauses_and_does_not_seek(qapp):  # noqa: F811
+    strip = waveform.WaveSeek()
+    strip.resize(400, 44)
+    asked, seeks = [], []
+    strip.rightClicked.connect(lambda: asked.append(1))
+    strip.seekRequested.connect(seeks.append)
+    pos = QPointF(300, 20)
+    strip.mousePressEvent(QMouseEvent(QEvent.MouseButtonPress, pos, pos, Qt.RightButton, Qt.RightButton, Qt.NoModifier))
+    strip.mouseReleaseEvent(QMouseEvent(QEvent.MouseButtonRelease, pos, pos, Qt.RightButton, Qt.NoButton,
+                                        Qt.NoModifier))
+    assert asked == [1] and not seeks

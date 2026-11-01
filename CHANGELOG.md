@@ -63,6 +63,11 @@ Work towards the next stable release. Releases stay stable-only: a build is publ
   player bar across the whole window with the small art at its left end).
 - `install.sh` prints the KDE stack it finds (Plasma, Frameworks, Qt, KDE Connect) so install logs show what runs.
 
+- The waveform strip: **double-click** or **right-click** plays or pauses.
+- Now Playing: right-click a song in the queue for **Remove from queue** (the list only; the file stays), with Stash at
+  the top of the menu. A stash button replaces the expand button, and the expanded-art view is gone.
+- Resource use is measured and written down in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
 ### Changed
 
 - The player bar starts hidden on a fresh install (*Show player* or Ctrl+B brings it back).
