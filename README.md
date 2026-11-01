@@ -299,7 +299,8 @@ No dates are promised.
 
 - [Installing](docs/INSTALL.md) and the [user guide](docs/USER_GUIDE.md)
 - [User guide topics](docs/guide/README.md)
-- [Architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md) and [releasing](docs/RELEASING.md)
+- [Architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md), [performance](docs/PERFORMANCE.md) and
+  [releasing](docs/RELEASING.md)
 - [Changelog](CHANGELOG.md), [security policy](SECURITY.md) and [contributing](CONTRIBUTING.md)
 - [Packaging status](packaging/README.md)
 

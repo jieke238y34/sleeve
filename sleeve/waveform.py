@@ -77,6 +77,7 @@ class WaveSeek(QWidget):
 
     seekRequested = Signal(float)
     doubleClicked = Signal()                       # play or pause
+    rightClicked = Signal()                        # pause (or play again)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,7 +85,7 @@ class WaveSeek(QWidget):
         self.accent = QColor("#b7afe0")
         self.setMinimumHeight(40)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Click or drag to seek, double-click to play or pause")
+        self.setToolTip("Click or drag to seek, double-click or right-click to play or pause")
         self.setMouseTracking(True)
 
     def set_peaks(self, peaks):
@@ -120,6 +121,8 @@ class WaveSeek(QWidget):
         if e.button() == Qt.LeftButton:
             self._drag = self._fraction_at(e.position().x())
             self.update()
+        elif e.button() == Qt.RightButton:
+            self.rightClicked.emit()
 
     def mouseDoubleClickEvent(self, e):
         if e.button() == Qt.LeftButton:

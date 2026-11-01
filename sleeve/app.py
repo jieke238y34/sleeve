@@ -4087,6 +4087,7 @@ class MainWindow(QMainWindow):
         self.wave = WaveSeek()
         self.wave.seekRequested.connect(self._wave_seek)
         self.wave.doubleClicked.connect(self.player.toggle)
+        self.wave.rightClicked.connect(self.player.toggle)
         row.addWidget(self.wave_pos)
         row.addWidget(self.wave, 1)
         row.addWidget(self.wave_dur)
