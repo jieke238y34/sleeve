@@ -56,6 +56,7 @@ def clean_url(text):
 def make_login(password):
     "(salt, token) for a password: the pair Subsonic's token login wants. The password itself is not kept."
     salt = secrets.token_hex(8)
+    # Subsonic's token login is defined as md5(password + salt); the server only accepts that (see the Subsonic API)
     token = hashlib.md5((password + salt).encode("utf-8"), usedforsecurity=False).hexdigest()  # noqa: S324
     return salt, token
 
