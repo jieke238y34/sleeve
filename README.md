@@ -191,6 +191,21 @@ child process, using the same Python that runs Sleeve, with one of a fixed list 
 interface, from file names or from tags is passed to it, and no shell is used. Sleeve follows `dl.py`'s log to show
 progress.
 
+## Resource use
+
+Measured on a real library of 5,002 songs (Python 3.14, Linux, headless), the whole app, memory as resident set size:
+
+| Moment | Memory |
+|---|---|
+| Window built, library not read yet | about 168 MB |
+| All 5,002 songs listed | about 209 MB |
+| Albums grid open | about 220 MB |
+| After opening and closing pages repeatedly | still about 220 MB (no growth) |
+
+A fresh window costs about 168 MB, nearly all of it Qt and Python; the library adds about 40 MB per 5,000 songs, roughly
+8 KB a song. Closing takes under a hundredth of a second when nothing is running. Animations only run while they are on
+screen. How it was measured, and a script to repeat it on your own library, is in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
 ## Privacy and safety
 
 - No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used when `dl.py`
