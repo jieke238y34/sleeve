@@ -571,7 +571,10 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(6)
-        self.side = QWidget()                                 # the page list, and the album art in the space under it
+        self.side = QWidget()
+        self.side.setObjectName("sidebar")                      # one dark column behind the list and the art
+        self.side.setAttribute(Qt.WA_StyledBackground, True)
+        # the page list, and the album art in the space under it
         self.side_lay = QVBoxLayout(self.side)
         self.side_lay.setContentsMargins(0, 0, 0, 8)
         self.side_lay.setSpacing(6)
