@@ -636,8 +636,6 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+K"), self, self._quick_search)
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
-        self.lyrics_win = LyricsWindow(cfg, lambda: self.songs, self)      # its own runner: downloads keep going
-        self.lyrics_win.finishedJob.connect(self.rescan)
         self.player.resolver = self._nd_stream               # lets the player stream `navidrome:<id>` tracks
         self.scrobbler.changed.connect(self._refresh_apis)
         self.log_timer = QTimer(self)
@@ -1112,6 +1110,8 @@ class MainWindow(QMainWindow):
         self.dl_progress.setObjectName("muted")
         self.dl_progress.setTextFormat(Qt.PlainText)
 
+        self.lyrics_win = LyricsWindow(self.cfg, lambda: self.songs)   # its own runner: downloads keep going
+        self.lyrics_win.finishedJob.connect(self.rescan)
         self.activity = QListWidget()
         self.activity.setObjectName("activity")
         SmoothScroll.attach(self.activity)
@@ -1190,7 +1190,12 @@ class MainWindow(QMainWindow):
         lay.addLayout(tidy)
         lay.addWidget(self.sync_bar)
         lay.addWidget(self.dl_progress)
-        lay.addWidget(self.activity, 3)
+        feeds = QHBoxLayout()                                  # the lyrics panel slides out from the right of the feed
+        feeds.setContentsMargins(0, 0, 0, 0)
+        feeds.setSpacing(0)
+        feeds.addWidget(self.activity, 1)
+        feeds.addWidget(self.lyrics_win)
+        lay.addLayout(feeds, 3)
         lay.addLayout(foot)
         lay.addWidget(self.sync_log, 2)
         return page
@@ -4326,7 +4331,8 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Could not start {label}: {e}", 8000)
             self._add_activity(activity.BAD, f"Could not start {label}: {e}")
     def _open_lyrics_window(self):
-        self.lyrics_win.show_beside(self)                 # a window on the right of this one, not on top of it
+        "The lyrics panel pulls out beside the download feed (which keeps going), about 45% of the page wide."
+        self.lyrics_win.slide_out(max(320, int(self.stack.width() * 0.45)))
 
     def _on_sync_running(self, running):
         for b in self.sync_buttons:
