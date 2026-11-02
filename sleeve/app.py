@@ -830,6 +830,7 @@ class MainWindow(QMainWindow):
         for signal in (self.album_grid.enqueueAlbum, self.album_detail.enqueueAlbum):
             signal.connect(lambda paths: self.player.enqueue(paths))
         self.album_grid.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
+        self.album_detail.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         self.album_grid.openAlbum.connect(self._open_album)
         self.album_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.album_grid.customContextMenuRequested.connect(self._album_menu)
@@ -4115,6 +4116,7 @@ class MainWindow(QMainWindow):
             return
         m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in songs], 0, self._playlist_source()))
+        m.addAction("Play next", lambda: self.player.enqueue([s.path for s in songs], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
         m.addAction(labels.UNDO if all(s.path in self.stash for s in songs) else labels.VERB,
                     lambda: self._toggle_stash([s.path for s in songs]))
