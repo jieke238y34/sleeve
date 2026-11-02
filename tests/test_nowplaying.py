@@ -574,3 +574,15 @@ def test_a_queue_with_no_name_is_called_the_queue_not_a_made_up_word(qapp, cfg, 
         assert win._album_source([]) == ""
     finally:
         win.close()
+
+
+def test_a_title_colour_that_was_saved_on_is_there_when_the_window_opens(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from sleeve import settings
+    monkeypatch.setitem(settings.DEFAULTS, "title_in_accent", True)        # as if it had been saved on last time
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.np_title.styleSheet().startswith("color: #")
+        win.title_accent_box.setChecked(False)
+        assert win.np_title.styleSheet() == ""
+    finally:
+        win.close()

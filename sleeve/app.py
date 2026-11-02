@@ -760,6 +760,7 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.bar_fold_btn)
         QShortcut(QKeySequence("Ctrl+B"), self, self._toggle_bar)
         self._set_bar_hidden(self.settings.player_bar_hidden, save=False)
+        self._apply_title_colour()                            # a title colour that was saved on shows from the start
         self._legacy_applied = False
         self._apply_layout()
         if self.settings.library_view == "albums":
@@ -2425,7 +2426,9 @@ class MainWindow(QMainWindow):
     def _apply_title_colour(self):
         "The title on Now Playing wears the accent (as it is shown on the dark window) or the plain text colour."
         lit = theme.visible_accent(getattr(self, "_accent_shown", theme.LAVENDER))
-        self.np_title.setStyleSheet(f"color: {lit};" if self.settings.title_in_accent else "")
+        sheet = f"color: {lit};" if self.settings.title_in_accent else ""
+        if self.np_title.styleSheet() != sheet:                  # a repaint per change only
+            self.np_title.setStyleSheet(sheet)
 
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
