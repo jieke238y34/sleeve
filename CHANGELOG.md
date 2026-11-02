@@ -8,8 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
+  send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
 - **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
   Shortcuts). Esc still leaves fullscreen everywhere else.
+
+### Fixed
+
+- **The queue follows the selector**: moving the selection with the arrow keys, or carrying a song, scrolls the Now
+  Playing queue so the selected song is never lost off the edge.
 
 ## [0.3.1] - 2026-11-02
 

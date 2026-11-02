@@ -1224,6 +1224,7 @@ class MainWindow(QMainWindow):
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._lyrics_worker = None
         self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
+        self._queue_grabbed = None                        # the queue row picked up with the grab key: arrows move it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
@@ -3349,6 +3350,12 @@ class MainWindow(QMainWindow):
             return True                                           # hover labels are switched off in Settings > Look
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
+        if (ev.type() == QEvent.KeyPress and obj is self.queue_list and self._queue_grabbed is not None
+                and not ev.modifiers() and self._queue_grab_key(ev.key())):
+            return True                                           # the held song moved: the selector does not
+        if (ev.type() == QEvent.KeyPress and obj is self.queue_list
+                and ev.key() in (Qt.Key_Up, Qt.Key_Down, Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End)):
+            QTimer.singleShot(0, self._queue_follow)               # once the list has moved its selector
         if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
             QTimer.singleShot(0, self._np_apply_panels)          # the page has its real width now (it starts hidden)
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
@@ -4392,7 +4399,7 @@ class MainWindow(QMainWindow):
         self.queue_list.setCurrentRow(dst)
         self._queue_apply_move(src, dst)
         self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
-        self.queue_list.scrollToItem(self.queue_list.item(dst))
+        self._queue_follow()
 
     def _show_shortcuts(self):
         "Put the keys now in force into the boxes, without it counting as the person typing."
@@ -4434,6 +4441,7 @@ class MainWindow(QMainWindow):
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
             "queue_play": (self.queue_list, self._queue_play_selected, True),
             "queue_unselect": (self.queue_list, self._queue_unselect, True),
+            "queue_grab": (self.queue_list, self._queue_grab_toggle, True),
             "queue_remove": (self.queue_list, self._queue_remove_selected, True),
             "queue_up": (self.queue_list, lambda: self._queue_nudge(-1), True),
             "queue_down": (self.queue_list, lambda: self._queue_nudge(1), True),
@@ -4456,18 +4464,67 @@ class MainWindow(QMainWindow):
                 keys.append(QKeySequence("Enter"))               # the keypad's Enter does the same
             sc.setKeys(keys)
 
-    def _esc_for_focus(self, _old, new):
-        "Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so this one waits."
+    def _queue_grab_toggle(self):
+        "Pick up the selected song (the arrows then move the song, not the selector); the same key puts it down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()
+            return
+        item = self.queue_list.currentItem()
+        if item is None or not item.isSelected():
+            return
+        self._queue_grabbed = item
+        item.setForeground(QColor(theme.visible_accent(self._accent_shown)))
+        title = item.text().splitlines()[0] if item.text() else ""
+        self.status.showMessage(f"Moving \u201c{title}\u201d: Up and Down move it, Home and End send it to the ends, "
+                                "Enter puts it down.", 0)
+
+    def _queue_drop(self):
+        item, self._queue_grabbed = self._queue_grabbed, None
+        if item is not None and self.queue_list.row(item) >= 0:
+            item.setData(Qt.ForegroundRole, None)
+        self.status.clearMessage()
+
+    def _queue_grab_forget(self):
+        "The list was rebuilt or left: whatever was picked up is not held any more."
+        if self._queue_grabbed is not None:
+            self._queue_grabbed = None
+            self.status.clearMessage()
+
+    def _queue_grab_key(self, key):
+        "A key pressed in the queue while a song is held: True when it was used to move or put down that song."
+        item = self._queue_grabbed
+        row = self.queue_list.row(item) if item is not None else -1
+        if row < 0:
+            self._queue_grab_forget()
+            return False
+        last = self.queue_list.count() - 1
+        target = {Qt.Key_Up: row - 1, Qt.Key_Down: row + 1, Qt.Key_Home: 0, Qt.Key_End: last}.get(key)
+        if target is None:
+            return False
+        self._queue_move(row, max(0, min(last, target)))
+        return True
+
+    def _esc_for_focus(self, old, new):
+        """Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so the window's
+        waits. A song that is held is put down when the focus leaves the queue."""
         self._esc_fullscreen.setEnabled(new is not self.queue_list)
+        if old is self.queue_list and new is not self.queue_list and self._queue_grabbed is not None:
+            self._queue_drop()
 
     def _queue_play_selected(self):
         "Start the song that is selected in the queue (what a double-click does)."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Enter puts a held song down; it does not start it
+            return
         row = self.queue_list.currentRow()
         if self.queue_list.item(row) is not None and 0 <= row < len(self.player.queue):
             self.player.play_index(row)
 
     def _queue_unselect(self):
-        "Nothing is selected in the queue afterwards (the song that is playing stays in bold)."
+        "Nothing is selected in the queue afterwards (the song that is playing stays in bold); a held song is put down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Esc puts a held song down and nothing else
+            return
         self.queue_list.clearSelection()
         self.queue_list.setCurrentItem(None)
 
@@ -4480,6 +4537,13 @@ class MainWindow(QMainWindow):
         count = self.queue_list.count()
         if count:
             self.queue_list.setCurrentRow(min(row, count - 1))
+            self._queue_follow()
+
+    def _queue_follow(self):
+        "Keep the selector in view, so it is never lost off the edge of the queue."
+        row = self.queue_list.currentRow()
+        if row >= 0 and self.queue_list.isVisible():
+            self.queue_list._smooth.ensure_visible(row)
 
     def _queue_nudge(self, step):
         row = self.queue_list.currentRow()
@@ -4694,6 +4758,7 @@ class MainWindow(QMainWindow):
                 self._queue_rows.setdefault(path, []).append(i)
             self._queue_playing = -1
         elif queue != self._queue_shown:                     # a different queue: build the rows again
+            self._queue_grab_forget()                        # the row that was picked up is gone with the old rows
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
             self.queue_list.setUpdatesEnabled(False)

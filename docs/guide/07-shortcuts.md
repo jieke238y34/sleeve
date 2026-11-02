@@ -11,12 +11,15 @@
 | Shift+Enter | Add the selected Library songs to the end of the queue (while the Library list has the focus) |
 | Enter | Play the selected song in the queue (while the queue has the focus) |
 | Esc | Unselect the song in the queue (while the queue has the focus; elsewhere it leaves fullscreen) |
+| Ctrl+G | Pick up the selected song in the queue. Up and Down then carry the song (Home and End send it to the top or bottom) instead of moving the selector; Enter, Esc or Ctrl+G again puts it down |
 | Delete | Remove the selected song from the queue (while the queue has the focus; the file is never touched) |
 | Alt+Up / Alt+Down | Move the selected queue song up or down |
 | Media keys | Play, pause, next, previous |
 
 When you are typing in a box, or a list or button has the focus, Space and the arrows do their normal job there
 instead.
+
+The queue scrolls to follow the selected song, so it never slips off the edge.
 
 ## Change the keys
 

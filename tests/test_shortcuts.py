@@ -158,3 +158,83 @@ def test_enter_plays_the_selected_queue_song_and_esc_unselects_it(qapp, cfg, mon
         assert not win.queue_list.selectedItems()
     finally:
         win.close()
+
+
+def long_queue_window(qapp, cfg, monkeypatch, tmp_path, copies=20):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    win.resize(1100, 520)
+    win.show()
+    win.activateWindow()
+    win.nav.setCurrentRow([win.nav.item(i).text() for i in range(win.nav.count())].index("Now Playing"))
+    songs = sorted(win.songs, key=lambda s: s.path)
+    win.player.queue, win.player.index = [s.path for s in songs] * copies, 0
+    win._refresh_queue()
+    for _ in range(8):
+        qapp.processEvents()
+    win.queue_list.setFocus()
+    return win
+
+
+def test_a_song_can_be_picked_up_and_carried_with_the_arrow_keys(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win = long_queue_window(qapp, cfg, monkeypatch, tmp_path, copies=3)
+    try:
+        calls = lambda name: [c for c in win.player.calls if c[0] == name]  # noqa: E731
+        win.queue_list.setCurrentRow(-1)
+        QTest.keyClick(win.queue_list, Qt.Key_G, Qt.ControlModifier)
+        assert win._queue_grabbed is None                                   # nothing selected: nothing is picked up
+        win.queue_list.setCurrentRow(1)
+        QTest.keyClick(win.queue_list, Qt.Key_G, Qt.ControlModifier)
+        assert win._queue_grabbed is not None and "Moving" in win.status.currentMessage()
+        QTest.keyClick(win.queue_list, Qt.Key_Down)                          # the song goes down, the selector with it
+        assert calls("move")[-1] == ("move", (1, 2)) and win.queue_list.currentRow() == 2
+        QTest.keyClick(win.queue_list, Qt.Key_End)
+        assert calls("move")[-1] == ("move", (2, 8)) and win.queue_list.currentRow() == 8
+        QTest.keyClick(win.queue_list, Qt.Key_Home)
+        assert calls("move")[-1] == ("move", (8, 0)) and win.queue_list.currentRow() == 0
+        moves, plays = len(calls("move")), len(calls("play_index"))
+        QTest.keyClick(win.queue_list, Qt.Key_Return)                        # Enter puts it down; it does not play it
+        assert win._queue_grabbed is None and len(calls("play_index")) == plays
+        QTest.keyClick(win.queue_list, Qt.Key_Down)                          # now the arrows move only the selector
+        assert len(calls("move")) == moves and win.queue_list.currentRow() == 1
+        QTest.keyClick(win.queue_list, Qt.Key_G, Qt.ControlModifier)         # pick up again, then Esc puts it down
+        QTest.keyClick(win.queue_list, Qt.Key_Escape)
+        assert win._queue_grabbed is None and win.queue_list.currentRow() == 1 and win.queue_list.selectedItems()
+        QTest.keyClick(win.queue_list, Qt.Key_G, Qt.ControlModifier)         # and the same key puts it down too
+        QTest.keyClick(win.queue_list, Qt.Key_G, Qt.ControlModifier)
+        assert win._queue_grabbed is None
+    finally:
+        win.close()
+
+
+def test_the_queue_scrolls_with_the_selector_so_it_is_never_lost(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win = long_queue_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        view = win.queue_list
+
+        def in_view():
+            rect = view.visualRect(view.model().index(view.currentRow(), 0))
+            return rect.top() >= 0 and rect.bottom() <= view.viewport().height()
+
+        view.setCurrentRow(0)
+        assert view.verticalScrollBar().maximum() > 0                        # the list really does scroll
+        for _ in range(45):                                                  # walk well past the bottom edge
+            QTest.keyClick(view, Qt.Key_Down)
+            QTest.qWait(30)
+        QTest.qWait(500)
+        assert view.currentRow() == 45 and in_view() and view.verticalScrollBar().value() > 0
+        QTest.keyClick(view, Qt.Key_Home)
+        QTest.qWait(600)
+        assert view.currentRow() == 0 and in_view()                          # and all the way back up
+        view.setCurrentRow(5)                                                # a song carried down past the edge
+        QTest.keyClick(view, Qt.Key_G, Qt.ControlModifier)
+        for _ in range(30):
+            QTest.keyClick(view, Qt.Key_Down)
+            QTest.qWait(30)
+        QTest.qWait(500)
+        assert view.currentRow() == 35 and in_view()
+    finally:
+        win.close()
