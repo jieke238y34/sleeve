@@ -194,6 +194,7 @@ def test_the_apis_list_names_each_service_and_never_shows_a_secret():
 def test_the_apis_section_in_settings_lists_everything_and_follows_changes(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
+        win.show_page("Settings")                    # the list is drawn when the page is seen, not before
         assert win.api_box.count() == 6
         monkeypatch.setattr(win, "_nd_run", lambda fn, done: done(fn()))
         monkeypatch.setattr(navidrome.Client, "ping", lambda self: "1.16.1")

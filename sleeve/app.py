@@ -553,6 +553,7 @@ class MainWindow(QMainWindow):
         self._scrobbled, self._started_at = False, 0           # last.fm: sent for this play yet, and when it began
         self._listen_event, self._listen_saved = None, 0.0     # the play being kept up to date while the song goes on
         self._ffmpeg, self._loud, self._loud_again = None, None, False
+        self._loud_when_seen = self._apis_stale = self._on_settings = self._was_quiet = False
         self._loud_timer = QTimer(self)                   # a burst of queue changes is looked at once
         self._loud_timer.setSingleShot(True)
         self._loud_timer.setInterval(400)
@@ -586,6 +587,7 @@ class MainWindow(QMainWindow):
         self._session_tick.timeout.connect(self._save_session)
         self._session_tick.start()
         self.player.trackChanged.connect(lambda *_: self._session_timer.start())
+        self.player.trackChanged.connect(self._quiet_next)
         self.player.queueChanged.connect(self._session_timer.start)
         self.presence = Presence(self)                    # "Listening to ..." on Discord, only when switched on
         self._tick = QElapsedTimer()                     # time since the seek bar was last redrawn
@@ -2182,6 +2184,9 @@ class MainWindow(QMainWindow):
         paths = (queue[start:] + queue[:start])[:300]
         if not paths:
             return
+        if self._was_quiet and len(paths) > 4:          # the window is out of the way (a game fills the screen):
+            paths = paths[:4]                           # only what may start next is measured now; the sweep waits
+            self._loud_when_seen = True
         self._loud_again = False
         self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self)
         self._loud.measured.connect(self.player.set_norm)
@@ -2190,7 +2195,10 @@ class MainWindow(QMainWindow):
 
     def _loudness_done(self):
         if self._loud_again and not self._closing:
-            self._measure_loudness()
+            if self._was_quiet:                       # the queue changed while the window was away: the sweep waits
+                self._loud_when_seen = True
+            else:
+                self._measure_loudness()
 
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
@@ -2414,6 +2422,50 @@ class MainWindow(QMainWindow):
             self._limits_follow_screen = True
             handle.screenChanged.connect(lambda _screen: self._apply_size_limits())    # dragged to another monitor
         self._apply_size_limits()
+        QTimer.singleShot(0, self._apply_quiet)          # restored: bring back the work nobody sees
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        QTimer.singleShot(0, self._apply_quiet)
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if e.type() == QEvent.Type.WindowStateChange:    # minimized: the screen is somebody else's (a game's)
+            QTimer.singleShot(0, self._apply_quiet)      # once the state settles, start or stop the quiet mode
+
+    def _quiet(self):
+        "The window is out of the way (minimized or hidden, as when a game fills the screen)."
+        return not self.isVisible() or self.isMinimized()
+
+    def _apply_quiet(self):
+        self._set_quiet(self._quiet())
+
+    def _set_quiet(self, on):
+        """What only the window shows stops while it is out of the way: the row-cover loads, the Settings > APIs
+        redraws and the wide loudness sweep. The music, the scrobbles and the Discord presence keep going."""
+        if on == self._was_quiet:
+            return
+        self._was_quiet = on
+        if on:
+            self._lib_thumb_timer.stop()                            # covers for rows nobody is watching
+            self._pl_thumb_timer.stop()
+            if self._loud is not None and self._loud.isRunning():   # the wide loudness scan stops after the song
+                self._loud.requestInterruption()                    # being probed; the cache keeps its results
+                self._loud_when_seen = True
+        else:
+            self._lib_thumb_timer.start()
+            self._pl_thumb_timer.start()
+            if self._loud_when_seen and not self._closing:          # the sweep resumes where the cache left it
+                self._loud_when_seen = False
+                self._measure_loudness()
+            if self._on_settings and self._apis_stale:
+                self._refresh_apis()
+            self._prefetch_art()                                    # the next covers are wanted again
+
+    def _quiet_next(self, *_):
+        "A song started while the window is out of the way: keep only what may start next measured."
+        if self._was_quiet:
+            self._measure_loudness()
 
     def _restore_size(self):
         "The size the window had last time, within the app's minimum and the screen it opens on."
@@ -2501,9 +2553,11 @@ class MainWindow(QMainWindow):
         return apis.summary(self.settings, self.presence.state, a.user, a.ready, self.scrobbler.active, len(a.queue))
 
     def _refresh_apis(self):
-        "Redraw the list in Settings > APIs from the current settings."
-        if not hasattr(self, "api_box"):
+        "Redraw the list in Settings > APIs from the current settings — only when someone could be looking at it."
+        if not hasattr(self, "api_box") or not self._on_settings or self._was_quiet:
+            self._apis_stale = True                     # the changes are still true; the list is redrawn then
             return
+        self._apis_stale = False
         while self.api_box.count():
             item = self.api_box.takeAt(0)
             if item.widget() is not None:
@@ -3422,6 +3476,8 @@ class MainWindow(QMainWindow):
 
     def _prefetch_art(self):
         "Look up the covers of the next few songs now, so each is ready when its turn comes."
+        if self._was_quiet:
+            return                                      # nobody is looking (a game fills the screen): they can wait
         queue, here = self.player.queue, max(self.player.index, 0)
         for path in queue[here + 1:here + 4]:
             song = self.by_path.get(path)
@@ -4905,7 +4961,9 @@ class MainWindow(QMainWindow):
     # --- player bar ---------------------------------------------------------
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
-        on_np = self.nav.item(row) is not None and self.nav.item(row).text() == "Now Playing"
+        item = self.nav.item(row)
+        self._on_settings = item is not None and item.text() == "Settings"
+        on_np = item is not None and item.text() == "Now Playing"
         if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
             self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
             self._set_bar_hidden(True if on_np else self.settings.player_bar_hidden, save=False)
@@ -4913,6 +4971,8 @@ class MainWindow(QMainWindow):
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
+        if self._on_settings and self._apis_stale:
+            self._refresh_apis()                              # changes made away from the page are drawn now
 
     def show_page(self, name):
         "Open a page by its name in the sidebar. Returns False if there is no such page."
