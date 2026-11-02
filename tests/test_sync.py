@@ -78,34 +78,34 @@ def test_a_custom_theme_without_a_background_of_its_own_ignores_the_gradient(qap
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.gradient_box.setChecked(True)
-        win.settings.set("custom_theme", dict(MINE))
-        theme.set_custom(win.settings.custom_theme)
+        win.settings.set("custom_themes", [{**MINE, "id": "abc123"}])
+        theme.set_customs(win.settings.custom_themes)
         win._fill_theme_box()
-        win.theme_box.setCurrentIndex(win.theme_box.findData("custom"))
+        win.theme_box.setCurrentIndex(win.theme_box.findData("custom-abc123"))
         assert win.backdrop._fixed is None                                                  # the theme says: the cover
     finally:
-        theme.set_custom(None)
+        theme.set_customs([])
         win.close()
 
 
 def test_a_theme_can_tie_its_accent_to_the_song(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        win.settings.set("custom_theme", {**MINE, "sync": ["accent"]})
-        theme.set_custom(win.settings.custom_theme)
+        win.settings.set("custom_themes", [{**MINE, "sync": ["accent"], "id": "abc123"}])
+        theme.set_customs(win.settings.custom_themes)
         win._fill_theme_box()
-        win.theme_box.setCurrentIndex(win.theme_box.findData("custom"))
+        win.theme_box.setCurrentIndex(win.theme_box.findData("custom-abc123"))
         assert win._accent_shown == "#7fd1ae"                                               # nothing playing: its own
         red = QPixmap(64, 64)
         red.fill(QColor("#c01830"))
         win._show_cover(red, "Song", "Artist", "Album")
         assert win._accent_shown != "#7fd1ae" and QColor(win._accent_shown).hslHue() not in range(20, 340)    # a red
-        win.settings.set("custom_theme", dict(MINE))                                        # untied: it keeps its own
-        theme.set_custom(win.settings.custom_theme)
+        win.settings.set("custom_themes", [{**MINE, "id": "abc123"}])                       # untied: it keeps its own
+        theme.set_customs(win.settings.custom_themes)
         win._apply_accent(force=True)
         assert win._accent_shown == "#7fd1ae"
     finally:
-        theme.set_custom(None)
+        theme.set_customs([])
         win.close()
 
 

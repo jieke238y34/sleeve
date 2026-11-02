@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 
 from . import navidrome, themes
@@ -18,6 +19,8 @@ ACCENTS = {                        # bold, in the order of the colour wheel, the
 }
 CUSTOM = "Custom"                  # the accent name when the user picked their own colour (see accent_custom)
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
+_THEME_ID = re.compile(r"[a-z0-9]{3,12}")
+MAX_THEMES = 12                    # the themes a person keeps; more would make the picker a chore
 
 # name -> default. A value that fails its check falls back to the default, so a hand-edited file cannot break the app.
 DEFAULTS = {
@@ -28,7 +31,8 @@ DEFAULTS = {
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
     "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
-    "custom_theme": None,      # the user's own theme: {name, bg, text, muted, accent, backdrop} or None (see theme.py)
+    "custom_theme": None,      # the one theme of older versions; moved into custom_themes on load
+    "custom_themes": [],       # your own themes: [{id, name, bg, text, muted, accent, backdrop?, sync?}] (see theme.py)
     "theme": "default",        # "default" (accent colour and seasons) or a theme from theme.CUSTOM_THEMES
     "seasonal": "off",         # "off", "seasons", "holidays" or "both": which looks follow the calendar
     "season_choice": "auto",   # "auto" or "spring"/"summer"/"autumn"/"winter": pin a season by hand
@@ -70,7 +74,9 @@ DEFAULTS = {
 def _valid_custom_theme(value):
     "{name, bg, text, muted, accent, backdrop?}: four #rrggbb colours, a short name, and three more colours or None."
     if not isinstance(value, dict) or not {"bg", "text", "muted", "accent"} <= set(value) <= {
-            "name", "bg", "text", "muted", "accent", "backdrop", "sync"}:
+            "id", "name", "bg", "text", "muted", "accent", "backdrop", "sync"}:
+        return False
+    if "id" in value and not (isinstance(value["id"], str) and _THEME_ID.fullmatch(value["id"])):
         return False
     if not all(isinstance(value[k], str) and _HEX.fullmatch(value[k]) for k in ("bg", "text", "muted", "accent")):
         return False
@@ -107,9 +113,13 @@ def _valid(key, value):
     if key in ("np_queue_side", "np_lyrics_side"):
         return value in ("left", "right")
     if key == "theme":
-        return value == "default" or value == "custom" or value in themes.NAMES
+        return (value == "default" or value in themes.NAMES
+                or (isinstance(value, str) and re.fullmatch(r"custom(-[a-z0-9]{3,12})?", value) is not None))
     if key == "custom_theme":
         return value is None or _valid_custom_theme(value)
+    if key == "custom_themes":
+        return (isinstance(value, list) and len(value) <= MAX_THEMES and all(
+            _valid_custom_theme(t) and "id" in t for t in value) and len({t["id"] for t in value}) == len(value))
     if key == "seasonal":
         return value in ("off", "seasons", "holidays", "both")
     if key == "season_choice":
@@ -159,6 +169,18 @@ class Settings:
             for key, value in data.items():
                 if key in DEFAULTS and _valid(key, value):
                     self.values[key] = value.lower() if key == "accent_custom" else value
+        self._migrate_single_theme()
+
+    def _migrate_single_theme(self):
+        "Older versions kept one theme in `custom_theme` (worn as theme 'custom'); it becomes the first saved theme."
+        old = self.values.get("custom_theme")
+        if not old or self.values.get("custom_themes"):
+            return
+        new_id = secrets.token_hex(3)
+        self.values["custom_themes"] = [{**old, "id": new_id}]
+        self.values["custom_theme"] = None
+        if self.values.get("theme") == "custom":
+            self.values["theme"] = f"custom-{new_id}"
 
     def __getattr__(self, name):
         try:
