@@ -265,8 +265,9 @@ def build_real_window(tmp, music):
 
 
 def pick_real_albums(win, tries=500):
-    """24 song lists like the demo's albums, one song per hue (index = hue / 15 degrees) taken from real covers: the
-    most vivid cover of that hue among an even sample of the library. A hue with none borrows its neighbour's."""
+    """24 song lists like the demo's albums, led by one song per hue (index = hue / 15 degrees) taken from real covers:
+    the most vivid cover of that hue among an even sample of the library. The two songs after it are the next most
+    vivid of that hue, or of the nearest hues when it has too few: three different songs, never one repeated."""
     from PySide6.QtGui import QColor, QPixmap
 
     from sleeve import art, theme
@@ -286,14 +287,19 @@ def pick_real_albums(win, tries=500):
             continue
         bucket = int(max(colour.hsvHueF(), 0) * 360 // 15) % 24
         score = colour.hsvSaturationF() * 0.6 + (0.4 if song.lrc else 0)         # vivid, and with lyrics if possible
-        if bucket not in best or score > best[bucket][0]:
-            best[bucket] = (score, song.path)
+        best.setdefault(bucket, []).append((score, song.path))
     if not best:
         raise SystemExit("no songs with colourful covers were found in that folder")
     albums = []
     for i in range(24):
-        near = min(best, key=lambda b: min((b - i) % 24, (i - b) % 24))
-        albums.append([best[near][1]] * 3)
+        songs = []
+        for bucket in sorted(best, key=lambda b: min((b - i) % 24, (i - b) % 24)):      # the nearest hue first
+            for _score, path in sorted(best[bucket], reverse=True):
+                if path not in songs:
+                    songs.append(path)
+            if len(songs) >= 3:
+                break
+        albums.append((songs * 3)[:3])                        # a library this small repeats rather than comes up short
     return albums
 
 
