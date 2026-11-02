@@ -22,8 +22,10 @@ def split_artists(text):
         pieces = [p for p in _SLASH.split(part) if p]
         if len(pieces) > 1 and all(len(p) > _SHORT for p in pieces):
             out.extend(pieces)
-        else:
-            out.append(part)
+        elif len(pieces) == 1:
+            out.append(pieces[0])                               # "Massive Attack/": the stray slash is not part of it
+        elif pieces:
+            out.append(part)                                    # "AC/DC": a slash inside a name stays
     return out or [text]
 
 
