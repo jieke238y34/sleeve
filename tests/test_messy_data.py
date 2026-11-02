@@ -71,10 +71,9 @@ def test_artist_names_are_never_empty(tag):
 def test_multi_artist_tags_read_as_a_sentence():
     assert artists.display("SBTRKT/Sampha") == "SBTRKT with Sampha"
     assert artists.display("SBTRKT/Sampha/Jessie Ware") == "SBTRKT, Sampha & Jessie Ware"
-
+# A stray slash left by an empty second name is not part of the artist.
 
 # Bug: artists.py split_artists keeps the part as typed when the slash split leaves one piece, so the slash shows.
-@pytest.mark.xfail(strict=True, reason="a trailing slash is shown: 'Massive Attack/' should display as 'Massive Attack'")
 def test_trailing_slash_is_not_shown():
     assert artists.display("Massive Attack/") == "Massive Attack"
 
