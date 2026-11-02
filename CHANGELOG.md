@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Smart folders** in the Library list: *Recently added* (files from the last 30 days, newest first), *Never played* and
+  *Most played* (from your listening history, which needs "Remember what I listen to"). They fill themselves, show how
+  many songs they hold, and change nothing on disk.
 - **Click an artist or an album name** (on Now Playing, or the artist in the player bar) to see all their songs in the
   Library. A chip beside the filter says what is shown (`Artist: Kendrick Lamar ✕`) and takes you back; picking a folder
   also leaves it. Right-click a song in the Library or the queue for *All songs by…* and *The album…*. A tag holding

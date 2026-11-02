@@ -3,8 +3,8 @@ import argparse
 import dataclasses
 import os
 import random
-import shutil
 import secrets
+import shutil
 import sys
 import time
 from collections import Counter
@@ -110,6 +110,7 @@ from . import (
     seasons,
     settings,
     singleton,
+    smart,
     stash,
     sync,
     tags,
@@ -213,7 +214,7 @@ HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe 
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = f"{labels.MARK} {labels.SONGS}"
 RECENT = "Recently played"
-SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists with an order of their own, kept until a header is clicked
+SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists whose order is their point (kept until a header)
 
 
 def fmt_time(seconds):
@@ -610,6 +611,7 @@ class MainWindow(QMainWindow):
         self._closing = self._rescan_again = False
         self.songs, self.by_path = [], {}
         self.folder = ALL
+        self._mtimes = {}                                     # song path -> file time, for Recently added
         self._dragging = False
         self._seeking = False                               # a player seek is not listening time
         self._lyrics = []
