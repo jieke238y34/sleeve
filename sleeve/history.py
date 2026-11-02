@@ -84,6 +84,10 @@ class History:
         order = sorted(plays, key=lambda p: (-plays[p], -seconds[p], -last[p], p))
         return [Play(p, plays[p], seconds[p]) for p in order[:limit]]
 
+    def counts(self):
+        "How many times each song was played, over everything kept: {path: plays}."
+        return Counter(e[0] for e in self.events)
+
     def recent(self, limit=100):
         "The songs played most recently, newest first, each once."
         seen, out = set(), []
