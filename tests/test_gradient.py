@@ -99,3 +99,15 @@ def test_the_accent_following_gradient_takes_its_hues_from_the_cover(qapp):  # n
     plain.set_fixed(theme.accent_gradient("#e0303a"))
     plain.set_cover(pix)
     assert {round(QColor(c).hslHueF() * 12) % 12 for c in plain._to} <= {11, 0, 1}      # without blend: the accent's hue
+
+
+def test_a_black_cover_with_faint_green_noise_gives_a_neutral_backdrop_not_a_green_one(qapp):  # noqa: F811
+    from PySide6.QtGui import QPixmap
+    pix = QPixmap(64, 64)
+    pix.fill(QColor(3, 20, 5))                             # almost black, but its few colours are green
+    assert theme.accent_from_cover(pix) == "#000000"       # the accent already knew this
+    for fixed in (None, ("#102030", "#203040", "#304050")):
+        back = theme.Backdrop()
+        back.set_fixed(fixed, blend=bool(fixed))
+        back.set_cover(pix)
+        assert all(QColor(c).hslSaturationF() < 0.12 for c in back._to), [QColor(c).name() for c in back._to]
