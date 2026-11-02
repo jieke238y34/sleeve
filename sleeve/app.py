@@ -1094,6 +1094,10 @@ class MainWindow(QMainWindow):
         self.queue_list.itemDoubleClicked.connect(lambda it: self.player.play_index(self.queue_list.row(it)))
         self.queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.queue_list.customContextMenuRequested.connect(self._queue_menu)
+        self.queue_list.setDragDropMode(QAbstractItemView.InternalMove)     # drag a song to a new place in the queue
+        self.queue_list.setDefaultDropAction(Qt.MoveAction)
+        self.queue_list.setDropIndicatorShown(True)
+        self.queue_list.model().rowsMoved.connect(self._queue_rows_moved)
         queue_page = QWidget()
         ql = QVBoxLayout(queue_page)
         ql.setContentsMargins(0, 0, 0, 0)
@@ -4191,6 +4195,10 @@ class MainWindow(QMainWindow):
             return
         self._new_playlist(songs)
 
+    def _queue_rows_moved(self, _parent, start, _end, _dest_parent, row):
+        "A song was dragged to another place in the queue list: the player's queue follows."
+        self.player.move(start, row if row < start else row - 1)
+
     def _queue_menu(self, pos):
         item = self.queue_list.itemAt(pos)
         row = self.queue_list.row(item) if item is not None else self.queue_list.currentRow()
@@ -4202,6 +4210,14 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(self.player.queue):
             act = m.addAction("Remove from queue", lambda: self.player.remove_at(row))
             act.setToolTip("Takes it off this list only; the song stays where it is on disk")
+            last = len(self.player.queue) - 1
+            now = max(self.player.index, 0)
+            if row != now:                                      # "play next" means right after the one playing
+                m.addAction("Play next", lambda: self.player.move(row, now if row < now else now + 1))
+            if row > 0:
+                m.addAction("Move up", lambda: self.player.move(row, row - 1))
+            if row < last:
+                m.addAction("Move down", lambda: self.player.move(row, row + 1))
         if songs:
             self._add_to_playlist_menu(m, songs)
             self._browse_actions(m, songs[0])

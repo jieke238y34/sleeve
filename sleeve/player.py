@@ -399,6 +399,24 @@ class Player(QObject):
         else:
             self._replan()
 
+    def move(self, src, dst):
+        """Move the song at queue position `src` so it ends up at position `dst`. The song that is playing keeps playing
+        (its position follows the shuffle of the others) and the song after it is worked out again."""
+        n = len(self.queue)
+        if not (0 <= src < n and 0 <= dst < n) or src == dst:
+            return
+        self.queue.insert(dst, self.queue.pop(src))
+        i = self.index
+        if i == src:
+            i = dst
+        elif src < i <= dst:
+            i -= 1
+        elif dst <= i < src:
+            i += 1
+        self.index = i
+        self.queueChanged.emit()
+        self._replan()
+
     def remove_at(self, i):
         """Take the song at queue position `i` out of the queue only; its file is never touched. Taking out the one that
         is playing moves on to the one after it (paused stays paused); taking out the last one stops."""
