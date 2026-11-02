@@ -27,6 +27,8 @@ ACTIONS = (
     Action("quick_search", "Quick search", "Ctrl+K"),
     Action("toggle_bar", "Hide or show the player bar", "Ctrl+B"),
     Action("library_queue", "Add the selected songs to the queue", "Shift+Return", LIBRARY),
+    Action("queue_play", "Play the selected song", "Return", QUEUE),
+    Action("queue_unselect", "Unselect the song", "Escape", QUEUE),
     Action("queue_remove", "Remove the selected song", "Delete", QUEUE),
     Action("queue_up", "Move the selected song up", "Alt+Up", QUEUE),
     Action("queue_down", "Move the selected song down", "Alt+Down", QUEUE),

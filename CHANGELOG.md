@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
+  Shortcuts). Esc still leaves fullscreen everywhere else.
+
 ## [0.3.1] - 2026-11-02
 
 ### Added

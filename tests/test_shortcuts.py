@@ -121,3 +121,40 @@ def test_a_real_key_press_reaches_the_actions(qapp, cfg, monkeypatch, tmp_path):
         assert len([c for c in win.player.calls if c[0] == "remove_at"]) == 2
     finally:
         win.close()
+
+
+def test_enter_plays_the_selected_queue_song_and_esc_unselects_it(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1100, 700)
+        win.show()
+        win.activateWindow()
+        win.nav.setCurrentRow([win.nav.item(i).text() for i in range(win.nav.count())].index("Now Playing"))
+        songs = sorted(win.songs, key=lambda s: s.path)
+        win.player.queue, win.player.index = [s.path for s in songs], 0
+        win._refresh_queue()
+        for _ in range(6):
+            qapp.processEvents()
+        win.queue_list.setFocus()
+        played = lambda: [c for c in win.player.calls if c[0] == "play_index"]  # noqa: E731
+        win.queue_list.setCurrentRow(2)
+        QTest.keyClick(win.queue_list, Qt.Key_Return)
+        assert played()[-1] == ("play_index", (2,))
+        win.queue_list.setCurrentRow(1)
+        QTest.keyClick(win.queue_list, Qt.Key_Enter)                       # the keypad's Enter
+        assert played()[-1] == ("play_index", (1,))
+        win.queue_list.setCurrentRow(2)
+        assert win.queue_list.selectedItems()
+        QTest.keyClick(win.queue_list, Qt.Key_Escape)
+        assert not win.queue_list.selectedItems() and win.queue_list.currentRow() == -1
+        before = len(played())
+        QTest.keyClick(win.queue_list, Qt.Key_Return)                      # nothing selected: nothing plays
+        assert len(played()) == before
+        win._shortcut_set("queue_unselect", "Ctrl+D")                      # and the keys can be changed
+        win.queue_list.setCurrentRow(0)
+        QTest.keyClick(win.queue_list, Qt.Key_D, Qt.ControlModifier)
+        assert not win.queue_list.selectedItems()
+    finally:
+        win.close()

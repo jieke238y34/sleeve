@@ -9,6 +9,8 @@
 | Esc | Leave fullscreen |
 | Ctrl+B | Hide or show the player bar |
 | Shift+Enter | Add the selected Library songs to the end of the queue (while the Library list has the focus) |
+| Enter | Play the selected song in the queue (while the queue has the focus) |
+| Esc | Unselect the song in the queue (while the queue has the focus; elsewhere it leaves fullscreen) |
 | Delete | Remove the selected song from the queue (while the queue has the focus; the file is never touched) |
 | Alt+Up / Alt+Down | Move the selected queue song up or down |
 | Media keys | Play, pause, next, previous |
@@ -22,7 +24,7 @@ Settings > Shortcuts lists every action above with its key. Click a box and pres
 the original back, **No key** leaves the action without one, and **Reset all shortcuts** undoes every change. If the
 key you press already belongs to another action, it is taken from that one (the status bar says which) so one key never
 does two things. The keys for the Library list and the queue only work while that list has the focus, so they may
-share a key with each other. Esc for leaving fullscreen and the media keys cannot be changed. A key without Ctrl or
+share a key with each other. Esc for leaving fullscreen (outside the queue) and the media keys cannot be changed. A key without Ctrl or
 Alt does nothing while you are typing in a box.
 
 ## Mouse tips
