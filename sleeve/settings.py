@@ -28,6 +28,7 @@ DEFAULTS = {
     "max_volume": 75,          # 30-150, how much of the output's loudest level the full slider means (>100: boost)
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
+    "boost_db": 6,             # 0-12, how many dB a quiet song may be turned up when songs are levelled
     "use_replaygain": True,    # take the gain from the files' ReplayGain tags; off: only Sleeve's own measurement
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
@@ -93,8 +94,8 @@ def _valid_custom_theme(value):
 
 
 def _valid(key, value):
-    if key in ("volume", "max_volume"):
-        low, high = (30, 150) if key == "max_volume" else (0, 100)
+    if key in ("volume", "max_volume", "boost_db"):
+        low, high = {"max_volume": (30, 150), "boost_db": (0, 12)}.get(key, (0, 100))
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
     if key == "identity_period":
         return value in ("week", "month")

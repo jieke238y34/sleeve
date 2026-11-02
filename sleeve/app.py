@@ -1565,6 +1565,22 @@ class MainWindow(QMainWindow):
         self.same_volume_hint = hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and "
                                      "measures the rest in the background if ffmpeg is installed.")
         lay.addWidget(self.same_volume_hint)
+        boost_row = QHBoxLayout()
+        self.boost_slider = ClickSlider(Qt.Horizontal)
+        self.boost_slider.setRange(0, 12)
+        self.boost_slider.setValue(self.settings.boost_db)
+        self.boost_slider.setMinimumWidth(220)
+        self.boost_slider.setMaximumWidth(280)
+        self.boost_label = QLabel(f"{self.settings.boost_db} dB")
+        self.boost_label.setMinimumWidth(56)
+        self.boost_slider.valueChanged.connect(self._boost_changed)
+        boost_row.addWidget(QLabel("Turn up quiet songs"))
+        boost_row.addWidget(self.boost_slider)
+        boost_row.addWidget(self.boost_label)
+        boost_row.addStretch(1)
+        lay.addLayout(boost_row)
+        lay.addWidget(hint("The most a quiet song is turned up when songs are played at the same volume. 0 never "
+                           "turns anything up; loud songs are always turned down."))
         self.replaygain_box = Switch("Use the ReplayGain tags in my files")
         self.replaygain_box.setChecked(self.settings.use_replaygain)
         self.replaygain_box.toggled.connect(self._replaygain_toggled)
@@ -2268,6 +2284,12 @@ class MainWindow(QMainWindow):
         if on:
             self._measure_loudness()
 
+    def _boost_changed(self, value):
+        self.boost_label.setText(f"{value} dB")
+        self._set_setting("boost_db", value)
+        self.player.set_max_boost(value)
+        self._measure_loudness()
+
     def _replaygain_toggled(self, on):
         self.player.set_use_tags(on)
         self._set_setting("use_replaygain", on)
@@ -2289,7 +2311,7 @@ class MainWindow(QMainWindow):
             self._loud_when_seen = True
         self._loud_again = False
         self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self,
-                                          use_tags=self.settings.use_replaygain)
+                                          use_tags=self.settings.use_replaygain, max_boost=self.settings.boost_db)
         self._loud.measured.connect(self.player.set_norm)
         self._loud.finished.connect(self._loudness_done)
         self._loud.start()

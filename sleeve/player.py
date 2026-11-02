@@ -93,6 +93,7 @@ class Player(QObject):
         self.resolver = None                    # maps a `navidrome:<id>` entry to its stream address (the app sets it)
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
         self.same_volume = True
+        self.max_boost = loudness.MAX_BOOST      # dB a quiet song may be turned up
         self.use_tags = True                    # the files' ReplayGain tags count; off: only measured loudness
         self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
         self._norm_checked = set()         # paths whose tags and saved measurement were already looked at
@@ -136,6 +137,7 @@ class Player(QObject):
         self.gapless = settings.gapless
         self.same_volume = settings.same_volume
         self.use_tags = settings.use_replaygain
+        self.max_boost = settings.boost_db
         self.output_id = settings.output_device
         self._reroute()
         self.set_volume(settings.volume)
@@ -171,6 +173,14 @@ class Player(QObject):
         self.same_volume = bool(on)
         self._apply_volume()
 
+    def set_max_boost(self, db):
+        "How far a quiet song may be turned up: what was worked out is forgotten and worked out again."
+        self.max_boost = float(db)
+        self.norm_db.clear()
+        self._norm_checked.clear()
+        self._apply_volume()
+        self.normChanged.emit("")
+
     def set_use_tags(self, on):
         "Trust the ReplayGain tags in the files (or not): what was read from them is forgotten and read again."
         self.use_tags = bool(on)
@@ -196,7 +206,7 @@ class Player(QObject):
             return 0.0                          # a server track has no file here to read loudness tags from
         if path not in self.norm_db and path not in self._norm_checked:
             self._norm_checked.add(path)
-            found = loudness.gain_for(path, self.loudness_cache, self.use_tags)
+            found = loudness.gain_for(path, self.loudness_cache, self.use_tags, self.max_boost)
             if found is not None:
                 self.norm_db[path] = found
         return self.norm_db.get(path, 0.0)
