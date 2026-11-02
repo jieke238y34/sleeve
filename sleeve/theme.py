@@ -163,11 +163,23 @@ def visible_accent(accent):
     return "#d9d5ea" if on_accent(accent) == "#ffffff" else accent
 
 
+def hover_of(accent):
+    """The accent a little changed for the pointer being over it: lighter, or a touch darker when it is already close
+    to white (so a white accent stays white, never the fixed creme it used to turn into)."""
+    c = QColor(accent)
+    luminance = 0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF()
+    other, share = (QColor("#000000"), 0.08) if luminance > 0.75 else (QColor("#ffffff"), 0.22)
+    channels = (round(a + (b - a) * share) for a, b in ((c.red(), other.red()), (c.green(), other.green()),
+                                                       (c.blue(), other.blue())))
+    return QColor(*channels).name()
+
+
 def build_style(accent=LAVENDER, palette=None):
     "The window stylesheet: an accent colour, and a (bg, text, muted) surface palette."
     bg, text, muted = palette if palette else (BG, TEXT, MUTED)
     ink = on_accent(accent, bg)                                           # text on accent-coloured surfaces
     lit = visible_accent(accent)                                          # the accent where it is drawn on the window
+    hover = hover_of(accent)
     rgb = ", ".join(str(int(accent[i:i + 2], 16)) for i in (1, 3, 5))     # for the see-through tints
     return f"""
 QMainWindow, QDialog {{ background: {bg}; }}
@@ -230,11 +242,11 @@ QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; 
 QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
                     padding: 0; font-size: 18pt; background: {accent}; color: {ink}; }}
-QPushButton#play:hover {{ background: {CREAM}; }}
+QPushButton#play:hover {{ background: {hover}; }}
 
 QPushButton#primary {{ background: {accent}; color: {ink}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
-QPushButton#primary:hover {{ background: {CREAM}; }}
+QPushButton#primary:hover {{ background: {hover}; }}
 QPushButton#primary:disabled {{ background: rgba({rgb}, 46); color: rgba(255, 255, 255, 150); }}
 QListWidget#activity {{ font-size: 10.5pt; }}
 QListWidget#activity::item {{ padding: 5px 8px; border-radius: 6px; }}
@@ -532,7 +544,7 @@ def accent_from_cover(pix):
         return "#000000"
     h, s, _v, _a = colours[0].getHsvF()
     if s < 0.16:                                           # grey cover: no hue to follow
-        return "#f2efe9"
+        return "#ffffff"
     return QColor.fromHsvF(max(h, 0.0), min(0.85, max(0.45, s * 1.15)), 0.96).name()
 
 

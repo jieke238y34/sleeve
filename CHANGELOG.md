@@ -33,6 +33,9 @@ All notable changes to this project are documented here. The format follows
 - **Turn up quiet songs** (Settings > Sound): how many dB, 0 to 12 (6 by default), a quiet song may be turned up when songs are
   played at the same volume.
 - **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.
+- **Shortcuts you can change** (Settings > Shortcuts): every key has a box to press a new one in, plus *Reset* and *No
+  key*. A key another action already has is taken from it, and the status bar says so. New: **Delete** removes the selected
+  song from the queue (the file stays).
 - **Reorder the queue**: drag a song to a new place in the Now Playing queue, or right-click it for *Play next*, *Move up*
   and *Move down*, or select a song and press **Alt+Up / Alt+Down**; the menu also has *Move to top* and *Move to
   bottom*. The song stays selected and in view, and the song that is playing keeps playing.
@@ -65,6 +68,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A white accent stays white**: the play button (and the other accent buttons) turned a fixed creme when the pointer was
+  over them, and the accent for a grey cover and the *Pearl* colour were a warm off-white. Hover is now worked out from
+  the accent, and both are a true white.
 - **A black cover no longer tints the window green** (or any other faint hue): the backdrop for a black cover is a plain
   near-black, as the accent already was.
 - **Your own themes are kept, not replaced**: making a new theme used to overwrite the last one, so *Edit my theme* only

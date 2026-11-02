@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QKeySequenceEdit,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -113,6 +114,7 @@ from . import (
     plstyle,
     seasons,
     settings,
+    shortcuts,
     shuffleorder,
     singleton,
     smart,
@@ -758,7 +760,6 @@ class MainWindow(QMainWindow):
         self.bar_fold_btn.setObjectName("barfold")
         self.bar_fold_btn.clicked.connect(self._toggle_bar)
         self.status.addPermanentWidget(self.bar_fold_btn)
-        QShortcut(QKeySequence("Ctrl+B"), self, self._toggle_bar)
         self._set_bar_hidden(self.settings.player_bar_hidden, save=False)
         self._apply_title_colour()                            # a title colour that was saved on shows from the start
         self._legacy_applied = False
@@ -785,12 +786,8 @@ class MainWindow(QMainWindow):
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
         self.runner.finished.connect(self._on_sync_finished)
-        for key, slot in ((Qt.Key_Space, p.toggle), (Qt.Key_Left, lambda: self._seek_by(-5)),
-                          (Qt.Key_Right, lambda: self._seek_by(5))):
-            QShortcut(QKeySequence(key), self, slot)
-        QShortcut(QKeySequence(Qt.Key_F11), self, self._toggle_fullscreen)
-        QShortcut(QKeySequence("Ctrl+K"), self, self._quick_search)
-        QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)
+        self._build_shortcuts()
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)     # leaving fullscreen is not rebound
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.player.resolver = self._nd_stream               # lets the player stream `navidrome:<id>` tracks
         self.scrobbler.changed.connect(self._refresh_apis)
@@ -849,8 +846,6 @@ class MainWindow(QMainWindow):
         self.table.setModel(self.model)
         self.table.selectionModel().selectionChanged.connect(
             lambda *_: self.queue_sel_btn.setEnabled(bool(self.table.selectionModel().selectedRows())))
-        queue_key = QShortcut(QKeySequence("Shift+Return"), self.table, lambda: self._queue_selected())
-        queue_key.setContext(Qt.WidgetShortcut)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
         self._apply_library_order()
@@ -1125,9 +1120,6 @@ class MainWindow(QMainWindow):
         self.queue_list.setDefaultDropAction(Qt.MoveAction)
         self.queue_list.setDropIndicatorShown(True)
         self.queue_list.model().rowsMoved.connect(self._queue_rows_moved)
-        for key, step in (("Alt+Up", -1), ("Alt+Down", 1)):               # the selected song, one place at a time
-            sc = QShortcut(QKeySequence(key), self.queue_list, lambda s=step: self._queue_nudge(s))
-            sc.setContext(Qt.WidgetShortcut)
         queue_page = QWidget()
         ql = QVBoxLayout(queue_page)
         ql.setContentsMargins(0, 0, 0, 0)
@@ -1824,6 +1816,41 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
+
+        section("Shortcuts")
+        lay.addWidget(hint("Click a box, then press the keys you want. A key that another action already has is taken "
+                           "from it. The keys for the lists only work while that list has the focus."))
+        self._shortcut_edits = {}
+        grid = QGridLayout()                                    # a grid keeps the columns lined up, whatever the font
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(6)
+        for n, action in enumerate(shortcuts.ACTIONS):
+            edit = QKeySequenceEdit()
+            edit.setMaximumSequenceLength(1)
+            edit.setMinimumWidth(150)
+            edit.setMaximumWidth(220)
+            edit.setAccessibleName(f"Key for: {action.label}")
+            edit.editingFinished.connect(lambda a=action.id: self._shortcut_chosen(a))
+            reset = QPushButton("Reset")
+            reset.setToolTip(f"Back to {action.default}")
+            reset.clicked.connect(lambda _=False, a=action.id: self._shortcut_set(a, shortcuts.BY_ID[a].default))
+            none = QPushButton("No key")
+            none.setToolTip("Leave this action without a key")
+            none.clicked.connect(lambda _=False, a=action.id: self._shortcut_set(a, ""))
+            where = "" if action.where == shortcuts.ANYWHERE else f" (in {action.where})"
+            for column, widget in enumerate((QLabel(action.label + where), edit, reset, none)):
+                grid.addWidget(widget, n, column)
+            self._shortcut_edits[action.id] = edit
+        grid.setColumnStretch(4, 1)
+        lay.addLayout(grid)
+        reset_all = QPushButton("Reset all shortcuts")
+        reset_all.clicked.connect(lambda: self._shortcuts_reset_all())
+        reset_row = QHBoxLayout()
+        reset_row.addWidget(reset_all)
+        reset_row.addStretch(1)
+        lay.addLayout(reset_row)
+        self._show_shortcuts()
 
         section("Advanced")
         subsection("APIs")
@@ -3329,6 +3356,9 @@ class MainWindow(QMainWindow):
         if ev.type() == QEvent.ShortcutOverride and isinstance(obj, QWidget) and self.isAncestorOf(obj):
             key = ev.key()
             text_like = isinstance(obj, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
+            if text_like and not ev.modifiers() & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier):
+                ev.accept()                                        # a key bound without Ctrl or Alt is typing here
+                return True
             if key in (Qt.Key_Left, Qt.Key_Right) and (text_like or isinstance(obj, (QAbstractItemView, QSlider))):
                 ev.accept()
                 return True
@@ -4362,6 +4392,72 @@ class MainWindow(QMainWindow):
         self._queue_apply_move(src, dst)
         self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
         self.queue_list.scrollToItem(self.queue_list.item(dst))
+
+    def _show_shortcuts(self):
+        "Put the keys now in force into the boxes, without it counting as the person typing."
+        mine = shortcuts.clean(self.settings.shortcuts)
+        for action_id, edit in self._shortcut_edits.items():
+            edit.blockSignals(True)
+            edit.setKeySequence(QKeySequence(shortcuts.key_for(mine, action_id)))
+            edit.blockSignals(False)
+
+    def _shortcut_chosen(self, action_id):
+        edit = self._shortcut_edits[action_id]
+        self._shortcut_set(action_id, edit.keySequence().toString(QKeySequence.PortableText))
+
+    def _shortcut_set(self, action_id, text):
+        "Give an action a key ('' for none): any other action that had it loses it, and the person is told."
+        new, lost = shortcuts.assign(shortcuts.clean(self.settings.shortcuts), action_id, text)
+        self._set_setting("shortcuts", new)
+        self._apply_shortcuts()
+        self._show_shortcuts()
+        if lost is not None:
+            key = shortcuts.key_for(new, action_id)
+            self.status.showMessage(f"{key} was used for \u201c{lost.label}\u201d, which has no key now.", 8000)
+
+    def _shortcuts_reset_all(self):
+        self._set_setting("shortcuts", shortcuts.reset_all())
+        self._apply_shortcuts()
+        self._show_shortcuts()
+
+    def _build_shortcuts(self):
+        "One QShortcut per action in sleeve/shortcuts.py, wearing the key the settings give it (or its default)."
+        p = self.player
+        wired = {
+            "play_pause": (self, p.toggle, False),
+            "seek_back": (self, lambda: self._seek_by(-5), False),
+            "seek_forward": (self, lambda: self._seek_by(5), False),
+            "fullscreen": (self, self._toggle_fullscreen, False),
+            "quick_search": (self, self._quick_search, False),
+            "toggle_bar": (self, self._toggle_bar, False),
+            "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
+            "queue_remove": (self.queue_list, self._queue_remove_selected, True),
+            "queue_up": (self.queue_list, lambda: self._queue_nudge(-1), True),
+            "queue_down": (self.queue_list, lambda: self._queue_nudge(1), True),
+        }
+        self._shortcuts = {}
+        for action in shortcuts.ACTIONS:
+            owner, slot, local = wired[action.id]
+            sc = QShortcut(QKeySequence(), owner, slot)
+            if local:
+                sc.setContext(Qt.WidgetShortcut)
+            self._shortcuts[action.id] = sc
+        self._apply_shortcuts()
+
+    def _apply_shortcuts(self):
+        mine = shortcuts.clean(self.settings.shortcuts)
+        for action_id, sc in self._shortcuts.items():
+            sc.setKey(QKeySequence(shortcuts.key_for(mine, action_id)))
+
+    def _queue_remove_selected(self):
+        "Take the selected song off the queue (the file stays); the next one is selected so the key can be repeated."
+        row = self.queue_list.currentRow()
+        if not 0 <= row < len(self.player.queue):
+            return
+        self.player.remove_at(row)
+        count = self.queue_list.count()
+        if count:
+            self.queue_list.setCurrentRow(min(row, count - 1))
 
     def _queue_nudge(self, step):
         row = self.queue_list.currentRow()
