@@ -3,6 +3,7 @@ import argparse
 import dataclasses
 import os
 import random
+import shutil
 import secrets
 import sys
 import time
@@ -1538,7 +1539,12 @@ class MainWindow(QMainWindow):
         self.earbuds_note = QLabel("")
         self.earbuds_note.setObjectName("muted")
         eb.addWidget(self.earbuds_note, 1)
+        self.earbuds_status = QLabel("")
+        self.earbuds_status.setObjectName("muted")
+        self.earbuds_status.setWordWrap(True)
+        lay.addWidget(self.earbuds_status)
         self.earbuds_frame.setVisible(earbuds.find_script() is not None)
+        self._refresh_earbuds_status()
         lay.addWidget(self.earbuds_frame)
 
         section("Theme")
@@ -3122,6 +3128,28 @@ class MainWindow(QMainWindow):
 
     def _earbuds_done(self, proc, code):
         self.earbuds_note.setText("Done" if code == 0 else "Maid BT reported a problem")
+        proc.deleteLater()
+        self._refresh_earbuds_status()
+
+    def _refresh_earbuds_status(self):
+        "One honest line under the earbuds buttons: connection, battery, codec. Never a quality claim."
+        exe = shutil.which("maid-watcher")
+        if exe is None:
+            self.earbuds_status.setText("")
+            return
+        proc = QProcess(self)
+        proc.finished.connect(lambda code, _status, p=proc: self._earbuds_status_done(p))
+        proc.errorOccurred.connect(lambda _err, p=proc: self._earbuds_status_done(p))
+        self._earbuds_status_proc = proc
+        proc.start(exe, ["status", "--json"])
+
+    def _earbuds_status_done(self, proc):
+        try:
+            data = earbuds.status(run=lambda: bytes(proc.readAllStandardOutput()).decode())
+            line = earbuds.describe(data, earbuds.codec())
+        except Exception:
+            line = ""
+        self.earbuds_status.setText(line)
         proc.deleteLater()
 
     def polish_controls(self):
