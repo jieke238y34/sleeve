@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
+  sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
+  Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added
