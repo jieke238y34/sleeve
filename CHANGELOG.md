@@ -6,20 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
 ### Added
 
 - **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
   sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
   Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
-
-## [0.3.2] - 2026-11-02
-
-### Added
-
 - **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
   send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
 - **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
   Shortcuts). Esc still leaves fullscreen everywhere else.
+
+### Changed
+
+- Settings is one centred column, so the page wastes no space, and its status lines are read-only.
+- Each file's cover is decoded once and shared by every list, instead of once per list.
 
 ### Fixed
 
