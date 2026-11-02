@@ -344,6 +344,46 @@ def test_cover_art_over_the_size_limit_is_ignored():
     assert art.cover_bytes("x", mutagen_file=lambda p: None) is None
 
 
+class Pic:
+    "An APIC frame or a FLAC picture as the tag modules offer them: a picture type plus image bytes."
+    def __init__(self, typ, data):
+        self.type, self.data = typ, data
+
+
+class FrameTags:
+    def __init__(self, *frames):
+        self.frames = frames
+
+    def getall(self, name):
+        return list(self.frames)
+
+
+class AudioTags:
+    def __init__(self, frames):
+        self.tags = frames
+
+
+class AudioPictures:
+    def __init__(self, pictures):
+        self.tags, self.pictures = None, pictures
+
+
+def test_the_front_cover_beats_a_file_icon_and_the_biggest_picture_wins():
+    from sleeve import art
+
+    icon, front, second = Pic(1, b"tiny"), Pic(3, b"front cover bytes"), Pic(3, b"a longer front body")
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioTags(FrameTags(icon, front))) == b"front cover bytes"
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioTags(FrameTags(icon, front, second))) == second.data
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioTags(FrameTags(icon))) == b"tiny"
+    two = [Pic(0, b"not marked"), Pic(3, b"marked"), Pic(0, b"small")]
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioPictures(two)) == b"marked"
+    none_marked = [Pic(0, b"big full art"), Pic(4, b"icon")]
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioPictures(none_marked)) == b"big full art"
+    empty = [Pic(3, b""), Pic(0, b"")]
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioPictures(empty)) is None
+    assert art.cover_bytes("x", mutagen_file=lambda p: AudioPictures([])) is None
+
+
 def test_search_matches_every_word_and_ignores_case():
     from sleeve import library
 
