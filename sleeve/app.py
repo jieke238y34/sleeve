@@ -3,6 +3,7 @@ import argparse
 import dataclasses
 import os
 import random
+import secrets
 import sys
 import time
 from collections import Counter
@@ -610,7 +611,7 @@ class MainWindow(QMainWindow):
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
-        theme.set_custom(self.settings.custom_theme)         # the user's own theme, if they made one
+        theme.set_customs(self.settings.custom_themes)       # the user's own themes, if they made any
         self._look = self._look_name()                      # the theme picked by hand, else the seasonal look, if any
         self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
@@ -1545,13 +1546,17 @@ class MainWindow(QMainWindow):
         self.theme_box = QuietCombo()
         self._fill_theme_box()
         self.theme_box.currentIndexChanged.connect(self._theme_changed)
-        self.theme_make_btn = QPushButton("")
-        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a theme")
-        self.theme_make_btn.clicked.connect(self._make_theme)
+        self.theme_make_btn = QPushButton("New theme…")
+        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a new theme")
+        self.theme_make_btn.clicked.connect(lambda: self._make_theme())
+        self.theme_edit_btn = QPushButton("Edit this theme…")
+        self.theme_edit_btn.setToolTip("Change the colours of the theme shown here, or remove it")
+        self.theme_edit_btn.clicked.connect(lambda: self._make_theme(edit=True))
         self._theme_button_text()
         row.addWidget(QLabel("Theme"))
         row.addWidget(self.theme_box)
         row.addWidget(self.theme_make_btn)
+        row.addWidget(self.theme_edit_btn)
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(hint("A theme keeps its own colours and background whatever is playing (Dusk is peach on warm "
@@ -2210,7 +2215,11 @@ class MainWindow(QMainWindow):
         self.settings.set("accent", name)
         self._save_settings()                                   # first, so a slip below cannot lose the choice
         self._show_accent_choice()
-        self._apply_accent()
+        if self.settings.accent_from_cover:                     # an accent you pick yourself must win over the song's
+            self.match_box.setChecked(False)                    # (this applies and saves it)
+            self.status.showMessage("Picking an accent turns off “Match the colours of the song”", 6000)
+        else:
+            self._apply_accent()
 
     def _effective_accent(self):
         """The accent to show: a theme picked by hand (Dusk, your own) keeps its own accent whatever is playing; else
@@ -2227,8 +2236,8 @@ class MainWindow(QMainWindow):
 
     def _accent_synced(self):
         "True while your own theme is worn and it ties its accent to the playing song (Theme creator > Sync)."
-        custom = self.settings.custom_theme
-        return bool(custom) and self.settings.theme == "custom" and "accent" in (custom.get("sync") or ())
+        custom = self._custom_theme()
+        return bool(custom) and "accent" in (custom.get("sync") or ())
 
     def _look_name(self):
         "The look to wear: the theme picked by hand, else the seasonal or holiday look for today, else None."
@@ -2246,26 +2255,41 @@ class MainWindow(QMainWindow):
         box.setCurrentIndex(max(box.findData(self.settings.theme), 0))
         box.blockSignals(False)
 
-    def _theme_button_text(self):
-        self.theme_make_btn.setText("Edit my theme…" if self.settings.custom_theme else "Create your own…")
+    def _custom_theme(self, look=None):
+        "The saved theme that is worn (or the one named `look`, such as custom-3fa2c1), else None."
+        look = look or self.settings.theme
+        return next((t for t in self.settings.custom_themes if theme.custom_key(t) == look), None)
 
-    def _make_theme(self):
-        "Open the colour picker for the user's own theme; keep what comes out and wear it."
-        start = self.settings.custom_theme
+    def _theme_button_text(self):
+        self.theme_edit_btn.setVisible(self._custom_theme() is not None)       # only a theme of yours can be edited
+
+    def _make_theme(self, edit=False):
+        "Open the colour picker for a new theme of your own, or for the one shown (edit); keep what comes out, wear it."
+        worn = self._custom_theme() if edit else None
+        start = worn
         if not start:
             bg, text, muted = theme.look_palette(self._look)
             start = {"bg": bg, "text": text, "muted": muted, "accent": self._accent_shown, "name": "", "backdrop": None}
-        dlg = ThemeDialog(self, start, can_remove=bool(self.settings.custom_theme))
+        dlg = ThemeDialog(self, start, can_remove=worn is not None)
         if dlg.exec() != QDialog.Accepted:
             return
-        if dlg.removed:
-            self.settings.set("custom_theme", None)
-            if self.settings.theme == "custom":
-                self.settings.set("theme", "default")
+        saved = list(self.settings.custom_themes)
+        if dlg.removed and worn is not None:
+            saved = [t for t in saved if t["id"] != worn["id"]]
+            self.settings.set("custom_themes", saved)
+            self.settings.set("theme", "default")
         else:
-            self.settings.set("custom_theme", dlg.result_theme())
-            self.settings.set("theme", "custom")
-        theme.set_custom(self.settings.custom_theme)
+            made = {**dlg.result_theme(), "id": worn["id"] if worn else secrets.token_hex(3)}
+            if worn:
+                saved = [made if t["id"] == worn["id"] else t for t in saved]
+            elif len(saved) >= settings.MAX_THEMES:
+                self.status.showMessage(f"You can keep {settings.MAX_THEMES} themes: remove one first", 6000)
+                return
+            else:
+                saved.append(made)
+            self.settings.set("custom_themes", saved)
+            self.settings.set("theme", theme.custom_key(made))
+        theme.set_customs(self.settings.custom_themes)
         self._save_settings()
         self._fill_theme_box()
         self._theme_button_text()
@@ -2276,6 +2300,7 @@ class MainWindow(QMainWindow):
         "The user picked a theme in Settings: save it and repaint everything."
         self.settings.set("theme", self.theme_box.currentData())
         self._save_settings()
+        self._theme_button_text()
         self._look = self._look_name()
         self._apply_accent(force=True)
 

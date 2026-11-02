@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Your own themes are kept, not replaced**: making a new theme used to overwrite the last one, so *Edit my theme* only
+  ever showed the newest. Settings > Theme now has **New theme…** (adds one) and **Edit this theme…** (changes or removes
+  the one shown), and all of them are in the picker (up to 12). A theme from an older version moves over by itself.
+- **Picking an accent now wins over “Match the colours of the song”** (which is turned off for you, with a note), so
+  choosing Black, or any colour, no longer appears to do nothing while a song is playing.
 - A black cover (such as *meet the grahams*) no longer makes the accent green from its faint colour noise: it gives a
   black accent. Grey and white covers still give a soft white.
 - The updater tests no longer depend on which version the app is (they broke when 0.3.0 was cut).
