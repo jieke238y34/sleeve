@@ -2014,9 +2014,13 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("Uninstall Sleeve")
         box.setIcon(QMessageBox.Question)
         box.setText("Remove Sleeve from this computer?")
-        box.setInformativeText("Remove Sleeve only, or Sleeve together with everything it saved: your stashed songs, "
-                               "listening history, settings and the playlists you made in Sleeve. Your audio files are "
-                               "never touched.")
+        going = "\n".join(f"  •  {line}" for line in updater.describe_installation())
+        box.setInformativeText(
+            (going + "\n\n" if going else "")
+            + "Sleeve closes first, then these go. If Sleeve was still saving a minute after closing, nothing was "
+              "removed: `sleeve --uninstall` finishes the job.\n\n"
+            + "Remove Sleeve only, or Sleeve together with everything it saved: your stashed songs, listening "
+              "history, settings and the playlists you made in Sleeve. Your audio files are never touched.")
         keep = box.addButton("Remove Sleeve, keep my data", QMessageBox.AcceptRole)
         wipe = box.addButton("Remove Sleeve and all my data…", QMessageBox.DestructiveRole)
         cancel = box.addButton(QMessageBox.Cancel)
@@ -2027,12 +2031,13 @@ class MainWindow(QMainWindow):
 
     def _confirm_full_uninstall(self, plan):
         "Say exactly what will be deleted, and what will not, and ask again."
-        lines = "\n".join(f"  •  {line}" for line in updater.describe_data(plan)) or "  •  nothing but the program"
+        lines = [f"  •  {line}" for line in updater.describe_installation() + updater.describe_data(plan)]
         ask = QMessageBox.warning(
             self, "Delete everything?",
-            "This deletes, for good:\n\n" + lines + "\n\nYour audio files (mp3, flac and the rest) are NOT deleted, "
-            "and neither are the playlists dl.py made from Spotify. A playlist you made in Sleeve is only a small "
-            "list of song names, so its songs stay in your library, but the list itself cannot be brought back.\n\n"
+            "This deletes, for good:\n\n" + ("\n".join(lines) or "  •  nothing but the program") + "\n\n"
+            "Your audio files (mp3, flac and the rest) are NOT deleted, and neither are the playlists dl.py made "
+            "from Spotify. A playlist you made in Sleeve is only a small list of song names, so its songs stay in "
+            "your library, but the list itself cannot be brought back.\n\n"
             "This cannot be undone.", QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         return ask == QMessageBox.Yes
 
@@ -5279,7 +5284,10 @@ def main(argv=None):
             print("Your audio files are NOT deleted, nor are the playlists dl.py made from Spotify.")
             question = "Delete all of that and remove Sleeve? [y/N] "
         else:
-            question = "Remove Sleeve? Your music, playlists and settings are kept. [y/N] "
+            for line in updater.describe_installation() or ["nothing but the program"]:
+                print(f"  - {line}")
+            print("Your music, playlists and settings are kept.")
+            question = "Remove Sleeve? [y/N] "
         if not args.yes and input(question).strip().lower() != "y":
             print("Nothing was removed.")
             return 1
