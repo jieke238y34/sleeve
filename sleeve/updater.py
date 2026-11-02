@@ -226,6 +226,29 @@ def removal_plan(env=None, home=None):
     return dirs, files
 
 
+def describe_installation(env=None, home=None):
+    """What taking the program away means, from what removal_plan would remove: one line per thing with where it
+    lives (the environment, the `sleeve` command, the menu entry, the icon). Only the parts that are still there
+    are named, so a dialog never promises to delete what went already; the removal script still tries every name.
+    Empty means there is nothing of the program left to remove."""
+    dirs, files = removal_plan(env, home)
+    lines = []
+    for d in dirs:
+        if not (d.is_dir() and not d.is_symlink()):
+            continue                                   # a planned name without a folder behind it is not a deletion
+        what = "the side-by-side preview copy" if d.name == "preview" else "Sleeve's own environment"
+        lines.append(f"{what} in {d}")
+    for f in files:
+        if f.is_symlink() or f.is_file():
+            if f.name == "sleeve":
+                lines.append(f"the sleeve command at {f}")
+            elif f.suffix == ".desktop":
+                lines.append(f"the menu entry {f.name}")
+            else:
+                lines.append(f"the icon {f.name}")
+    return lines
+
+
 def _prefix_ok(prefix, home):
     "False for a prefix that is `/`, the home folder or a folder above it: whatever is inside is not ours to remove."
     try:

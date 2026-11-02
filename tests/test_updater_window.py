@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
+from sleeve import app as sleeve_app
 from sleeve import updater
 
 RELEASE = {"tag": "v9.0.0", "version": "9.0.0", "build": 12, "url": "https://github.com/jieke238y34/sleeve/releases/tag/v9.0.0"}
@@ -106,3 +107,86 @@ def test_uninstall_asks_then_hands_a_planned_script_to_the_shell_and_quits(qapp,
         assert "Music" not in ran[0][1][1] and ".config" not in ran[0][1][1]
     finally:
         win.close()
+
+
+EMPTY_PLAN = {"folders": [], "config_dir": None, "cache_dir": None, "playlists": [], "playlist_folder": None}
+
+
+def test_the_uninstall_dialog_says_what_goes_with_this_install(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        venv = tmp_path / ".local/share/sleeve/venv"
+        venv.mkdir(parents=True)
+        (venv / "pyvenv.cfg").write_text("home = /usr\n")
+        link = tmp_path / ".local/bin/sleeve"
+        link.parent.mkdir(parents=True)
+        link.write_bytes(b"x")
+        monkeypatch.setattr(updater, "removal_plan", lambda env=None, home=None: ([venv], [link]))
+        boxes = []
+
+        def exec_stub(self):
+            boxes.append((self.text(), self.informativeText(),
+                          [(b.text(), self.buttonRole(b)) for b in self.buttons()]))
+            return 0
+
+        monkeypatch.setattr(QMessageBox, "exec", exec_stub)
+        monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: None)
+        assert win._ask_uninstall() == "cancel"
+        text, info, buttons = boxes[-1]
+        assert text == "Remove Sleeve from this computer?"
+        assert str(venv) in info and "sleeve command" in info
+        assert "sleeve --uninstall" in info          # the way back if the quiet wait gave up
+        assert "Your audio files are never touched" in info
+        assert ("Remove Sleeve, keep my data", QMessageBox.AcceptRole) in buttons
+        assert ("Remove Sleeve and all my data…", QMessageBox.DestructiveRole) in buttons
+        monkeypatch.setattr(QMessageBox, "clickedButton",
+                            lambda self: next(b for b in self.buttons() if "keep my data" in b.text()))
+        assert win._ask_uninstall() == "program"
+        monkeypatch.setattr(QMessageBox, "clickedButton",
+                            lambda self: next(b for b in self.buttons() if "all my data" in b.text()))
+        assert win._ask_uninstall() == "all"
+    finally:
+        win.close()
+
+
+def test_the_full_deletion_list_says_the_things_that_go(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        venv = tmp_path / ".local/share/sleeve/venv"
+        venv.mkdir(parents=True)
+        (venv / "pyvenv.cfg").write_text("home = /usr\n")
+        monkeypatch.setattr(updater, "removal_plan", lambda env=None, home=None: ([venv], []))
+        config = tmp_path / ".config/sleeve"
+        config.mkdir(parents=True)
+        plan = {**EMPTY_PLAN, "config_dir": config, "cache_dir": None, "dl_dir": None}
+        asked = []
+        monkeypatch.setattr(QMessageBox, "warning", staticmethod(
+            lambda *a: asked.append(a[2]) or QMessageBox.Cancel))                     # decline: the honest show
+        assert not win._confirm_full_uninstall(plan)
+        text = asked[-1]
+        assert str(venv) in text and "environment" in text        # the program goes with it, and is named now
+        assert ".config" in text and "audio files" in text       # what the data plan and the promise say
+        monkeypatch.setattr(updater, "removal_plan", lambda env=None, home=None: ([], []))
+        monkeypatch.setattr(QMessageBox, "warning", staticmethod(
+            lambda *a: asked.append(a[2]) or QMessageBox.Yes))
+        assert win._confirm_full_uninstall(EMPTY_PLAN)
+        assert "nothing but the program" in asked[-1]
+    finally:
+        win.close()
+
+
+def test_the_command_line_uninstall_names_the_program_before_asking(monkeypatch, capsys, tmp_path):  # noqa: F811
+    venv = tmp_path / ".local/share/sleeve/venv"
+    venv.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr\n")
+    link = tmp_path / ".local/bin/sleeve"
+    link.parent.mkdir(parents=True)
+    link.write_bytes(b"x")
+    monkeypatch.setattr(updater, "removal_plan", lambda env=None, home=None: ([venv], [link]))
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "n")
+    assert sleeve_app.main(["--uninstall"]) == 1
+    out = capsys.readouterr().out
+    assert str(venv) in out and "sleeve command" in out          # the same list the dialog shows
+    assert "Your music, playlists and settings are kept." in out
+    assert "Remove Sleeve? [y/N] " in asked and "Nothing was removed." in out
