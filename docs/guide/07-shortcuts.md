@@ -7,6 +7,8 @@
 | Right arrow | Forward 5 seconds |
 | F11 | Album art fullscreen |
 | Esc | Leave fullscreen |
+| Ctrl+B | Hide or show the player bar |
+| Shift+Enter | Add the selected Library songs to the end of the queue |
 | Media keys | Play, pause, next, previous |
 
 When you are typing in a box, or a list or button has the focus, Space and the arrows do their normal job there
