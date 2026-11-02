@@ -8,7 +8,7 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 (runs the Maid BT script as a list, never through a shell)
 from pathlib import Path
 
 SCRIPT = "bluetooth-toggle.sh"
