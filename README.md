@@ -34,7 +34,10 @@ A short tour of Sleeve, with no sound, shown on a small made-up demo library. Fo
 
 ## Screenshots
 
-The screenshots and the tour show a small made-up demo library with generated covers.
+The screenshots and the tour show the author's own music library. All the music shown is owned by the author and is
+shown for display purposes only. The Settings, Downloads and Health pages and the colours sheet use a small made-up
+demo library instead, because they would otherwise show file paths. `tools/capture_media.py` makes all of them (see its
+docstring; `--music DIR` shows a real folder, read-only).
 
 | | |
 |---|---|
