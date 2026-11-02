@@ -60,6 +60,7 @@ DEFAULTS = {
     "tooltips": True,                  # the little labels that appear when the pointer rests on a button
     "side_art": True,                  # the small album art under the sidebar list is shown
     "legacy_layout": False,            # the classic look: the player bar across the whole window, with the art in it
+    "folded_sections": ["Advanced", "Startup", "Listening", "Updates"],   # Settings sections that start closed
     "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
@@ -117,6 +118,9 @@ def _valid(key, value):
                 or (isinstance(value, str) and re.fullmatch(r"custom(-[a-z0-9]{3,12})?", value) is not None))
     if key == "custom_theme":
         return value is None or _valid_custom_theme(value)
+    if key == "folded_sections":
+        return (isinstance(value, list) and len(value) <= 30
+                and all(isinstance(n, str) and 0 < len(n) <= 40 for n in value))
     if key == "custom_themes":
         return (isinstance(value, list) and len(value) <= MAX_THEMES and all(
             _valid_custom_theme(t) and "id" in t for t in value) and len({t["id"] for t in value}) == len(value))
