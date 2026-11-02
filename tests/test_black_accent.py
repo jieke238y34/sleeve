@@ -25,14 +25,14 @@ def test_a_black_cover_gets_a_black_accent_not_green(qapp):  # noqa: F811
     assert theme.accent_from_cover(red) != "#000000"                      # a coloured cover is unaffected
     grey = QPixmap(64, 64)
     grey.fill(QColor("#808080"))
-    assert theme.accent_from_cover(grey) == "#f2efe9"                     # grey still gets the soft white
+    assert theme.accent_from_cover(grey) == "#ffffff"                     # grey still gets the soft white
 
 
 def test_text_on_a_dark_accent_is_white_and_on_a_bright_one_is_dark():
     assert theme.on_accent("#000000") == "#ffffff"
     assert theme.on_accent("#202020") == "#ffffff"
     assert theme.on_accent("#a595f0") == theme.BG
-    assert theme.on_accent("#f2efe9") == theme.BG
+    assert theme.on_accent("#ffffff") == theme.BG
     style = theme.build_style("#000000")
     assert "background: #000000; color: #ffffff;" in style               # the selected page, the primary buttons...
     assert "background: #a595f0; color: #ffffff" not in theme.build_style("#a595f0")
@@ -75,3 +75,13 @@ def test_picking_black_wins_over_matching_the_song_and_turns_matching_off(qapp, 
         assert not win.match_box.isChecked() and win._accent_shown == "#000000"
     finally:
         win.close()
+
+
+def test_the_play_button_hovers_in_the_accent_never_in_a_fixed_creme():
+    for accent in ("#ffffff", "#f2efe9", "#a595f0", "#000000", "#ff4d6d"):
+        sheet = theme.build_style(accent)
+        hover = theme.hover_of(accent)
+        assert f"QPushButton#play:hover {{ background: {hover}; }}" in sheet and theme.CREAM not in hover
+        assert hover != accent or accent == "#000000"                       # it does change, so hover can be seen
+    assert theme.hover_of("#ffffff") == "#ebebeb"                           # white stays a neutral grey-white, no tint
+    assert QColor(theme.hover_of("#ffffff")).saturationF() == 0.0

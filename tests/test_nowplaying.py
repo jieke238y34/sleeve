@@ -296,7 +296,7 @@ def striped(colours, size=64):
 
 
 def test_pearl_is_the_white_accent_and_there_are_seventeen_colours():
-    assert settings.ACCENTS["Pearl"] == "#f2efe9" and len(settings.ACCENTS) == 17
+    assert settings.ACCENTS["Pearl"] == "#ffffff" and len(settings.ACCENTS) == 17
     assert {"Violet", "Sky", "Amber", "Pearl"} <= set(settings.ACCENTS)
 
 
@@ -310,7 +310,7 @@ def test_the_accent_can_be_taken_from_a_cover(qapp):  # noqa: F811
     assert red.hue() < 20 or red.hue() > 340                                  # follows the hue of the cover
     assert 200 < blue.hue() < 260
     assert red.valueF() > 0.9 and blue.valueF() > 0.9                         # and is bright enough to be an accent
-    assert theme.accent_from_cover(striped(["#808080", "#999999"])) == "#f2efe9"      # a grey cover: soft white
+    assert theme.accent_from_cover(striped(["#808080", "#999999"])) == "#ffffff"      # a grey cover: white
     assert theme.accent_from_cover(None) is None
 
 

@@ -15,7 +15,7 @@ ACCENTS = {                        # bold, in the order of the colour wheel, the
     "Crimson": "#ff4d6d", "Coral": "#ff7a6b", "Tangerine": "#ff8a1f", "Amber": "#e8cf9f",
     "Sunflower": "#ffc533", "Lime": "#a6e22e", "Emerald": "#2ee59d", "Aqua": "#1fd1c8", "Sky": "#a9c8e8",
     "Azure": "#2f9bff", "Cobalt": "#5b7cff", "Indigo": "#7a5cff", "Violet": "#a595f0", "Magenta": "#e040fb",
-    "Hot Pink": "#ff4fa3", "Pearl": "#f2efe9", "Black": "#000000",
+    "Hot Pink": "#ff4fa3", "Pearl": "#ffffff", "Black": "#000000",
 }
 CUSTOM = "Custom"                  # the accent name when the user picked their own colour (see accent_custom)
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
@@ -29,6 +29,7 @@ DEFAULTS = {
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
     "boost_db": 6,             # 0-12, how many dB a quiet song may be turned up when songs are levelled
+    "shortcuts": {},           # {action id: key} for the keys that were changed (see shortcuts.py)
     "library_order": "off",    # off, start, day, week: how the library list is shuffled when no column is chosen
     "order_seed": 0,           # the seed of the shuffled order, and when it was made (see shuffleorder.py)
     "order_seed_at": 0,
@@ -68,7 +69,7 @@ DEFAULTS = {
     "tooltips": True,                  # the little labels that appear when the pointer rests on a button
     "side_art": True,                  # the small album art under the sidebar list is shown
     "legacy_layout": False,            # the classic look: the player bar across the whole window, with the art in it
-    "folded_sections": ["Advanced", "Startup", "Listening", "Updates"],   # Settings sections that start closed
+    "folded_sections": ["Advanced", "Startup", "Listening", "Shortcuts", "Updates"],   # sections that start closed
     "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
@@ -103,6 +104,9 @@ def _valid(key, value):
     if key in ("volume", "max_volume", "boost_db", "crossfade"):
         low, high = {"max_volume": (30, 150), "boost_db": (0, 12), "crossfade": (0, 12)}.get(key, (0, 100))
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+    if key == "shortcuts":
+        return isinstance(value, dict) and len(value) <= 64 and all(
+            isinstance(k, str) and len(k) <= 32 and isinstance(v, str) and len(v) <= 40 for k, v in value.items())
     if key == "library_order":
         return value in ("off", "start", "day", "week")
     if key in ("order_seed", "order_seed_at"):
