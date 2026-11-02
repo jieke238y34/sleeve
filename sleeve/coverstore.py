@@ -31,6 +31,12 @@ def _tag_bytes(path):
     return art.cover_bytes(path)
 
 
+def _folder_bytes(path):
+    "The cover of a song: the art its tags carry, or else a picture file in the same folder (cover.jpg and friends)."
+    data = _tag_bytes(path)
+    return data if data is not None else art.sidecar_bytes(path)
+
+
 def _image_of(data):
     "The picture as a QImage (a null one when the bytes hold nothing readable), capped at IMAGE_MAX."
     if not data:
@@ -80,7 +86,7 @@ class Store(QObject):
 
     def __init__(self, keep_images=KEEP_IMAGES, keep_pix=KEEP_PIX):
         super().__init__()
-        self.load_bytes = _tag_bytes          # where picture bytes come from (tests hand their own reader in)
+        self.load_bytes = _folder_bytes       # tags first, then a picture file in the folder; tests hand their own in
         self.sync = False                     # decode right where asked, no worker (tests)
         self.keep_images, self.keep_pix = keep_images, keep_pix
         self._images = OrderedDict()          # path -> (mtime, QImage); a null image means "looked, has none"
