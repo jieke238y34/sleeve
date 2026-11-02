@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
   "Playlist" or "Album" when it has no name to show.
 - **Listening page says what is an estimate**: plays recorded before 30 Oct 2026 count as 30 seconds each (the time was not
   measured yet), and the page now says how many of the plays that is.
+- **Library order** (Settings > Listening): the library list can be shuffled instead of sorted, at every start, once a day or
+  once a week, so playing from the top does not favour the same songs and your listening history stays even. The order
+  holds steady between changes; clicking a column header sorts as usual.
 - **Turn up quiet songs** (Settings > Sound): how many dB, 0 to 12 (6 by default), a quiet song may be turned up when songs are
   played at the same volume.
 - **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.

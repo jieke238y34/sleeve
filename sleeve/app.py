@@ -112,6 +112,7 @@ from . import (
     plstyle,
     seasons,
     settings,
+    shuffleorder,
     singleton,
     smart,
     stash,
@@ -473,6 +474,7 @@ class SongModel(QAbstractTableModel):
         self.icons, self.placeholder = {}, None   # path -> cover icon, shared with the window; the mark until one loads
         self._sort = None                     # (column, order) the header shows; kept when the list changes
         self.keep_order = False               # the list is in an order of its own (recently played): do not sort it
+        self.shuffle_seed = 0                 # not 0 and no column chosen: the list is mixed by this seed
 
     def set_songs(self, songs):
         self.beginResetModel()
@@ -484,6 +486,8 @@ class SongModel(QAbstractTableModel):
         if self._sort and not self.keep_order:
             col, order = self._sort
             self.songs.sort(key=self.SORT_KEYS[col], reverse=order == Qt.DescendingOrder)
+        elif not self._sort and self.shuffle_seed and not self.keep_order:
+            self.songs.sort(key=lambda s: shuffleorder.key(self.shuffle_seed, s.path))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.songs)
@@ -516,7 +520,7 @@ class SongModel(QAbstractTableModel):
 
     def sort(self, column, order=Qt.AscendingOrder):
         self.beginResetModel()                # a reset also drops the selection, which would point at other songs
-        self._sort = (column, order)
+        self._sort = (column, order) if column >= 0 else None      # -1: the header shows no sort
         self._apply_sort()
         self.endResetModel()
 
@@ -828,6 +832,7 @@ class MainWindow(QMainWindow):
         queue_key.setContext(Qt.WidgetShortcut)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
+        self._apply_library_order()
         self.table.setAlternatingRowColors(False)             # a clean list: no stripes
         self.table.setIconSize(QSize(36, 36))
         self.table.verticalHeader().setDefaultSectionSize(46)
@@ -1951,6 +1956,19 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.listening_box)
         lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
                            "the top songs on the Identity page and is never sent anywhere."))
+        order_row = QHBoxLayout()
+        self.order_box = QuietCombo()
+        for mode in shuffleorder.MODES:
+            self.order_box.addItem(shuffleorder.LABELS[mode], mode)
+        self.order_box.setCurrentIndex(max(self.order_box.findData(self.settings.library_order), 0))
+        self.order_box.currentIndexChanged.connect(self._library_order_changed)
+        order_row.addWidget(QLabel("Library order"))
+        order_row.addWidget(self.order_box)
+        order_row.addStretch(1)
+        lay.addLayout(order_row)
+        lay.addWidget(hint("Shuffled mixes the library list instead of sorting it, so playing from the top does not "
+                           "favour the same songs and your listening history stays even. Clicking a column header "
+                           "sorts as usual."))
         clear = QPushButton("Clear listening history")
         clear.clicked.connect(self._clear_listening)
 
@@ -2330,6 +2348,24 @@ class MainWindow(QMainWindow):
                 self._loud_when_seen = True
             else:
                 self._measure_loudness()
+
+    def _apply_library_order(self, fresh=False):
+        "Mix the library list by a seed (new at every start, or once a day or week), or sort it by the header again."
+        s = self.settings
+        seed, at = shuffleorder.reseed(s.library_order, 0 if fresh else s.order_seed, s.order_seed_at)
+        if (seed, at) != (s.order_seed, s.order_seed_at):
+            self._set_setting("order_seed", seed)
+            self._set_setting("order_seed_at", at)
+        self.model.shuffle_seed = seed
+        header = self.table.horizontalHeader()
+        if seed:
+            header.setSortIndicator(-1, Qt.AscendingOrder)          # no column is chosen: the shuffled order shows
+        elif fresh:
+            header.setSortIndicator(0, Qt.AscendingOrder)
+
+    def _library_order_changed(self):
+        self._set_setting("library_order", self.order_box.currentData())
+        self._apply_library_order(fresh=True)
 
     def _title_accent_toggled(self, on):
         self._set_setting("title_in_accent", on)
