@@ -552,3 +552,25 @@ def test_the_seek_bar_is_not_redrawn_on_every_tick(qapp, cfg, monkeypatch, tmp_p
         assert shown[-1] == 601
     finally:
         win.close()
+
+
+def test_the_title_wears_the_accent_only_when_asked(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.np_title.styleSheet() == ""                         # off by default: the plain text colour
+        win.title_accent_box.setChecked(True)
+        assert win.settings.title_in_accent and win.np_title.styleSheet().startswith("color: #")
+        win.title_accent_box.setChecked(False)
+        assert win.np_title.styleSheet() == ""
+    finally:
+        win.close()
+
+
+def test_a_queue_with_no_name_is_called_the_queue_not_a_made_up_word(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win._pl_current = None
+        assert win._playlist_source() == ""
+        assert win._album_source([]) == ""
+    finally:
+        win.close()

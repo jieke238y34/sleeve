@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows
   Library. A chip beside the filter says what is shown (`Artist: Kendrick Lamar ✕`) and takes you back; picking a folder
   also leaves it. Right-click a song in the Library or the queue for *All songs by…* and *The album…*. A tag holding
   several artists asks which one.
+- Settings > Look: **colour the song title with the accent** on Now Playing (off by default). The queue heading no longer says
+  "Playlist" or "Album" when it has no name to show.
 - **Turn up quiet songs** (Settings > Sound): how many dB, 0 to 12 (6 by default), a quiet song may be turned up when songs are
   played at the same volume.
 - **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.

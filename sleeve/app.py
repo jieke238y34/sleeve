@@ -1659,6 +1659,10 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        self.title_accent_box = Switch("Colour the song title on Now Playing with the accent")
+        self.title_accent_box.setChecked(self.settings.title_in_accent)
+        self.title_accent_box.toggled.connect(self._title_accent_toggled)
+        lay.addWidget(self.title_accent_box)
         self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
@@ -2323,6 +2327,15 @@ class MainWindow(QMainWindow):
             else:
                 self._measure_loudness()
 
+    def _title_accent_toggled(self, on):
+        self._set_setting("title_in_accent", on)
+        self._apply_title_colour()
+
+    def _apply_title_colour(self):
+        "The title on Now Playing wears the accent (as it is shown on the dark window) or the plain text colour."
+        lit = theme.visible_accent(getattr(self, "_accent_shown", theme.LAVENDER))
+        self.np_title.setStyleSheet(f"color: {lit};" if self.settings.title_in_accent else "")
+
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
         if not on:
@@ -2467,6 +2480,7 @@ class MainWindow(QMainWindow):
         self.wave.set_accent(lit)                                           # drawn straight on the dark window
         self.identity_page.set_accent(lit)
         self._vol_bubble.set_accent(lit)
+        self._apply_title_colour()
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()
@@ -4411,10 +4425,10 @@ class MainWindow(QMainWindow):
     def _album_source(self, paths):
         "The album name of the songs about to play."
         song = self.by_path.get(paths[0]) if paths else None
-        return (song.album if song and song.album else "Album")
+        return song.album if song and song.album else (Path(paths[0]).parent.name if paths else "")
 
     def _playlist_source(self):
-        return self._pl_current[0] if self._pl_current else "Playlist"
+        return self._pl_current[0] if self._pl_current else ""
 
     def _play_tile(self, tile):
         "The play button on a playlist cover: one click and it plays."
@@ -4426,7 +4440,7 @@ class MainWindow(QMainWindow):
     def _play_tile_paths(self, paths):
         tile = self.pl_grid.current_album()
         if paths:
-            self._play_queue(paths, 0, tile.name if tile is not None else "Playlist")
+            self._play_queue(paths, 0, tile.name if tile is not None else "")
 
     def _refresh_queue(self):
         queue = list(self.player.queue)

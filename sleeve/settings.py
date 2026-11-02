@@ -29,6 +29,7 @@ DEFAULTS = {
     "gapless": True,           # start the next song a moment early so albums play without a gap
     "same_volume": True,       # level out loud and quiet songs
     "boost_db": 6,             # 0-12, how many dB a quiet song may be turned up when songs are levelled
+    "title_in_accent": False,  # the song title on Now Playing is drawn in the accent colour
     "use_replaygain": True,    # take the gain from the files' ReplayGain tags; off: only Sleeve's own measurement
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
@@ -101,10 +102,10 @@ def _valid(key, value):
         return value in ("week", "month")
     if key == "identity_tab":
         return value in ("identity", "listening")
-    if key in ("gapless", "same_volume", "use_replaygain", "show_spotify_playlists", "accent_from_cover",
-                "track_listening", "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art",
-                "lastfm_on", "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
-                "tooltips", "legacy_layout", "gradient_follow_accent"):
+    if key in ("gapless", "same_volume", "use_replaygain", "title_in_accent", "show_spotify_playlists",
+                "accent_from_cover", "track_listening", "online_lookup_ok", "update_check_ok", "discord_presence",
+                "discord_art", "lastfm_on", "np_queue_shown", "np_lyrics_shown", "remember_session",
+                "player_bar_hidden", "side_art", "tooltips", "legacy_layout", "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
