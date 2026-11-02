@@ -49,7 +49,7 @@ def test_the_fullscreen_cover_shows_the_line_being_sung_and_its_neighbours(qapp,
         assert (screen.line_before._full, screen.line_now._full, screen.line_after._full) == ("", "one", "two")
         win._lyric_synced = False                                    # plain text has no line being sung
         win._update_cover_lyrics()
-        assert screen.line_now._full == "" and screen.line_now.isHidden()
+        assert screen.line_now._full == "" and screen.lyrics_bar.isHidden()
         screen.close()
     finally:
         win.close()

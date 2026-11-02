@@ -325,11 +325,19 @@ class CoverScreen(theme.Backdrop):
         lay.addWidget(self.cover, 1)
         lay.addWidget(self.title)
         lay.addWidget(self.artist)
+        self.lyrics_bar = QWidget()
+        lyric_lay = QVBoxLayout(self.lyrics_bar)
+        lyric_lay.setContentsMargins(18, 8, 18, 10)
+        lyric_lay.setSpacing(2)
         for line in (self.line_before, self.line_now, self.line_after):
-            keep = line.sizePolicy()
-            keep.setRetainSizeWhenHidden(True)                # no lyrics, or a gap: the bar below does not jump
-            line.setSizePolicy(keep)
-            lay.addWidget(line)
+            lyric_lay.addWidget(line)                         # one tidy block: the three lines inside it, tight
+        self.lyrics_bar.setObjectName("cover_lyrics")
+        self.lyrics_bar.setStyleSheet(
+            "QWidget#cover_lyrics { background: rgba(12, 10, 16, 110); border-radius: 12px; }")
+        keep = self.lyrics_bar.sizePolicy()
+        keep.setRetainSizeWhenHidden(True)                    # a song without lyrics leaves no jumping room behind
+        self.lyrics_bar.setSizePolicy(keep)
+        lay.addWidget(self.lyrics_bar)
         lay.addLayout(bar)
         lay.addWidget(self.hint)
         keep = self.hint.sizePolicy()
@@ -355,11 +363,11 @@ class CoverScreen(theme.Backdrop):
         self.artist.setText(artist)
 
     def set_lyrics(self, before, now, after, accent="#f6f3ee"):
-        "The line being sung with the one before it and the one after it; all three blank when there is none."
+        "The line being sung with its neighbours, in the one block; the block steps aside when there are no lyrics."
         self.line_now.setStyleSheet(f"color: {accent}; background: transparent;")
         for line, text in ((self.line_before, before), (self.line_now, now), (self.line_after, after)):
             line.setText(text)
-            line.setVisible(bool(now))
+        self.lyrics_bar.setVisible(bool(before or now or after))
 
     def keyPressEvent(self, e):
         key = e.key()
