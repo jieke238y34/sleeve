@@ -7,8 +7,8 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)
 
-Sleeve plays, organises and edits the music files you already have. It needs no accounts and sends no telemetry. It
-uses the internet only when you ask it to: for the optional tag lookup on MusicBrainz, and when `dl.py` downloads.
+Sleeve plays, organises and edits the music files you already have. It needs no accounts and sends no telemetry. Every
+connection to the outside is optional and off until you switch it on (see [Privacy and safety](#privacy-and-safety)).
 
 [playlist-sync](https://github.com/jieke238y34/playlist-sync) (`dl.py`) is a separate open source tool that downloads
 music from your Spotify playlists. Sleeve's Downloads page can run it for you, and walks you through setting it up. You
@@ -51,7 +51,7 @@ The screenshots and the tour show a small made-up demo library with generated co
 
 ### Colours
 
-Pick one of 16 accent colours, wear a season or holiday, use one of the built-in themes, paint the background with your
+Pick one of 17 accent colours, wear a season or holiday, use one of the built-in themes, paint the background with your
 own 5-point gradient, or make a theme of your own in Settings.
 These are six of the accents, every season and holiday, the themes that come with Sleeve (Dusk, Frog, Midnight,
 Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
@@ -74,6 +74,10 @@ Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
   busiest weekday and usual hour, and how it compares with the period before, from a history Sleeve keeps in one
   file on your computer. It is opt in, shows real listening time, and can be switched off or cleared in Settings.
 - Albums list their tracks in disc and track-number order; songs without a number come last, by file name.
+- Click an artist or album name (on Now Playing or in the player bar) to see all their songs in the Library; a chip
+  beside the filter says what is shown and takes you back. A tag with several artists asks which one.
+- Right-click songs in the Library, a playlist, an album, the queue or a Ctrl+K result for **Play now**, **Play next**
+  and **Add to queue**. **＋ Queue** and Shift+Enter add the selected Library songs to the end of the queue.
 - Seasons and holidays: seven dark looks (spring, summer, autumn, winter, Halloween, Christmas, New Year) that follow
   the calendar or can be pinned by hand in Settings, with a switch to turn them off. Accent colours can still follow
   the album cover.
@@ -89,7 +93,11 @@ Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
   seek bar (F11; Esc or a click to leave).
 - Lyrics panel (the right side of Now Playing, with a Hide button; ♪ under the art brings it back): synced lyrics from `.lrc` files scroll with the song and can be clicked to seek, plain `.txt` lyrics are
   shown unsynced, and the panel says "No imported lyrics found" otherwise.
-- The small cover in the player bar opens Now Playing with one click.
+- The small cover in the player bar opens Now Playing with one click; double-click the art for fullscreen.
+- The player bar starts folded away. A waveform strip under the page shows the song: click or drag to seek, and
+  double-click or right-click it to play or pause. **Ctrl+B** (or the button at the bottom right) brings the bar back; it
+  also folds by itself on Now Playing.
+- Featured artists read as "SBTRKT with Sampha" rather than "SBTRKT/Sampha".
 - The volume is a bare slider; a small bubble above it shows the number while you change it.
 
 **Playlists**
@@ -106,18 +114,33 @@ Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
 - Playlists that `dl.py` made from Spotify are hidden until you ask for them, and can be copied into playlists of
   your own.
 
+**Servers and scrobbling (optional)**
+
+- Navidrome page: connect to a Navidrome or other Subsonic server, search it, open albums and stream songs. **Save to
+  library** downloads the selected songs or albums into your music folder. Your password is turned into a login token
+  on this computer and not kept.
+- Last.fm scrobbling (Settings > Advanced > Last.fm): your own API key, a browser sign-in, and an offline queue.
+- Settings > Advanced > APIs lists every outside service Sleeve can talk to, what is sent and where.
+- Settings > Advanced > Backup saves your settings, stash, listening history and playlist looks to one zip file.
+
 **Downloads (optional)**
 
 - A front end for `dl.py`: get new music, sort into genres, fix missing genres, find duplicates, rebuild playlist
-  files, fetch lyrics and check progress, with a plain-English activity feed. Only this page needs `dl.py`.
+  files, fetch lyrics (in a panel beside the activity feed) and check progress, with a plain-English activity feed.
+  Only this page needs `dl.py`.
 - Sleeve asks you to trust `dl.py` before it runs it (see [First run](#first-run)).
 
 **Appearance**
 
-- Sixteen bold accent colours plus any colour you choose, or let the accent follow the song's cover. A scroll speed setting,
-  a settings search, a resizable sidebar, smooth scrolling.
-- Settings > Theme: **Dusk** (peach on warm brown and slate, with a background that does not change with the cover).
-  Picking a theme replaces your own colour choice and the seasonal looks until you go back to Sleeve's own.
+- Seventeen bold accent colours (Black among them; text on a dark accent turns white) plus any colour you choose, or let
+  the accent follow the song's cover. Picking an accent turns the following off. A scroll speed setting, a settings
+  search with a row of jump chips, a resizable sidebar, smooth scrolling, and a switch to hide the hover tips.
+- Settings > Look: **Classic layout** brings back the old look (the player bar across the window, with the art in it),
+  and the small album art under the sidebar can be switched off.
+- Settings > Theme: eight themes come with Sleeve (Dusk, Frog, Midnight, Sakura, Ocean, Ember, Graphite and Sunset),
+  each with colours and a background that do not change with the cover. **New theme…** keeps colours of your own as a
+  theme (up to 12), and **Edit this theme…** changes or removes the one shown. Picking a theme replaces your own colour
+  choice and the seasonal looks until you go back to Sleeve's own.
 
 ## Install
 
@@ -204,18 +227,23 @@ Measured on a real library of 5,002 songs (Python 3.14, Linux, headless), the wh
 
 A fresh window costs about 168 MB, nearly all of it Qt and Python; the library adds about 40 MB per 5,000 songs, roughly
 8 KB a song. Closing takes under a hundredth of a second when nothing is running. Animations only run while they are on
-screen. How it was measured, and a script to repeat it on your own library, is in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+screen, and while the window is minimised or hidden (a game full screen, say) Sleeve stops loading row covers, redrawing
+Settings > APIs and sweeping loudness; the music, scrobbles and Discord status carry on. How it was measured, and a script to repeat it on your own library, is in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Privacy and safety
 
-- No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used when `dl.py`
-  downloads music for you, and when you press **Find tags online** on the Health page: that sends the title and artist
+- No accounts and no telemetry. Sleeve makes no network calls on its own. The internet is only used for what you
+  switch on or ask for: `dl.py` downloads, Last.fm scrobbling, a Navidrome server, Discord album covers (a lookup on
+  MusicBrainz and the Cover Art Archive), the update check, and **Find tags online** on the Health page: that sends the title and artist
   (or file name) of the chosen songs to [MusicBrainz](https://musicbrainz.org), one song a second, after you agree.
-  Nothing is written to your files until you review the results. **Get dl.py for me** downloads playlist-sync from
+  Nothing is written to your files until you review the results. Settings > Advanced > APIs shows each service and
+  what it receives. **Get dl.py for me** downloads playlist-sync from
   GitHub, also only after you agree.
-- It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, stashed songs, listening history, playlist covers, the `dl.py`
-  trust record) and `~/.cache/sleeve` (tag cache and loudness results). Playlists you make are `.m3u8` files in
-  `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME` is set, those folders are used instead.
+- It writes only the tags you save yourself, plus its own files: `~/.config/sleeve` (settings, stashed songs,
+  listening history, playlist covers, the `dl.py` trust record, the Last.fm sign-in) and `~/.cache/sleeve` (tag cache
+  and loudness results). Files that hold account details are readable by you only; Sleeve tightens a looser one when it
+  loads it. Playlists you make are `.m3u8` files in `Playlists/My Playlists`. If `XDG_CONFIG_HOME` or `XDG_CACHE_HOME`
+  is set, those folders are used instead.
 - Only validated audio files are handed to the player. Playlists, lyrics and tags are treated as untrusted data.
 
 Details and how to report a vulnerability are in [SECURITY.md](SECURITY.md).
@@ -226,10 +254,17 @@ Details and how to report a vulnerability are in [SECURITY.md](SECURITY.md).
 |---|---|
 | Space | Play or pause |
 | Left / Right arrow | Back or forward 5 seconds |
-| Ctrl+K | Search everything: songs, playlists and folders |
-| F11 | Fullscreen album art |
+| Ctrl+K | Search everything: songs, playlists and folders (right-click a result for the queue commands) |
+| F11, or double-click the Now Playing art | Fullscreen album art |
 | Esc | Leave fullscreen |
+| Ctrl+B | Hide or show the player bar |
+| Shift+Enter | Add the selected Library songs to the end of the queue |
+| Enter (Ctrl+K search) | Play the result; Ctrl+Enter plays it next, Shift+Enter adds it to the queue |
+| Enter (album grid) | Play the album |
 | Media keys | Play, pause, next, previous |
+
+The waveform strip (shown while the player bar is hidden): click or drag to seek, double-click or right-click to play
+or pause.
 
 When a text box, list or button has focus, Space and the arrows keep their normal job there.
 
@@ -267,10 +302,13 @@ A copy installed by a package manager, or run from a checkout, is not touched: S
 - **[Maid BT](https://github.com/Maidware-Project/Maid-BT):** other apps pair with it on their own. Sleeve gets three
   earbuds buttons in its settings (use earbuds / hand to phone / turn off) as soon as the switcher is installed, and
   follows the sound when the earbuds switch. Controllers stay controllers: a Bluetooth gamepad is never mistaken for a
-  headset, and the earbuds' volume returns to the last state on every reconnect.
+  headset, and the earbuds' volume returns to the last state on every reconnect. When `maid-watcher` is installed, one
+  line under the buttons shows the connection, the battery and the Bluetooth codec, always called lossy.
 - **Discord and [arRPC](https://arrpc.openasar.dev/):** optional "Listening to" status for Discord, Vesktop and other
   clients, including Flatpak ones. Off until you switch it on in Settings and add your own Discord Application ID. It can show the album cover too
   (a separate switch: the cover address comes from MusicBrainz and the Cover Art Archive).
+- **[Navidrome](https://www.navidrome.org/)** (or any Subsonic server): see Features.
+- **Last.fm:** scrobbles with your own API key. Sleeve has no key of its own.
 - **PipeWire:** Sleeve follows your desktop's output, and Settings can pick a specific one.
 
 All of this goes through MPRIS (track information and controls) and PipeWire (the sound itself).
@@ -304,6 +342,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 These are not in v0.3.0:
 
 - A tag editor for the Health page's problems (today it shows them and starts the matching `dl.py` job).
+- Crossfade, an equaliser and other sound effects (playback is gapless, nothing more).
+- Smart playlists, web radio and podcasts; ListenBrainz, and Last.fm loved-song sync (scrobbling is in).
 - A Windows build and installer.
 - A Fedora package (the RPM spec is in [packaging/](packaging/README.md) but nothing is published).
 - Publishing to PyPI.
