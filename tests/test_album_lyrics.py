@@ -63,3 +63,25 @@ def test_the_window_drives_the_album_strip(qapp, cfg, monkeypatch, tmp_path):  #
         assert "color:" not in win.album_detail.lyric_now.styleSheet()
     finally:
         win.close()
+
+
+def test_the_strip_is_on_by_default_and_can_be_opted_out_of_and_back_into(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        a = group_albums([song("/m/1.mp3", "A", "X", 65, "One"), song("/m/2.mp3", "A", "X", 125, "Two")])[0]
+        win.album_detail.set_album(a)
+        win._current_path = "/m/2.mp3"
+        win._lyrics = [(0.0, "one"), (3.0, "two"), (6.0, "three")]
+        win._lyric_synced, win._lyric_row = True, 1
+        strip = win.album_detail.lyric_bar
+        assert win.settings.album_lyrics is True and win.album_lyrics_box.isChecked()     # on, as it shipped
+        win._album_lyric_refresh()
+        assert strip.isVisibleTo(win.album_detail) and win.album_detail.lyric_now.text() == "two"
+        win.album_lyrics_box.setChecked(False)                                           # opt out: it goes at once
+        assert win.settings.album_lyrics is False and not strip.isVisibleTo(win.album_detail)
+        win._mark_lyric(2)                                                               # and stays away as the song runs
+        assert not strip.isVisibleTo(win.album_detail)
+        win.album_lyrics_box.setChecked(True)                                            # opt back in: it is back
+        assert strip.isVisibleTo(win.album_detail) and win.album_detail.lyric_now.text() == "three"
+    finally:
+        win.close()

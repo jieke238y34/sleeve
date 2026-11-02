@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
+  line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
+  *Show the line being sung in the album view*, to opt out; it is on by default.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added
