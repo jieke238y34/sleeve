@@ -7,7 +7,7 @@ import secrets
 import shutil
 import sys
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -467,6 +467,28 @@ class ClickSlider(QSlider):
         super().mousePressEvent(e)                 # the handle is now under the cursor, so a drag carries on from here
 
 
+class ThumbCache(OrderedDict):
+    "Cover icons keyed by song path. The ones used last are kept: a big library does not grow while it is scrolled."
+
+    LIMIT = 2000
+
+    def __init__(self, limit=LIMIT):
+        super().__init__()
+        self.limit = limit
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)                          # touched again: it is not the oldest any more
+        super().__setitem__(key, value)
+        while len(self) > self.limit:
+            self.popitem(last=False)
+
+    def get(self, key, default=None, touch=True):
+        if touch and key in self:
+            self.move_to_end(key)                          # an icon in use is the last one the cache would drop
+        return OrderedDict.get(self, key, default)
+
+
 class SongModel(QAbstractTableModel):
     COLS = ("Title", "Artist", "Album", "Genre", "Time")
 
@@ -617,7 +639,7 @@ class MainWindow(QMainWindow):
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
-        self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
+        self._thumbs = ThumbCache()                    # path -> cover icon, shared by queue, library and playlists
         self._np_pending = None                  # the song whose cover is still decoding; its words are shown already
         self._np_words = ()                             # what `_cover_arrived` shows again once that cover is in
         self._queue_rows = {}                           # path -> the queue rows showing it (the page fills this in)
@@ -5085,9 +5107,6 @@ class MainWindow(QMainWindow):
             self._blank = QIcon(pix)
         return self._blank
 
-    def _trim_thumbs(self, keep=2000):
-        while len(self._thumbs) > keep:
-            self._thumbs.pop(next(iter(self._thumbs)))
 
     @staticmethod
     def _visible_rows(view, count):
@@ -5111,7 +5130,6 @@ class MainWindow(QMainWindow):
             self._thumbs[songs[r].path] = icon
             ix = self.model.index(r, 0)
             self.model.dataChanged.emit(ix, ix, [Qt.DecorationRole])
-        self._trim_thumbs()
         if todo and not self._closing:
             self._lib_thumb_timer.start()
 
@@ -5132,7 +5150,6 @@ class MainWindow(QMainWindow):
             icon = self._thumbs.get(entries[r].path)
             if item is not None and icon is not None:
                 item.setIcon(icon)
-        self._trim_thumbs()
         if todo and not self._closing:
             self._pl_thumb_timer.start()
 
