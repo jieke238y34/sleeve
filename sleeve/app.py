@@ -104,6 +104,7 @@ from . import (
     library,
     loudness,
     lrc,
+    lyrics_sources,
     musicbrainz,
     myplaylists,
     navidrome,
@@ -542,6 +543,25 @@ class NavWorker(QThread):
             self.failed.emit(str(e))
         except Exception:                                    # a bug must not leave the page waiting for ever
             self.failed.emit("Something went wrong talking to the server.")
+
+
+class LyricsWorker(QThread):
+    "Asks the online lyrics sources about one song off the window's thread: `done` has its path and a Lyric or None."
+
+    done = Signal(str, object)
+
+    def __init__(self, path, artist, title, album, duration, parent=None):
+        super().__init__(parent)
+        self._ask = (artist, title, album, duration)
+        self.path = path
+
+    def run(self):
+        artist, title, album, duration = self._ask
+        try:
+            found = lyrics_sources.lookup(artist, title, album=album, duration=duration)
+        except Exception:                                    # a source misbehaving must not leave the button waiting
+            found = None
+        self.done.emit(self.path, found)
 
 
 class ScanWorker(QThread):
@@ -1147,6 +1167,11 @@ class MainWindow(QMainWindow):
         ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
         ll.addWidget(self.lyrics_empty, 1)
+        self.lyrics_find_btn = QPushButton("Find lyrics online")
+        self.lyrics_find_btn.setToolTip("Ask LRCLIB, Netease, Kugou, Genius and lyrics.ovh for this song and keep "
+                                        "the answer next to it as a .lrc or .txt file")
+        self.lyrics_find_btn.clicked.connect(self._find_lyrics_online)
+        ll.addWidget(self.lyrics_find_btn, 0, Qt.AlignHCenter)
         ll.addWidget(self.lyrics_note)
         self.tab_queue.toggled.connect(lambda on: self._np_panel_toggled("queue", on))
         self.tab_lyrics.toggled.connect(lambda on: self._np_panel_toggled("lyrics", on))
@@ -1203,6 +1228,7 @@ class MainWindow(QMainWindow):
         self._np_arrange()                                   # the panels on the sides the user chose, the art between
         self._np_apply_panels()                              # panels and the centering are right from the first paint
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
+        self._lyrics_worker = None
         self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
@@ -4956,6 +4982,7 @@ class MainWindow(QMainWindow):
         screen.set_song(self._np_pix, self.np_title.text(), self.np_artist.text())
         screen.set_progress(self._pos, self._dur)
         self._cover_screen = screen
+        self._update_cover_lyrics()
         if self.screen() is not None:
             screen.setScreen(self.screen())                   # on the screen this window is on
         screen.showFullScreen()
@@ -5501,6 +5528,7 @@ class MainWindow(QMainWindow):
             item.setTextAlignment(Qt.AlignCenter)
             self.lyrics.addItem(item)
         self._set_lyrics_state()
+        self._update_cover_lyrics()
 
     def _set_lyrics_state(self):
         "The lyrics list when there are lyrics, otherwise a plain message."
@@ -5510,6 +5538,7 @@ class MainWindow(QMainWindow):
                                     else "No lyrics found")
         self.lyrics.setVisible(has)
         self.lyrics_empty.setVisible(not has)
+        self.lyrics_find_btn.setVisible(not has and self._lyrics_can_look())
         self.lyrics_note.setVisible(has and not self._lyric_synced)
 
     def _mark_lyric(self, row):
@@ -5527,6 +5556,73 @@ class MainWindow(QMainWindow):
             item.setForeground(QColor(self._accent_shown))
             item.setFont(font)
         self.lyrics.setCurrentRow(row)
+        self._update_cover_lyrics()
+
+    def _lyrics_can_look(self):
+        "A song from a file here, with an artist and a title to ask about."
+        song = self.by_path.get(self._current_path)
+        return song is not None and bool(song.artist.strip() and song.title.strip())
+
+    def _confirm_lyrics_online(self):
+        "Ask once before the song's names go over the internet. A seam: tests replace it."
+        if self.settings.lyrics_online_ok:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Find lyrics online")
+        box.setText("Sleeve will send the artist, title, album and length of the song to public lyrics sites (LRCLIB, "
+                    "Netease, Kugou, Genius and lyrics.ovh) until one has the lyrics. Nothing else is sent. The "
+                    "answer is saved next to the song as a .lrc (synced) or .txt file; your audio file is not changed.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return False
+        self._set_setting("lyrics_online_ok", True)
+        return True
+
+    def _find_lyrics_online(self):
+        song = self.by_path.get(self._current_path)
+        if song is None or self._lyrics_worker is not None or not self._confirm_lyrics_online():
+            return
+        self.lyrics_find_btn.setEnabled(False)
+        self.lyrics_empty.setText("Looking for lyrics…")
+        self._lyrics_worker = LyricsWorker(song.path, song.artist, song.title, song.album, song.length, self)
+        self._lyrics_worker.done.connect(self._lyrics_found)
+        self._lyrics_worker.start()
+
+    def _lyrics_found(self, path, found):
+        worker, self._lyrics_worker = self._lyrics_worker, None
+        if worker is not None:
+            worker.wait()
+        self.lyrics_find_btn.setEnabled(True)
+        self.lyrics_empty.setText("No imported lyrics found")
+        if found is None:
+            self.lyrics_empty.setText("No lyrics found online for this song")
+            return
+        target = Path(path).with_suffix(".lrc" if found.synced else ".txt")
+        try:
+            if not target.exists():                          # never replace a file that is already there
+                target.write_text(found.synced or found.plain, encoding="utf-8")
+        except OSError as e:
+            self.status.showMessage(f"Found the lyrics but could not save them: {e}", 8000)
+            return
+        if path == self._current_path and path in self.by_path:
+            self._load_lyrics(self.by_path[path])
+        self.status.showMessage(f"Lyrics saved next to the song (from {found.source}).", 6000)
+
+    def _update_cover_lyrics(self):
+        "The fullscreen cover shows the line being sung, with the one before and the one after."
+        screen = self._cover_screen
+        if screen is None:
+            return
+        row, count = self._lyric_row, self.lyrics.count()
+
+        def text(i):
+            return self.lyrics.item(i).text() if 0 <= i < count else ""
+
+        if self._lyric_synced and 0 <= row < count:
+            screen.set_lyrics(text(row - 1), text(row), text(row + 1), theme.visible_accent(self._accent_shown))
+        else:
+            screen.set_lyrics("", "", "")
 
     def _lyric_clicked(self, item):
         "Clicking a line of synced lyrics jumps the song to that line."

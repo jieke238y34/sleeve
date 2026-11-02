@@ -27,6 +27,9 @@ All notable changes to this project are documented here. The format follows
   holds steady between changes; clicking a column header sorts as usual.
 - **Crossfade** (Settings > Sound): 0 to 12 seconds during which the end of a song fades out as the next one fades in. It
   needs gapless playback and only applies when a song ends by itself; a short song gives at most a third of itself.
+- **Lyrics on the fullscreen cover**: the line being sung, with the one before and the one after it, under the title.
+- **Find lyrics online** on Now Playing when a song has none: it asks first, then tries LRCLIB, Netease, Kugou, Genius and
+  lyrics.ovh, and keeps the answer next to the song as a `.lrc` or `.txt` file (never replacing one that is there).
 - **Turn up quiet songs** (Settings > Sound): how many dB, 0 to 12 (6 by default), a quiet song may be turned up when songs are
   played at the same volume.
 - **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.

@@ -33,6 +33,7 @@ DEFAULTS = {
     "order_seed": 0,           # the seed of the shuffled order, and when it was made (see shuffleorder.py)
     "order_seed_at": 0,
     "crossfade": 0,            # 0-12 seconds two songs overlap when one ends by itself (gapless must be on)
+    "lyrics_online_ok": False, # the person agreed to ask the online lyrics sites (the song names are sent)
     "title_in_accent": False,  # the song title on Now Playing is drawn in the accent colour
     "use_replaygain": True,    # take the gain from the files' ReplayGain tags; off: only Sleeve's own measurement
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
@@ -110,10 +111,11 @@ def _valid(key, value):
         return value in ("week", "month")
     if key == "identity_tab":
         return value in ("identity", "listening")
-    if key in ("gapless", "same_volume", "use_replaygain", "title_in_accent", "show_spotify_playlists",
-                "accent_from_cover", "track_listening", "online_lookup_ok", "update_check_ok", "discord_presence",
-                "discord_art", "lastfm_on", "np_queue_shown", "np_lyrics_shown", "remember_session",
-                "player_bar_hidden", "side_art", "tooltips", "legacy_layout", "gradient_follow_accent"):
+    if key in ("gapless", "same_volume", "use_replaygain", "title_in_accent", "lyrics_online_ok",
+                "show_spotify_playlists", "accent_from_cover", "track_listening", "online_lookup_ok",
+                "update_check_ok", "discord_presence", "discord_art", "lastfm_on", "np_queue_shown",
+                "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art", "tooltips",
+                "legacy_layout", "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
