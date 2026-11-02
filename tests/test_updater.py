@@ -57,12 +57,12 @@ def test_the_wheel_address_is_only_made_from_a_clean_tag():
 
 def test_latest_release_reads_the_tag_and_handles_every_failure_in_words():
     assert updater.latest_release(answer("v0.3.0")) == {
-        "tag": "v0.3.0", "version": "0.3.0", "build": 0,
+        "tag": "v0.3.0", "version": "0.3.0", "build": 0, "wheel": "",
         "url": "https://github.com/jieke238y34/sleeve/releases/tag/v0.3.0"}
     named = lambda req, timeout: Resp(json.dumps({"tag_name": "v0.3.0", "name": "Sleeve 0.3.0 (build 99)"}).encode())  # noqa: E731
     assert updater.latest_release(named)["build"] == 99
     assert updater.latest_release(answer("v0.3.0+build.101")) == {
-        "tag": "v0.3.0+build.101", "version": "0.3.0", "build": 101,
+        "tag": "v0.3.0+build.101", "version": "0.3.0", "build": 101, "wheel": "",
         "url": "https://github.com/jieke238y34/sleeve/releases/tag/v0.3.0+build.101"}
 
     def not_found(req, timeout):
@@ -141,6 +141,41 @@ def test_the_update_command_line_stops_for_copies_it_does_not_own(tmp_path):
     env = {"SLEEVE_PREFIX": str(tmp_path / "nowhere")}
     assert updater.cli_update(lines.append, env=env) == 1 and "install" in lines[-1]
     assert updater.cli_uninstall(lines.append, env=env) == 1
+
+
+def test_the_wheel_a_release_attaches_beats_the_guessed_address():
+    other = "https://github.com/jieke238y34/sleeve/releases/download/v0.3.1/sleeve-0.3.1-docs.whl"
+    mine = "https://github.com/jieke238y34/sleeve/releases/download/v0.3.1/sleeve-0.3.1-py3-none-any.whl"
+
+    def release(*assets):
+        def opener(req, timeout):
+            return Resp(json.dumps({"tag_name": "v0.3.1", "assets": assets}).encode())
+        return updater.latest_release(opener)["wheel"]
+
+    def asset(url):
+        return {"browser_download_url": url}
+
+    assert release() == ""                                                  # nothing attached: the old address stays
+    assert release(asset(other), asset(mine)) == mine                       # the regular name, even attached second
+    assert release(asset(other)) == other                                   # an odd name still wins over a guess
+    assert release(asset("https://github.com/other/user/releases/download/v1/1.0.0-py3-none-any.whl")) == ""
+    assert release(asset("https://github.com/jieke238y34/sleeve/releases/download/v0.3.1/not-a-whl.txt")) == ""
+
+
+def test_the_update_installs_the_wheel_the_release_attaches(monkeypatch):
+    lines, ran = [], []
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+
+    def run(cmd, check):
+        ran.append(cmd)
+        return SimpleNamespace(returncode=0)
+
+    body = json.dumps({"tag_name": "v9.1.0", "assets": [{
+        "browser_download_url": "https://github.com/jieke238y34/sleeve/releases/download/v9.1.0/"
+                                "sleeve-9.1.0-slim-py3-none-any.whl"}]})
+    assert updater.cli_update(lines.append, run=run,
+                              opener=lambda req, timeout: Resp(body.encode())) == 0
+    assert ran[0][-1].endswith("sleeve-9.1.0-slim-py3-none-any.whl")        # not the name the tag alone would guess
 
 
 def test_a_newer_build_of_the_same_version_is_reinstalled_without_touching_qt():
