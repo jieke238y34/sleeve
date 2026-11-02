@@ -110,6 +110,7 @@ from . import (
     seasons,
     settings,
     singleton,
+    smart,
     stash,
     sync,
     tags,
@@ -213,6 +214,7 @@ HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe 
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = f"{labels.MARK} {labels.SONGS}"
 RECENT = "Recently played"
+SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists whose order is their point (kept until a header)
 
 
 def fmt_time(seconds):
@@ -609,6 +611,7 @@ class MainWindow(QMainWindow):
         self._closing = self._rescan_again = False
         self.songs, self.by_path = [], {}
         self.folder = ALL
+        self._mtimes = {}                                     # song path -> file time, for Recently added
         self._dragging = False
         self._seeking = False                               # a player seek is not listening time
         self._lyrics = []
@@ -2978,6 +2981,7 @@ class MainWindow(QMainWindow):
 
     def _scan_done(self, songs):
         keep_folder = self.folder
+        self._mtimes = {}                                    # file times are looked up again after every scan
         self.songs = songs
         self.by_path = {s.path: s for s in songs}
         groups = library.by_folder(songs)
@@ -2986,11 +2990,13 @@ class MainWindow(QMainWindow):
         self.folders.addItem(ALL)
         self.folders.addItem(LIKED)
         self.folders.addItem(RECENT)
+        for name in smart.NAMES:                            # lists that fill themselves
+            self.folders.addItem(name)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
         self._fill_folder_counts()
-        names = [ALL, LIKED, RECENT, *groups]
+        names = [ALL, LIKED, RECENT, *smart.NAMES, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
@@ -3115,11 +3121,13 @@ class MainWindow(QMainWindow):
             songs = [s for s in self.songs if s.path in self.stash]
         elif self.folder == RECENT:                          # newest first, until a column header is clicked
             songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
+        elif self.folder in smart.NAMES:
+            songs = smart.pick(self.folder, self.songs, self.history.counts(), self._mtime)
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
         if self._scope:
             songs = [s for s in songs if self._in_scope(s)]
-        self.model.keep_order = self.folder == RECENT
+        self.model.keep_order = self.folder in SMART_ORDERED
         self.model.set_songs(library.search(songs, self.search.text()))
         if self.model.placeholder is None:
             self.model.placeholder = self._blank_icon()
@@ -3624,9 +3632,20 @@ class MainWindow(QMainWindow):
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
+    def _mtime(self, path):
+        "When a song's file was last changed (None if it cannot be read); looked up once per scan."
+        cache = self._mtimes
+        if path not in cache:
+            try:
+                cache[path] = os.stat(path).st_mtime
+            except OSError:
+                cache[path] = None
+        return cache[path]
+
     def _fill_folder_counts(self):
         "The number of songs beside each folder in the list: all, stashed, recently played, and each genre folder."
         per_folder = Counter(s.folder for s in self.songs)
+        counts = self.history.counts()
         for i in range(self.folders.count()):
             item = self.folders.item(i)
             name = item.text()
@@ -3636,6 +3655,8 @@ class MainWindow(QMainWindow):
                 count = sum(1 for s in self.songs if s.path in self.stash)
             elif name == RECENT:
                 count = sum(1 for p in self.history.recent() if p in self.by_path)
+            elif name in smart.NAMES:
+                count = len(smart.pick(name, self.songs, counts, self._mtime))
             else:
                 count = per_folder.get(name, 0)
             item.setData(COUNT_ROLE, count)
