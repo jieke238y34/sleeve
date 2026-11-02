@@ -74,6 +74,8 @@ Current version: **0.3.2** (every build also shows its build number).
       button uses them yet.)
 - [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
       genre that is playing, not the word "playlist". (Featured artists already read "SBTRKT with Sampha".)
+- [ ] **Mini-player**: a small always-on-top window with the cover, title, progress, volume and the transport
+      controls; it follows the main window's song and positions, and lives when the library is away.
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.
 - [ ] **Crossfade** is in (checked with tests only, not by ear); **play sets of tracks as one unit** in shuffle.
 - [ ] **Equaliser and DSP**: 5 to 15 band or parametric EQ with AutoEQ presets, bass boost, virtualiser, reverb,
@@ -117,9 +119,14 @@ Current version: **0.3.2** (every build also shows its build number).
 Sonic map; smart-playlist rules; artist connections; album booklets and liner notes; headphone calibration and
 per-device EQ; command palette and a global search shortcut; forgotten gems; dynamic backgrounds; metadata history
 and undo; ABX testing; listening timeline; album journeys; playlist folders; duplicate version detection; album
-completeness; audio chain and output format inspector; clipping detection; artwork manager; desktop mini-player;
+completeness; audio chain and output format inspector; clipping detection; artwork manager;
 session restoration. Identity ideas: monthly trends, genre evolution, time of day, years compared, milestones,
 explanations for Discovery, Loyalty and Range, and a drill-down for the "everything else" genre slice.
+
+Queue and collection ideas: local-library radio (artist, album, forgotten, deep cuts and year), Continue Album for
+an album left half-heard, undoing a removed queue song and saving the queue as a playlist, a collection health
+dashboard, album pages with credits, label and editions, collection shelves, musical DNA, a lyrics studio, and
+album anniversaries.
 
 ## References
 
