@@ -77,7 +77,7 @@ Current version: **0.3.0** (every build also shows its build number).
 - [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
       genre that is playing, not the word "playlist". (Featured artists already read "SBTRKT with Sampha".)
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.
-- [ ] **Crossfade settings** (gapless is in); **play sets of tracks as one unit** in shuffle.
+- [ ] **Crossfade** is in (checked with tests only, not by ear); **play sets of tracks as one unit** in shuffle.
 - [ ] **Equaliser and DSP**: 5 to 15 band or parametric EQ with AutoEQ presets, bass boost, virtualiser, reverb,
       stereo expansion (find and review first).
 - [ ] **Bluetooth**: better audio quality for Maid BT and the BlueZ stack; support more earbuds.

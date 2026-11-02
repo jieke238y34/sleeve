@@ -178,3 +178,31 @@ def test_a_quiet_song_is_turned_up_by_at_most_the_setting(qapp, tmp_path, monkey
     p.set_max_boost(0)
     assert p.gain_db(a) is None                            # never turned up
     p.close()
+
+
+def test_crossfade_brings_one_song_in_as_the_other_goes_out(qapp, tmp_path, monkeypatch):  # noqa: F811
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = player.Player()
+    p.set_queue([a, b])
+    plain = player.gain(p.volume, p.max_gain)
+    assert p._fade_ms() == 0                               # off by default
+    p.set_crossfade(6)
+    p.duration = 300.0
+    assert p._fade_ms() == 6000
+    p.duration = 12.0
+    assert p._fade_ms() == 4000                            # a short song gives at most a third of itself
+    p.set_gapless(False)
+    assert p._fade_ms() == 0                               # nothing is preloaded without gapless
+    p.set_gapless(True)
+    now = [100.0]
+    monkeypatch.setattr(player.time, "monotonic", lambda: now[0])
+    p._fade_start(p._slots[1], p._slots[0], 2000)
+    assert abs(level(p, 0) - plain) < 1e-4 and level(p, 1) == 0.0
+    now[0] += 1.0                                          # half way
+    p._fade_tick()
+    assert abs(level(p, 0) - plain * 0.5) < 1e-4 and abs(level(p, 1) - plain * 0.5) < 1e-4
+    now[0] += 1.5
+    p._fade_tick()                                         # done: both back to the plain level, no timer left
+    assert p._fade is None and not p._fade_timer.isActive()
+    assert abs(level(p, 0) - plain) < 1e-4 and abs(level(p, 1) - plain) < 1e-4
+    p.close()

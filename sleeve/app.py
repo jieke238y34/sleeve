@@ -1590,6 +1590,22 @@ class MainWindow(QMainWindow):
         lay.addLayout(boost_row)
         lay.addWidget(hint("The most a quiet song is turned up when songs are played at the same volume. 0 never "
                            "turns anything up; loud songs are always turned down."))
+        fade_row = QHBoxLayout()
+        self.fade_slider = ClickSlider(Qt.Horizontal)
+        self.fade_slider.setRange(0, 12)
+        self.fade_slider.setValue(self.settings.crossfade)
+        self.fade_slider.setMinimumWidth(220)
+        self.fade_slider.setMaximumWidth(280)
+        self.fade_label = QLabel(self._fade_text(self.settings.crossfade))
+        self.fade_label.setMinimumWidth(56)
+        self.fade_slider.valueChanged.connect(self._crossfade_changed)
+        fade_row.addWidget(QLabel("Crossfade"))
+        fade_row.addWidget(self.fade_slider)
+        fade_row.addWidget(self.fade_label)
+        fade_row.addStretch(1)
+        lay.addLayout(fade_row)
+        lay.addWidget(hint("The end of a song fades out as the next one fades in. It needs gapless playback, and only "
+                           "applies when a song ends by itself, not when you skip or pick one."))
         self.replaygain_box = Switch("Use the ReplayGain tags in my files")
         self.replaygain_box.setChecked(self.settings.use_replaygain)
         self.replaygain_box.toggled.connect(self._replaygain_toggled)
@@ -2309,6 +2325,15 @@ class MainWindow(QMainWindow):
         self._set_setting("same_volume", on)
         if on:
             self._measure_loudness()
+
+    @staticmethod
+    def _fade_text(seconds):
+        return f"{seconds} s" if seconds else "Off"
+
+    def _crossfade_changed(self, value):
+        self.fade_label.setText(self._fade_text(value))
+        self._set_setting("crossfade", value)
+        self.player.set_crossfade(value)
 
     def _boost_changed(self, value):
         self.boost_label.setText(f"{value} dB")

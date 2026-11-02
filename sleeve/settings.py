@@ -32,6 +32,7 @@ DEFAULTS = {
     "library_order": "off",    # off, start, day, week: how the library list is shuffled when no column is chosen
     "order_seed": 0,           # the seed of the shuffled order, and when it was made (see shuffleorder.py)
     "order_seed_at": 0,
+    "crossfade": 0,            # 0-12 seconds two songs overlap when one ends by itself (gapless must be on)
     "title_in_accent": False,  # the song title on Now Playing is drawn in the accent colour
     "use_replaygain": True,    # take the gain from the files' ReplayGain tags; off: only Sleeve's own measurement
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
@@ -98,8 +99,8 @@ def _valid_custom_theme(value):
 
 
 def _valid(key, value):
-    if key in ("volume", "max_volume", "boost_db"):
-        low, high = {"max_volume": (30, 150), "boost_db": (0, 12)}.get(key, (0, 100))
+    if key in ("volume", "max_volume", "boost_db", "crossfade"):
+        low, high = {"max_volume": (30, 150), "boost_db": (0, 12), "crossfade": (0, 12)}.get(key, (0, 100))
         return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
     if key == "library_order":
         return value in ("off", "start", "day", "week")
