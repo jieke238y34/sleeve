@@ -8,8 +8,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
+  sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
+  Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
+
+## [0.3.2] - 2026-11-02
+
+### Added
+
+- **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
+  send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
 - **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
   Shortcuts). Esc still leaves fullscreen everywhere else.
+
+### Fixed
+
+- **The queue follows the selector**: moving the selection with the arrow keys, or carrying a song, scrolls the Now
+  Playing queue so the selected song is never lost off the edge.
+- **The selector is left where you put it**: when the next song starts by itself while you are moving about in the queue,
+  your selection no longer jumps to the song that is playing. Any key that moves the selector (typing a letter to jump,
+  for example) also scrolls the queue to it.
+- **The 5-point gradient stays five points on a black cover**: in the accent-following mode it fell back to three colours
+  after the black-cover fix.
+- **The tooltip switch can be found**: Settings > Look now says *Show tooltips on hover*, so searching for "tooltips"
+  finds it (it said "hover tips"). Switching it off hides every tip.
 
 ## [0.3.1] - 2026-11-02
 

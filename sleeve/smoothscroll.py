@@ -67,6 +67,18 @@ class SmoothScroll(QObject):
         self.anim.setEndValue(y)
         self.anim.start()
 
+    def ensure_visible(self, row, animate=True):
+        "Glide just far enough that `row` is in view with a row of room beyond it; nothing moves if it already is."
+        index = self.view.model().index(row, 0)
+        if not index.isValid():
+            return
+        rect = self.view.visualRect(index)
+        room, height = rect.height(), self.view.viewport().height()
+        if rect.top() - room < 0:
+            self.scroll_to(self.bar.value() + rect.top() - room, animate)
+        elif rect.bottom() + room > height:
+            self.scroll_to(self.bar.value() + rect.bottom() + room - height, animate)
+
     def center_on(self, row, animate=True):
         "Glide so that `row` sits in the middle of the view."
         index = self.view.model().index(row, 0)

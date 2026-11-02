@@ -1227,6 +1227,7 @@ class MainWindow(QMainWindow):
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._lyrics_worker = None
         self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
+        self._queue_grabbed = None                        # the queue row picked up with the grab key: arrows move it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
@@ -1713,7 +1714,7 @@ class MainWindow(QMainWindow):
         self.title_accent_box.setChecked(self.settings.title_in_accent)
         self.title_accent_box.toggled.connect(self._title_accent_toggled)
         lay.addWidget(self.title_accent_box)
-        self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
+        self.tooltips_box = Switch("Show tooltips on hover (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
         lay.addWidget(self.tooltips_box)
@@ -1859,6 +1860,15 @@ class MainWindow(QMainWindow):
         self._show_shortcuts()
 
         section("Advanced")
+        subsection("Sound server")
+        self.role_box = Switch("Label Sleeve's sound as \u201cmusic\u201d for the sound server")
+        self.role_box.setChecked(self.settings.sound_role_music)
+        self.role_box.toggled.connect(self._role_toggled)
+        lay.addWidget(self.role_box)
+        lay.addWidget(hint("Tools that look for music streams (Maid BT, your own WirePlumber rules) match this label. "
+                           "WirePlumber also remembers a stream's volume per label, so with it on, other apps that "
+                           "say \u201cmusic\u201d can come up at Sleeve's volume. Takes effect the next time Sleeve "
+                           "starts."))
         subsection("APIs")
         lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
                            "here runs until you switch it on. Below the list, each service has its own switch and its "
@@ -2450,6 +2460,10 @@ class MainWindow(QMainWindow):
     def _library_order_changed(self):
         self._set_setting("library_order", self.order_box.currentData())
         self._apply_library_order(fresh=True)
+
+    def _role_toggled(self, on):
+        self._set_setting("sound_role_music", on)
+        self.status.showMessage("The sound label changes the next time Sleeve starts.", 6000)
 
     def _title_accent_toggled(self, on):
         self._set_setting("title_in_accent", on)
@@ -3353,6 +3367,11 @@ class MainWindow(QMainWindow):
             return True                                           # hover labels are switched off in Settings > Look
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
+        if (ev.type() == QEvent.KeyPress and obj is self.queue_list and self._queue_grabbed is not None
+                and not ev.modifiers() and self._queue_grab_key(ev.key())):
+            return True                                           # the held song moved: the selector does not
+        if ev.type() == QEvent.KeyPress and obj is self.queue_list:
+            QTimer.singleShot(0, self._queue_follow)               # whatever moved the selector (arrows, type-ahead)
         if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
             QTimer.singleShot(0, self._np_apply_panels)          # the page has its real width now (it starts hidden)
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
@@ -4396,7 +4415,7 @@ class MainWindow(QMainWindow):
         self.queue_list.setCurrentRow(dst)
         self._queue_apply_move(src, dst)
         self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
-        self.queue_list.scrollToItem(self.queue_list.item(dst))
+        self._queue_follow()
 
     def _show_shortcuts(self):
         "Put the keys now in force into the boxes, without it counting as the person typing."
@@ -4438,6 +4457,7 @@ class MainWindow(QMainWindow):
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
             "queue_play": (self.queue_list, self._queue_play_selected, True),
             "queue_unselect": (self.queue_list, self._queue_unselect, True),
+            "queue_grab": (self.queue_list, self._queue_grab_toggle, True),
             "queue_remove": (self.queue_list, self._queue_remove_selected, True),
             "queue_up": (self.queue_list, lambda: self._queue_nudge(-1), True),
             "queue_down": (self.queue_list, lambda: self._queue_nudge(1), True),
@@ -4460,18 +4480,67 @@ class MainWindow(QMainWindow):
                 keys.append(QKeySequence("Enter"))               # the keypad's Enter does the same
             sc.setKeys(keys)
 
-    def _esc_for_focus(self, _old, new):
-        "Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so this one waits."
+    def _queue_grab_toggle(self):
+        "Pick up the selected song (the arrows then move the song, not the selector); the same key puts it down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()
+            return
+        item = self.queue_list.currentItem()
+        if item is None or not item.isSelected():
+            return
+        self._queue_grabbed = item
+        item.setForeground(QColor(theme.visible_accent(self._accent_shown)))
+        title = item.text().splitlines()[0] if item.text() else ""
+        self.status.showMessage(f"Moving \u201c{title}\u201d: Up and Down move it, Home and End send it to the ends, "
+                                "Enter puts it down.", 0)
+
+    def _queue_drop(self):
+        item, self._queue_grabbed = self._queue_grabbed, None
+        if item is not None and self.queue_list.row(item) >= 0:
+            item.setData(Qt.ForegroundRole, None)
+        self.status.clearMessage()
+
+    def _queue_grab_forget(self):
+        "The list was rebuilt or left: whatever was picked up is not held any more."
+        if self._queue_grabbed is not None:
+            self._queue_grabbed = None
+            self.status.clearMessage()
+
+    def _queue_grab_key(self, key):
+        "A key pressed in the queue while a song is held: True when it was used to move or put down that song."
+        item = self._queue_grabbed
+        row = self.queue_list.row(item) if item is not None else -1
+        if row < 0:
+            self._queue_grab_forget()
+            return False
+        last = self.queue_list.count() - 1
+        target = {Qt.Key_Up: row - 1, Qt.Key_Down: row + 1, Qt.Key_Home: 0, Qt.Key_End: last}.get(key)
+        if target is None:
+            return False
+        self._queue_move(row, max(0, min(last, target)))
+        return True
+
+    def _esc_for_focus(self, old, new):
+        """Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so the window's
+        waits. A song that is held is put down when the focus leaves the queue."""
         self._esc_fullscreen.setEnabled(new is not self.queue_list)
+        if old is self.queue_list and new is not self.queue_list and self._queue_grabbed is not None:
+            self._queue_drop()
 
     def _queue_play_selected(self):
         "Start the song that is selected in the queue (what a double-click does)."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Enter puts a held song down; it does not start it
+            return
         row = self.queue_list.currentRow()
         if self.queue_list.item(row) is not None and 0 <= row < len(self.player.queue):
             self.player.play_index(row)
 
     def _queue_unselect(self):
-        "Nothing is selected in the queue afterwards (the song that is playing stays in bold)."
+        "Nothing is selected in the queue afterwards (the song that is playing stays in bold); a held song is put down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Esc puts a held song down and nothing else
+            return
         self.queue_list.clearSelection()
         self.queue_list.setCurrentItem(None)
 
@@ -4484,6 +4553,13 @@ class MainWindow(QMainWindow):
         count = self.queue_list.count()
         if count:
             self.queue_list.setCurrentRow(min(row, count - 1))
+            self._queue_follow()
+
+    def _queue_follow(self):
+        "Keep the selector in view, so it is never lost off the edge of the queue."
+        row = self.queue_list.currentRow()
+        if row >= 0 and self.queue_list.isVisible():
+            self.queue_list._smooth.ensure_visible(row)
 
     def _queue_nudge(self, step):
         row = self.queue_list.currentRow()
@@ -4698,6 +4774,7 @@ class MainWindow(QMainWindow):
                 self._queue_rows.setdefault(path, []).append(i)
             self._queue_playing = -1
         elif queue != self._queue_shown:                     # a different queue: build the rows again
+            self._queue_grab_forget()                        # the row that was picked up is gone with the old rows
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
             self.queue_list.setUpdatesEnabled(False)
@@ -4737,7 +4814,8 @@ class MainWindow(QMainWindow):
             font = self.queue_list.font()
             font.setBold(True)
             item.setFont(font)
-            self.queue_list.setCurrentRow(row)
+            if not self.queue_list.hasFocus():                    # a person moving about the queue keeps their selector
+                self.queue_list.setCurrentRow(row)
         self._queue_playing = row
 
     def _queue_catch_up(self):
@@ -5856,6 +5934,13 @@ def attach_media_keys(win, app, suffix="sleeve"):
     return mpris
 
 
+def pulse_prop(role_music=True):
+    """The labels Sleeve's sound streams carry (the PULSE_PROP text). `media.role=music` is what Maid BT and WirePlumber
+    rules match on, but WirePlumber also remembers a stream's volume per role, so it can be left off in Settings."""
+    props = ["application.id=io.github.jieke238y34.Sleeve", "application.icon_name=io.github.jieke238y34.Sleeve"]
+    return " ".join((["media.role=music"] if role_music else []) + props)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
@@ -5904,8 +5989,7 @@ def main(argv=None):
         return updater.cli_uninstall(full=args.full, playlist_dir=playlist_dir)
     command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
     # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
-    os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
-                                        "application.icon_name=io.github.jieke238y34.Sleeve")
+    os.environ.setdefault("PULSE_PROP", pulse_prop(settings.Settings().sound_role_music))
     app = QApplication(sys.argv[:1])
     instance_name = singleton.NAME + ("-preview" if args.preview else "")
     if singleton.already_running(instance_name, command=command):   # Sleeve is open already, given the command

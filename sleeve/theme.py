@@ -638,7 +638,8 @@ class Backdrop(QWidget):
         colours = self._fixed or palette or [QColor(c) for c in (BLACK_COVER if black else NEUTRAL)]
         if self._blend:
             if self._pix is not None:
-                colours = [QColor(c) for c in BLACK_COVER] if black else cover_gradient(palette, self._fixed[2])
+                neutral = resample([QColor(c) for c in BLACK_COVER], 5)       # five points, even when neutral
+                colours = neutral if black else cover_gradient(palette, self._fixed[2])
             colours = [QColor(c) for c in colours]
         self._from, self._to = resample(self._now, len(colours)), colours     # 3 and 5 colours fade into each other
         self._fade.stop()

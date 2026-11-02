@@ -111,3 +111,17 @@ def test_a_black_cover_with_faint_green_noise_gives_a_neutral_backdrop_not_a_gre
         back.set_fixed(fixed, blend=bool(fixed))
         back.set_cover(pix)
         assert all(QColor(c).hslSaturationF() < 0.12 for c in back._to), [QColor(c).name() for c in back._to]
+
+
+def test_the_five_point_gradient_stays_five_points_on_a_black_cover(qapp):  # noqa: F811
+    from PySide6.QtGui import QPixmap
+    black = QPixmap(64, 64)
+    black.fill(QColor(3, 20, 5))
+    red = QPixmap(64, 64)
+    red.fill(QColor(200, 30, 40))
+    back = theme.Backdrop()
+    back.set_fixed(FIVE, blend=True)                       # the accent-following 5-point gradient
+    for pix in (red, black):
+        back.set_cover(pix)
+        assert len(back._to) == 5, len(back._to)           # five points whatever the cover, never three
+    assert all(QColor(c).hslSaturationF() < 0.12 for c in back._to)          # and a black cover's are neutral
