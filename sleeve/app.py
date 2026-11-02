@@ -3,8 +3,8 @@ import argparse
 import dataclasses
 import os
 import random
-import shutil
 import secrets
+import shutil
 import sys
 import time
 from collections import Counter
