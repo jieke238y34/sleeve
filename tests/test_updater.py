@@ -125,6 +125,36 @@ def test_a_sleeve_command_that_is_not_ours_is_left_alone(tmp_path):
     assert "elsewhere" not in updater.removal_script(env, home)
 
 
+def test_describe_installation_names_the_removal_and_only_what_is_there(tmp_path):
+    home = tmp_path / "home"
+    prefix = home / ".local/share/sleeve"
+    venv = prefix / "venv"
+    venv.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr\n")
+    link = home / ".local/bin/sleeve"
+    desktop = home / ".local/share/applications/io.github.jieke238y34.Sleeve.desktop"
+    env = {"SLEEVE_PREFIX": str(prefix)}
+    link.parent.mkdir(parents=True)
+    link.symlink_to(venv / "bin" / "sleeve")
+
+    lines = updater.describe_installation(env, home)
+    assert any("environment" in line and str(venv) in line for line in lines)
+    assert any("sleeve command" in line and str(link) in line for line in lines)
+    assert not any("menu entry" in line or "the icon" in line for line in lines)
+    assert not any("preview" in line for line in lines)
+
+    desktop.parent.mkdir(parents=True)
+    desktop.write_text("x")
+    lines = updater.describe_installation(env, home)
+    assert any("menu entry" in line for line in lines) and not any("the icon" in line for line in lines)
+    (prefix / "preview").mkdir()
+    lines = updater.describe_installation(env, home)
+    assert any("preview" in line and str(prefix / "preview") in line for line in lines)
+
+    fresh = tmp_path / "fresh"
+    assert updater.describe_installation({"SLEEVE_PREFIX": str(fresh / "nope")}, fresh) == []
+
+
 def test_the_removal_script_quotes_paths_and_lists_only_planned_things(tmp_path):
     home = tmp_path / "it's home"
     env = {"SLEEVE_PREFIX": str(home / ".local/share/sleeve")}
