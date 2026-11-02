@@ -7,7 +7,7 @@ Everything planned for Sleeve, with where it stands. Items move to the [changelo
 - **Partly**: something shipped; what is left is written next to it.
 - **Not started**: agreed, nothing exists yet.
 
-Current version: **0.3.1** (every build also shows its build number).
+Current version: **0.3.2** (every build also shows its build number).
 
 ## Done
 

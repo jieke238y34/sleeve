@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
 ### Added
 
 - **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
