@@ -4,6 +4,8 @@ import subprocess
 
 import pytest
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # a test's window never lands on the desktop: pytest imports this before any Qt import
+
 
 def _private_session_bus():
     """Give the tests a session bus of their own. Qt connects to whatever DBUS_SESSION_BUS_ADDRESS says (and without it
