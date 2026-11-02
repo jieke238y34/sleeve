@@ -16,6 +16,7 @@ topic. The topic files are the source of truth and live in
 | [Settings](guide/08-settings.md) | Every setting and the paths it shows |
 | [Your files and privacy](guide/09-your-files-and-privacy.md) | What Sleeve stores and what it never does |
 | [Troubleshooting](guide/10-troubleshooting.md) | Common problems and fixes |
+| [Command line](guide/11-command-line.md) | Control a running Sleeve from a shortcut or script, update, uninstall |
 
 ## In short
 

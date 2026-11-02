@@ -18,6 +18,13 @@ All notable changes to this project are documented here. The format follows
   Library. A chip beside the filter says what is shown (`Artist: Kendrick Lamar ✕`) and takes you back; picking a folder
   also leaves it. Right-click a song in the Library or the queue for *All songs by…* and *The album…*. A tag holding
   several artists asks which one.
+- **Reorder the queue**: drag a song to a new place in the Now Playing queue, or right-click it for *Play next*, *Move up*
+  and *Move down*. The song that is playing keeps playing and the one after it is worked out again.
+- **ReplayGain switch and gain readout**: Settings > Sound has *Use the ReplayGain tags in my files*; off, the tags are
+  ignored and Sleeve measures the songs itself (needs ffmpeg). Now Playing shows the levelling a song gets, for example
+  `FLAC · 96 kHz · 24-bit · lossless · levelling −3.2 dB`.
+- **Command line page** in the user guide ([docs/guide/11-command-line.md](docs/guide/11-command-line.md)): every `sleeve`
+  option, the exit codes, and how to bind play, pause, next and previous to keys.
 - **Queue commands everywhere**: right-click a song in a playlist, an album's track list or a Ctrl+K result for
   *Play now*, *Play next* and *Add to queue* (the Library and the queue had them already). On an album, a track takes
   the rest of the album with it, as a double-click does.

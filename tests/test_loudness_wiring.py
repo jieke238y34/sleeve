@@ -52,7 +52,7 @@ def test_a_boost_never_goes_past_full_scale(qapp, tmp_path):  # noqa: F811
 def test_tags_are_looked_up_once_per_song(qapp, tmp_path, monkeypatch):  # noqa: F811
     (a,) = songs(tmp_path, "a.mp3")
     calls = []
-    monkeypatch.setattr(loudness, "gain_for", lambda path, cache: calls.append(path) or -3.0)
+    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True: calls.append(path) or -3.0)
     p = player.Player()
     p.set_queue([a])
     for v in (10, 20, 30, 40):                             # dragging the slider must not read the file each time
@@ -64,7 +64,7 @@ def test_tags_are_looked_up_once_per_song(qapp, tmp_path, monkeypatch):  # noqa:
 def test_a_song_with_nothing_known_is_not_looked_up_again(qapp, tmp_path, monkeypatch):  # noqa: F811
     (a,) = songs(tmp_path, "a.mp3")
     calls = []
-    monkeypatch.setattr(loudness, "gain_for", lambda path, cache: calls.append(path))
+    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True: calls.append(path))
     p = player.Player()
     p.set_queue([a])
     p.set_volume(50)
@@ -78,7 +78,7 @@ class FakeWorker(QObject):
     finished = Signal()
     made = []
 
-    def __init__(self, paths, cache, ffmpeg, parent=None):
+    def __init__(self, paths, cache, ffmpeg, parent=None, use_tags=True):
         super().__init__(parent)
         self.paths, self.ffmpeg, self.running = paths, ffmpeg, False
         FakeWorker.made.append(self)
@@ -125,5 +125,42 @@ def test_without_ffmpeg_the_window_says_so_and_starts_nothing(qapp, cfg, monkeyp
         win.player.queue = ["/m/a.mp3"]
         win.enable_loudness(None)
         assert FakeWorker.made == [] and "ffmpeg was not found" in win.same_volume_hint.text()
+    finally:
+        win.close()
+
+
+def test_tags_can_be_ignored_and_the_gain_of_a_song_can_be_read(qapp, tmp_path, monkeypatch):  # noqa: F811
+    a, = songs(tmp_path, "a.mp3")
+    monkeypatch.setattr(loudness, "tag_gain_db", lambda path: -4.0)
+    p = player.Player()
+    p.set_queue([a])
+    assert p.gain_db(a) == -4.0                            # from the tag
+    seen = []
+    p.normChanged.connect(seen.append)
+    p.set_use_tags(False)                                  # tags ignored: nothing measured, nothing added
+    assert p.gain_db(a) is None and seen == [""]
+    p.set_norm(a, -2.5)                                    # Sleeve's own measurement is still used
+    assert p.gain_db(a) == -2.5 and seen[-1] == a
+    p.set_use_tags(True)
+    assert p.gain_db(a) == -4.0
+    p.set_same_volume(False)
+    assert p.gain_db(a) is None                            # levelling off: nothing is added
+    p.close()
+
+
+def test_the_switch_and_the_gain_line_in_the_window(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        assert win.replaygain_box.isChecked() and win.settings.use_replaygain
+        win._np_album_text = ("Album", "FLAC · 24-bit")
+        win._current_path = "/x/a.flac"
+        win.player.gain_db = lambda path: -3.2
+        win._show_album_line()
+        assert win.np_album.text() == "Album\nFLAC · 24-bit · levelling −3.2 dB"      # only the gain gets the minus
+        win.player.gain_db = lambda path: None
+        win._show_album_line()
+        assert win.np_album.text() == "Album\nFLAC · 24-bit"
+        win.replaygain_box.setChecked(False)
+        assert win.settings.use_replaygain is False
     finally:
         win.close()

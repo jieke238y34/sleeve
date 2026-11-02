@@ -52,11 +52,12 @@ class StubPlayer:
             playingChanged = Signal(bool)
             trackChanged = Signal(int, str)
             queueChanged = Signal()
+            normChanged = Signal(str)
             volumeChanged = Signal(int)
             error = Signal(str)
         self._s = S()
         for n in ("positionChanged", "durationChanged", "playingChanged", "trackChanged",
-                  "queueChanged", "volumeChanged", "error"):
+                  "queueChanged", "normChanged", "volumeChanged", "error"):
             setattr(self, n, getattr(self._s, n))
         self.queue, self.index, self.volume, self.calls = [], -1, 80, []
         self.position, self.playing = 0.0, False

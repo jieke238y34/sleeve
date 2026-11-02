@@ -78,6 +78,7 @@ class Player(QObject):
     playingChanged = Signal(bool)
     trackChanged = Signal(int, str)  # index in the queue, path ("" when stopped)
     queueChanged = Signal()
+    normChanged = Signal(str)               # a song's levelling changed (its path; empty: all of them)
     volumeChanged = Signal(int)
     error = Signal(str)
 
@@ -92,6 +93,7 @@ class Player(QObject):
         self.resolver = None                    # maps a `navidrome:<id>` entry to its stream address (the app sets it)
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
         self.same_volume = True
+        self.use_tags = True                    # the files' ReplayGain tags count; off: only measured loudness
         self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
         self._norm_checked = set()         # paths whose tags and saved measurement were already looked at
         self.loudness_cache = loudness.LoudnessCache()
@@ -133,6 +135,7 @@ class Player(QObject):
         self.max_gain = settings.max_volume / 100
         self.gapless = settings.gapless
         self.same_volume = settings.same_volume
+        self.use_tags = settings.use_replaygain
         self.output_id = settings.output_device
         self._reroute()
         self.set_volume(settings.volume)
@@ -168,10 +171,24 @@ class Player(QObject):
         self.same_volume = bool(on)
         self._apply_volume()
 
+    def set_use_tags(self, on):
+        "Trust the ReplayGain tags in the files (or not): what was read from them is forgotten and read again."
+        self.use_tags = bool(on)
+        self.norm_db.clear()
+        self._norm_checked.clear()
+        self._apply_volume()
+        self.normChanged.emit("")
+
     def set_norm(self, path, db):
         "A song was measured: remember how much to add, and apply it if the song is loaded."
         self.norm_db[path] = db
         self._apply_volume()
+        self.normChanged.emit(path)
+
+    def gain_db(self, path):
+        "The dB levelling adds to this song right now, or None when it adds nothing (off, unknown or a server track)."
+        db = self._norm_for(path)
+        return db if db else None
 
     def _norm_for(self, path):
         "dB to add to this song (0 until it is known): from its loudness tags, or an earlier measurement."
@@ -179,7 +196,7 @@ class Player(QObject):
             return 0.0                          # a server track has no file here to read loudness tags from
         if path not in self.norm_db and path not in self._norm_checked:
             self._norm_checked.add(path)
-            found = loudness.gain_for(path, self.loudness_cache)
+            found = loudness.gain_for(path, self.loudness_cache, self.use_tags)
             if found is not None:
                 self.norm_db[path] = found
         return self.norm_db.get(path, 0.0)
@@ -398,6 +415,24 @@ class Player(QObject):
             self.play_index(at)
         else:
             self._replan()
+
+    def move(self, src, dst):
+        """Move the song at queue position `src` so it ends up at position `dst`. The song that is playing keeps playing
+        (its position follows the shuffle of the others) and the song after it is worked out again."""
+        n = len(self.queue)
+        if not (0 <= src < n and 0 <= dst < n) or src == dst:
+            return
+        self.queue.insert(dst, self.queue.pop(src))
+        i = self.index
+        if i == src:
+            i = dst
+        elif src < i <= dst:
+            i -= 1
+        elif dst <= i < src:
+            i += 1
+        self.index = i
+        self.queueChanged.emit()
+        self._replan()
 
     def remove_at(self, i):
         """Take the song at queue position `i` out of the queue only; its file is never touched. Taking out the one that
