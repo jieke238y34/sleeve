@@ -2480,6 +2480,8 @@ class MainWindow(QMainWindow):
         sheet = f"color: {lit};" if self.settings.title_in_accent else ""
         if self.np_title.styleSheet() != sheet:                  # a repaint per change only
             self.np_title.setStyleSheet(sheet)
+        if hasattr(self, "album_detail"):
+            self.album_detail.set_lyric_line_colour(lit if self.settings.title_in_accent else "")
 
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
@@ -5735,6 +5737,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
             self._current_path = ""                       # the song did not load: nothing is being listened to
+            self._album_lyric_refresh()
             self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
             return
         self.now.setText(f"{s.name}\n{artists.display(s.artist)}")
@@ -5780,6 +5783,12 @@ class MainWindow(QMainWindow):
             self.lyrics.addItem(item)
         self._set_lyrics_state()
         self._update_cover_lyrics()
+        self._album_lyric_refresh()
+
+    def _album_lyric_refresh(self):
+        "The album view's lyric strip: the line being sung with its neighbours, for the song playing now."
+        lines = [line for _, line in self._lyrics] if self._lyric_synced else []
+        self.album_detail.set_lyric_strip(self._current_path, lines, self._lyric_row)
 
     def _set_lyrics_state(self):
         "The lyrics list when there are lyrics, otherwise a plain message."
@@ -5808,6 +5817,7 @@ class MainWindow(QMainWindow):
             item.setFont(font)
         self.lyrics.setCurrentRow(row)
         self._update_cover_lyrics()
+        self._album_lyric_refresh()
 
     def _lyrics_can_look(self):
         "A song from a file here, with an artist and a title to ask about."
