@@ -246,7 +246,6 @@ KIND_MARK = {activity.GOOD: "✓", activity.INFO: "•", activity.WARN: "!", act
 KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN: "#f0c674", activity.BAD: "#ff8f8f",
               activity.STEP: "#b7afe0"}
 SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
-SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
 ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
