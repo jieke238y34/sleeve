@@ -1488,8 +1488,8 @@ class MainWindow(QMainWindow):
         "Preferences. Each change is applied at once and saved."
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
         title = QLabel("Settings")
         title.setObjectName("heading")
         note = QLabel("Changes are applied and saved as you make them.")
@@ -1513,14 +1513,14 @@ class MainWindow(QMainWindow):
             lab.setToolTip("Click to fold or unfold this section")
             lab.setObjectName("heading")
             lab.setAccessibleName(text)             # the section heading is announced as a heading
-            lay.addSpacing(10)
+            lay.addSpacing(6)
             lay.addWidget(lab)
 
         def subsection(text):
             lab = QLabel(text)
             lab.setObjectName("subhead")
             lab.setAccessibleName(text)
-            lay.addSpacing(8)
+            lay.addSpacing(4)
             lay.addWidget(lab)
 
         def hint(text):
@@ -2004,11 +2004,11 @@ class MainWindow(QMainWindow):
                 is_form = isinstance(first, QLabel) and not first.objectName() and not first.wordWrap()
                 if is_form:
                     first.setMinimumWidth(self.LABEL_COLUMN)
-                row.setSpacing(14)
+                row.setSpacing(12)
                 self._after_form_row = is_form
             elif isinstance(widget, QLabel) and widget.objectName() == "muted":
                 inset = self.LABEL_COLUMN + 14 if getattr(self, "_after_form_row", False) else 0
-                widget.setContentsMargins(inset, 2, 0, 10)
+                widget.setContentsMargins(inset, 0, 0, 5)
                 self._after_form_row = False
             else:
                 self._after_form_row = False
@@ -2157,7 +2157,7 @@ class MainWindow(QMainWindow):
             box = QWidget()
             col = QVBoxLayout(box)
             col.setContentsMargins(0, 0, 0, 0)
-            col.setSpacing(10)
+            col.setSpacing(6)
             at = next(i for i, item in enumerate(group) if item.widget() is not None)  # gap first, then title
             for item in group[:at + 1]:
                 col.addItem(item)
@@ -2165,7 +2165,7 @@ class MainWindow(QMainWindow):
             body = QWidget()                                    # everything under the title: what folding hides
             rest = QVBoxLayout(body)
             rest.setContentsMargins(0, 0, 0, 0)
-            rest.setSpacing(10)
+            rest.setSpacing(6)
             for item in group[at + 1:]:
                 rest.addItem(item)
                 self._adopt(item, body)
