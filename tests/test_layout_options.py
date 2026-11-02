@@ -1,13 +1,25 @@
 """The small album art can be hidden, and the classic layout (bar across the window, art in the bar) can be chosen."""
 
+import time
+
 from PySide6.QtGui import QColor, QPixmap
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
 
-def settle(qapp):  # noqa: F811
-    for _ in range(8):
-        qapp.processEvents()
+def settle(app, condition=None, seconds=5.0):  # noqa: F811
+    if condition is None:                                   # the old count of passes for cheap context switches
+        for _ in range(8):
+            app.processEvents()
+        return
+    end = time.time() + seconds
+    while time.time() < end:
+        if condition():
+            for _ in range(8):
+                app.processEvents()
+            return
+        app.processEvents()
+        time.sleep(0.01)
 
 
 def art(win, qapp):  # noqa: F811
@@ -24,7 +36,7 @@ def test_the_small_art_steps_aside_on_now_playing_and_comes_back(qapp, cfg, monk
         art(win, qapp)
         for page, shown in (("Library", True), ("Now Playing", False), ("Library", True), ("Now Playing", False)):
             win.show_page(page)
-            settle(qapp)
+            settle(qapp, lambda is_shown=shown: win.cover.isVisible() is is_shown)
             assert win.cover.isVisible() is shown, page
         win.show_page("Library")
         win.side_art_box.setChecked(False)

@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import stat
 import time
 import urllib.parse
@@ -61,6 +62,19 @@ def test_the_scrobble_rule_is_half_the_song_or_four_minutes_and_never_for_short_
     assert lastfm.should_scrobble(240, 900)                         # a long song: four minutes is enough
     assert not lastfm.should_scrobble(239, 900)
     assert not lastfm.should_scrobble(500, 0)                       # an unknown length is not sent
+
+
+def test_a_loose_file_is_quieted_and_a_stale_tmp_cannot_bring_the_mode_down(tmp_path):
+    f = tmp_path / "lastfm.json"
+    f.write_text('{"api_key": "key", "secret": "sec", "session": "sess", "user": "jack", "queue": []}')
+    os.chmod(f, 0o666)
+    account = lastfm.Account(f)
+    assert account.api_key == "key" and account.session == "sess"
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600          # secrets do not stay world-readable
+    (tmp_path / "lastfm.json.tmp").write_text("stale")     # as an interrupted save would leave behind
+    os.chmod(tmp_path / "lastfm.json.tmp", 0o666)
+    account.save()
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600
 
 
 def test_a_scrobble_goes_out_signed_and_leaves_the_queue(tmp_path):

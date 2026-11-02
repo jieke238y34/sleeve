@@ -15,7 +15,7 @@ def test_a_chip_per_section_scrolls_to_its_heading(qapp, cfg, monkeypatch, tmp_p
             qapp.processEvents()
         area = win.stack.currentWidget()
         chips = {b.text(): b for b in area.findChildren(QPushButton) if b.objectName() == "chip"}
-        assert {"Sound", "Theme", "APIs", "Updates"} <= set(chips)
+        assert {"Sound", "Theme", "Advanced", "Updates"} <= set(chips)
         assert isinstance(area, QScrollArea) and area.verticalScrollBar().value() == 0
         chips["Updates"].click()
         for _ in range(4):

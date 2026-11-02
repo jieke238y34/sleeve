@@ -30,8 +30,10 @@ def test_the_window_cannot_be_made_bigger_than_the_monitor(qapp, cfg, monkeypatc
         win.resize(5000, 4000)
         for _ in range(4):
             qapp.processEvents()
-        assert (win.width(), win.height()) == (1920, 1080)
+        # the app's own limit is what matters: the true size must never go past it (under a window manager the
+        # compositor clamps a little harder, inside the panels - offscreen platforms see the exact limit)
         assert win.maximumSize() == QSize(1920, 1080)
+        assert win.width() <= 1920 and win.height() <= 1080
     finally:
         win.close()
 

@@ -418,6 +418,7 @@ class AlbumDetail(QWidget):
 
     playAlbum = Signal(list)          # song paths (Play: all; double-click on a track: from that track on)
     enqueueAlbum = Signal(list)
+    playNextAlbum = Signal(list)
     closed = Signal()                 # the Back button, when shown
 
     def __init__(self, parent=None):
@@ -479,6 +480,22 @@ class AlbumDetail(QWidget):
         self.play_btn.clicked.connect(lambda: self.album and self.playAlbum.emit(self.album.paths))
         self.queue_btn.clicked.connect(lambda: self.album and self.enqueueAlbum.emit(self.album.paths))
         self.table.cellDoubleClicked.connect(self._row_activated)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._track_menu)
+
+    def _track_menu(self, pos):
+        "Play / play next / add to queue for one track, taking the rest of the album with it as the double-click does."
+        if self.album is None or not self.album.paths:
+            return
+        row = self.table.rowAt(pos.y())
+        if not 0 <= row < len(self.album.paths):
+            return
+        rest = self.album.paths[row:]
+        menu = theme.Menu(self)
+        menu.addAction("Play", lambda: self.playAlbum.emit(rest))
+        menu.addAction("Play next", lambda: self.playNextAlbum.emit(rest))
+        menu.addAction("Add to queue", lambda: self.enqueueAlbum.emit(rest))
+        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def set_album(self, album, pixmap=None):
         "Show an album; pixmap is its cover (None: a generated one)."

@@ -13,6 +13,8 @@ def test_the_keys_secrets_and_passwords_are_under_the_apis_heading(qapp, cfg, mo
         win.resize(1180, 900)
         win.show()
         win.show_page("Settings")
+        win.settings.set("folded_sections", [])                  # positions only mean something when nothing is folded
+        win._apply_folds()
         for _ in range(6):
             qapp.processEvents()
         page = win.nd_url.window().findChildren(QLabel)

@@ -106,8 +106,9 @@ def test_window_scans_library_and_filters(qapp, cfg, monkeypatch, tmp_path):
         assert win.model.rowCount() == 2
         win.search.setText("")
         items = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert items == ["All songs", "◆ Stashed Songs", "Recently played", "Pop", "Rock"]
-        win.folders.setCurrentRow(4)
+        assert items == ["All songs", "◆ Stashed Songs", "Recently played", "Recently added", "Never played", "Most played",
+                         "Pop", "Rock"]
+        win.folders.setCurrentRow(items.index("Rock"))
         assert win.model.rowCount() == 2
         # playlists page: the Spotify-made file is hidden until asked for
         assert win.pl_list.count() == 0 and win.pl_spotify_btn.text() == "Show Spotify playlists (1)"

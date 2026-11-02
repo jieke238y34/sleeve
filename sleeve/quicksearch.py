@@ -131,6 +131,8 @@ class QuickSearch(QDialog):
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list.itemDoubleClicked.connect(lambda _item: self.activate())
         self.list.itemClicked.connect(lambda _item: self.edit.setFocus())
+        self.list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._result_menu)
         lay.addWidget(self.list, 1)
         self.status = QLabel()
         self.status.setObjectName("muted")
@@ -203,6 +205,18 @@ class QuickSearch(QDialog):
         self.status.setVisible(not res)
 
     # --- keyboard --------------------------------------------------------------------------------------------
+
+    def _result_menu(self, pos):
+        "Right-click on a result: play it, play it next, or add it to the queue - the same three the keyboard offers."
+        item = self.list.itemAt(pos)
+        if item is not None and item.data(ROLE):
+            self.list.setCurrentRow(self.list.row(item))
+        elif self.current() is None:
+            return
+        menu = theme.Menu(self)
+        for label, mode in (("Play now", "play"), ("Play next", "next"), ("Add to queue", "enqueue")):
+            menu.addAction(label, lambda _checked=False, wm=mode: self.activate(wm))
+        menu.exec(self.list.viewport().mapToGlobal(pos))
 
     def _move(self, step, row=None):
         "Highlight the next selectable row in direction step, starting from row (default: the current one)."

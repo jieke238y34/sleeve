@@ -2,7 +2,11 @@
 """Make the screenshots in docs/screenshots and the tour video/GIF in docs/media from the made-up demo library of
 tools/ui_audit.py (never your real music: HOME and the XDG folders point into a scratch folder, the player is a stub).
 
-    QT_QPA_PLATFORM=offscreen PYTHONPATH=. python3 tools/capture_media.py [--no-video]
+    QT_QPA_PLATFORM=offscreen PYTHONPATH=. python3 tools/capture_media.py [--no-video] [--music DIR]
+
+With --music DIR the pictures show the music in DIR instead (read-only: its playlists and your listening history are
+copied into the scratch folder, and nothing is written back). Pages that would show file paths (Settings, Downloads,
+Health) and the colours sheet keep the pictures from a normal run, so run that first.
 
 Needs ffmpeg (libx264) for the tour. Scratch files go to $TMPDIR/sleeve-media.
 """
@@ -16,6 +20,7 @@ import tempfile
 import time
 from pathlib import Path
 
+REAL_HOME = Path.home()                                    # before HOME is pointed into the scratch folder below
 ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = Path(tempfile.gettempdir()) / "sleeve-media"
 shutil.rmtree(SCRATCH, ignore_errors=True)
@@ -62,9 +67,9 @@ class Shooter:
     def settle(self, n=25):
         ui_audit.settle(self.qapp, n)
 
-    def shot(self, name, tour_only=False):
+    def shot(self, name, tour_only=False, widget=None):
         self.settle()
-        img = self.win.grab().toImage()
+        img = (widget or self.win).grab().toImage()
         path = (SCRATCH / f"{name}.png") if tour_only else (SHOTS / f"{name}.png")
         img.save(str(path))
         self.frames[name] = path
@@ -186,6 +191,112 @@ def build_demo_window(tmp):
     return win, albums
 
 
+def absolute_playlists(source, copy, music):
+    """The copied playlists point at the same songs as the originals: an entry written relative to its own folder
+    (../../Dream Pop/x.mp3) or to the music folder (Alternative/x.mp3) becomes an absolute path, whichever exists."""
+    for f in copy.rglob("*.m3u*"):
+        original = source / f.relative_to(copy)
+        out = []
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line and not line.startswith("#") and not os.path.isabs(line):
+                for base in (original.parent, music):
+                    candidate = Path(os.path.normpath(base / line))
+                    if candidate.exists():
+                        line = str(candidate)
+                        break
+            out.append(line)
+        f.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+HIDE_PLAYLISTS = ("Lance",)                                    # left out of the pictures (names of your own playlists)
+AUTO_PLAYLISTS = ("Artist - Arctic Monkeys", "Artist - ABBA")  # auto-generated ones from the Smart folder shown instead
+CRUDE = ("fuck", "shit", "bitch", "nigg", "cunt", "pussy", "dick", "whore", " hoe", "hoes", "slut")
+
+
+def clean_lyrics(song):
+    "False when the song's synced lyrics hold crude words: the pictures go on a public page."
+    lrc = song.lrc
+    if lrc is None:
+        return True
+    try:
+        text = lrc.read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return False
+    return not any(word in text for word in CRUDE)
+
+
+def build_real_window(tmp, music):
+    "A window on the real music folder `music`, with copies of its playlists and of the listening history."
+    from test_app import StubPlayer
+
+    from sleeve import app as sa
+    from sleeve import config
+
+    sa.CACHE_FILE = tmp / "library.json"
+    lists = tmp / "Lists"
+    source = next((d for d in (music / "Playlists", music / "playlists") if d.is_dir()), None)
+    if source is not None:
+        shutil.copytree(source, lists)                         # your own playlists (My Playlists) and the synced ones
+        absolute_playlists(source, lists, music)
+        own = lists / "My Playlists"
+        for name in HIDE_PLAYLISTS:
+            (own / f"{name}.m3u8").unlink(missing_ok=True)
+        for name in AUTO_PLAYLISTS:                            # an auto-generated playlist, as a tile of its own
+            generated = lists / "Smart" / f"{name}.m3u8"
+            if generated.is_file() and own.is_dir():
+                shutil.copy(generated, own / f"{name.removeprefix('Artist - ')}.m3u8")
+    else:
+        lists.mkdir()
+    real_config = REAL_HOME / ".config" / "sleeve"
+    target = Path(os.environ["XDG_CONFIG_HOME"]) / "sleeve"
+    target.mkdir(parents=True, exist_ok=True)
+    if (real_config / "history.json").is_file():
+        shutil.copy(real_config / "history.json", target / "history.json")
+    if (real_config / "playlist-covers").is_dir():             # the covers and colours you gave your playlists
+        shutil.copytree(real_config / "playlist-covers", target / "playlist-covers")
+    if (real_config / "playlist-style.json").is_file() and source is not None:
+        text = (real_config / "playlist-style.json").read_text(encoding="utf-8")
+        (target / "playlist-style.json").write_text(text.replace(str(source), str(lists)), encoding="utf-8")
+    (tmp / "dl.py").write_text("print('hi')\n")
+    (tmp / "config.ini").write_text(f"[paths]\nmusic_dir = {music}\nstate_dir = {tmp}/state\n"
+                                    f"[playlists]\nfolder = {lists}\n")
+    cfg = config.load(tmp / "dl.py")
+    return sa.MainWindow(cfg, StubPlayer(), stash_file=tmp / "liked.json", settings_file=tmp / "settings.json")
+
+
+def pick_real_albums(win, tries=500):
+    """24 song lists like the demo's albums, one song per hue (index = hue / 15 degrees) taken from real covers: the
+    most vivid cover of that hue among an even sample of the library. A hue with none borrows its neighbour's."""
+    from PySide6.QtGui import QColor, QPixmap
+
+    from sleeve import art, theme
+
+    step = max(1, len(win.songs) // tries)
+    best = {}
+    for song in win.songs[::step]:
+        data = art.cover_bytes(song.path)
+        pix = QPixmap()
+        if not data or not pix.loadFromData(data):
+            continue
+        accent = theme.accent_from_cover(pix)
+        if not clean_lyrics(song):
+            continue
+        colour = QColor(accent)
+        if not accent or colour.hsvSaturationF() < 0.4:
+            continue
+        bucket = int(max(colour.hsvHueF(), 0) * 360 // 15) % 24
+        score = colour.hsvSaturationF() * 0.6 + (0.4 if song.lrc else 0)         # vivid, and with lyrics if possible
+        if bucket not in best or score > best[bucket][0]:
+            best[bucket] = (score, song.path)
+    if not best:
+        raise SystemExit("no songs with colourful covers were found in that folder")
+    albums = []
+    for i in range(24):
+        near = min(best, key=lambda b: min((b - i) % 24, (i - b) % 24))
+        albums.append([best[near][1]] * 3)
+    return albums
+
+
 SHOWCASE = (("accent", "Crimson"), ("accent", "Tangerine"), ("accent", "Sunflower"), ("accent", "Emerald"),
             ("accent", "Azure"), ("accent", "Magenta"), ("season", "spring"), ("season", "summer"),
             ("season", "autumn"), ("season", "winter"), ("holiday", "halloween"), ("holiday", "christmas"),
@@ -263,25 +374,33 @@ def colour_showcase(win, s, play):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--no-video", action="store_true", help="only the screenshots")
+    ap.add_argument("--music", help="show this real music folder (read-only) instead of the made-up library")
     args = ap.parse_args()
+    real = Path(args.music).expanduser().resolve() if args.music else None
     SHOTS.mkdir(parents=True, exist_ok=True)
     MEDIA.mkdir(parents=True, exist_ok=True)
 
     qapp = QApplication.instance() or QApplication([])
     tmp = Path(tempfile.mkdtemp(prefix="demo-", dir=SCRATCH))
-    win, albums = build_demo_window(tmp)
+    win, albums = (build_real_window(tmp, real), None) if real else build_demo_window(tmp)
     ui_audit.wait_for_scan(win, qapp)
+    if real:
+        albums = pick_real_albums(win)
     win.resize(1180, 760)
     win.show()
     s = Shooter(win, qapp)
+    if real:                                                  # pages that show file paths keep their made-up pictures
+        for name in ("settings", "downloads", "health", "colours"):
+            if (SHOTS / f"{name}.png").is_file():
+                s.frames[name] = SHOTS / f"{name}.png"
     s.settle(40)
     songs = win.songs
     queue = [alb[0] for alb in albums]                        # one song of every album: a queue in 24 colours
 
-    def play(album, source="Road trip"):
+    def play(album, source=None):
         "Play the first song of this album, with the whole queue around it."
         win.player.queue, win.player.index = queue, album
-        win._queue_source = source
+        win._queue_source = source or ("All songs" if real else "Road trip")
         win._on_track(album, queue[album])
         win._refresh_queue()
         win.player.durationChanged.emit(214.0)
@@ -322,13 +441,15 @@ def main():
     s.settle(20)
 
     # playlists
-    for i, name in enumerate(PLAYLISTS):
-        songs = [win.by_path[albums[(i * 4 + j * 3) % 24][j % 3]] for j in range(9)]
-        win.my_playlists.create(name, songs)
+    if not real:
+        for i, name in enumerate(PLAYLISTS):
+            songs = [win.by_path[albums[(i * 4 + j * 3) % 24][j % 3]] for j in range(9)]
+            win.my_playlists.create(name, songs)
     win._load_playlists()
     files = {name: str(path) for name, path, _mine in win._playlist_files}
-    win.pl_styles.set_colour(files["Late night"], "#f2a65a")
-    win.pl_styles.set_colour(files["Gym"], "#7fd6c2")
+    if not real:
+        win.pl_styles.set_colour(files["Late night"], "#f2a65a")
+        win.pl_styles.set_colour(files["Gym"], "#7fd6c2")
     win._refresh_playlist_grid()
     s.page("Playlists")
     s.settle(60)
@@ -337,7 +458,12 @@ def main():
     QTest.mouseMove(vp, QPoint(160, 130))
     s.shot("playlists")
 
-    assert win._select_playlist_path(files["Road trip"])
+    if real:                                                  # the fullest playlist you made yourself
+        mine = {n: str(p) for n, p, made_here in win._playlist_files if made_here}
+        shown_path = mine[max(mine, key=lambda n: Path(mine[n]).stat().st_size)]
+    else:
+        shown_path = files["Road trip"]
+    assert win._select_playlist_path(shown_path)
     win.pl_stack.setCurrentIndex(1)
     s.settle(40)
     s.shot("playlist-detail")
@@ -345,7 +471,7 @@ def main():
 
     # identity and listening: ten days of made-up plays
     now = time.time()
-    for i, song in enumerate(songs):
+    for i, song in enumerate([] if real else songs):
         for k in range((i * 7) % 5 + 1):
             win.history.record(song.path, 150 + 20 * k, when=now - ((i * 3 + k * 2) % 10) * 86400 - 3600 * (k + 1))
     win._refresh_listening()
@@ -359,29 +485,32 @@ def main():
     s.shot("listening")
     win.identity_page.set_tab("identity")
 
-    # settings, then its theme section
+    # settings, then its theme section (these show file paths, so a real library keeps the earlier made-up pictures)
     s.page("Settings")
-    s.shot("settings")
+    if not real:
+        s.shot("settings")
     area = next((a for a in win.theme_box.window().findChildren(QScrollArea) if a.isAncestorOf(win.theme_box)), None)
     if area is not None:
         area.ensureWidgetVisible(win.theme_box, 50, 200)
-    s.shot("settings-theme", tour_only=True)
+    if not real:
+        s.shot("settings-theme", tour_only=True)
     if area is not None:
         area.verticalScrollBar().setValue(0)
 
-    s.page("Downloads")
-    s.shot("downloads")
-    s.page("Health")
-    s.settle(40)
-    s.shot("health")
+    if not real:
+        s.page("Downloads")
+        s.shot("downloads")
+        s.page("Health")
+        s.settle(40)
+        s.shot("health")
 
-    # the expanded cover, then the Dusk theme
+    # the fullscreen cover (F11 or double-click on the art), then the Dusk theme
     s.page("Now Playing")
     play(RED)
-    win._toggle_cover()
+    win._toggle_fullscreen()
     s.settle(60)
-    s.shot("cover-view")
-    win._toggle_cover()
+    s.shot("cover-view", widget=win._cover_screen)
+    win._cover_screen.close()
     for name, album in (("np-red", RED), ("np-teal", TEAL), ("np-purple", PURPLE), ("np-orange", ORANGE)):
         play(album)
         s.shot(name, tour_only=True)
@@ -390,7 +519,8 @@ def main():
     s.settle(30)
     play(PURPLE)
     s.shot("dusk")
-    colour_showcase(win, s, play)
+    if not real:
+        colour_showcase(win, s, play)
     win.close()
 
     if not args.no_video:
@@ -405,10 +535,12 @@ def make_tour(frames):
     cmd = ["ffmpeg", "-y", "-loglevel", "error"]
     for n in names:
         cmd += ["-loop", "1", "-t", f"{d + f:.2f}", "-i", str(frames[n])]
-    chain, last = [], "[0:v]"
+    fit = "scale=1180:760:force_original_aspect_ratio=decrease,pad=1180:760:(ow-iw)/2:(oh-ih)/2:color=0x15131d,setsar=1"
+    chain = [f"[{i}:v]{fit}[f{i}]" for i in range(len(names))]          # every frame the same size, whatever its shape
+    last = "[f0]"
     for i in range(1, len(names)):
         out = f"[x{i}]"
-        chain.append(f"{last}[{i}:v]xfade=transition=fade:duration={f}:offset={i * d:.2f}{out}")
+        chain.append(f"{last}[f{i}]xfade=transition=fade:duration={f}:offset={i * d:.2f}{out}")
         last = out
     chain.append(f"{last}scale=1280:-2:flags=lanczos,format=yuv420p[v]")
     mp4 = MEDIA / "sleeve-tour.mp4"

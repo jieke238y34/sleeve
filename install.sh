@@ -5,6 +5,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/jieke238y34/sleeve/main/install.sh | sh
 #
 # Options:  --uninstall   remove what this script installed (your music, playlists and settings are left alone)
+#           --dev         install the newest code on the main branch instead of the newest release, to try work
+#                         that has not been released yet (`sleeve --update` then tells you it is ahead)
 #           --help
 # Environment: SLEEVE_PREFIX (default ~/.local/share/sleeve), SLEEVE_SOURCE (a folder or git URL to install from)
 set -eu
@@ -21,14 +23,17 @@ say() { printf '%s\n' "$*"; }
 fail() { printf 'Sleeve install: %s\n' "$*" >&2; exit 1; }
 
 # Developer options, left out of --help: --sha256 HEX installs the release wheel (or the .whl in SLEEVE_SOURCE) only if
-# its SHA-256 is HEX (from the web: curl ... | sh -s -- --sha256 HEX); SLEEVE_FROM=main installs the newest source
-# instead of the newest release.
+# its SHA-256 is HEX (from the web: curl ... | sh -s -- --sha256 HEX). --dev is documented in --help.
 SHA256=""
 UNINSTALL=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --help|-h) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h)
+            if [ -f "$0" ]; then sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+            else printf '%s\n' "Usage: sh install.sh [--uninstall | --dev | --sha256 HEX]  (this run was piped in, so there is no file to print the full help from)"; fi
+            exit 0 ;;
         --uninstall) UNINSTALL=1 ;;
+        --dev) SLEEVE_FROM=main ;;
         --sha256)
             [ $# -ge 2 ] || fail "--sha256 needs the 64 hexadecimal digits of the wheel's SHA-256"
             SHA256=$(printf '%s' "$2" | tr 'A-F' 'a-f'); shift ;;
@@ -55,14 +60,22 @@ case "${UNINSTALL:-}" in
 esac
 
 # --- Python 3.10 or newer --------------------------------------------------------------------------------------------
+# The one command to install python3 with, in the words of the package manager found; the fallback is the one
+# install.sh has named since the start.
+PY_HINT="Fedora:        sudo dnf install python3"
+if command -v apt >/dev/null 2>&1; then PY_HINT="Debian/Ubuntu: sudo apt install python3 python3-venv"
+elif command -v pacman >/dev/null 2>&1; then PY_HINT="Arch:          sudo pacman -S python"
+elif command -v zypper >/dev/null 2>&1; then PY_HINT="openSUSE:      sudo zypper install python3"
+elif command -v apk >/dev/null 2>&1; then PY_HINT="Alpine:        sudo apk add python3"
+fi
 PY=""
 for candidate in python3 python3.13 python3.12 python3.11 python3.10; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
         PY="$candidate"; break
     fi
 done
-[ -n "$PY" ] || fail "Python 3.10 or newer is needed. Fedora: sudo dnf install python3 · Debian/Ubuntu: sudo apt install python3 python3-venv"
-"$PY" -c 'import venv, ensurepip' 2>/dev/null || fail "Python's venv module is missing. Debian/Ubuntu: sudo apt install python3-venv"
+[ -n "$PY" ] || fail "Python 3.10 or newer is needed. To install it: $PY_HINT"
+"$PY" -c 'import venv, ensurepip' 2>/dev/null || fail "Python's venv module is missing. Debian/Ubuntu: sudo apt install python3-venv; most other distros ship it inside python3, so a full reinstall of that package brings it"
 
 # by visadaking (github.com/visadaking)
 # --- optional KDE version info for the install log 
@@ -100,20 +113,42 @@ kde_env
 say "$(kde_env_line)"
 
 # --- where to install from: this checkout if there is one, else GitHub ---------------------------------------------------
-HERE=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
+# Run straight from the web (`curl ... | sh`), `$0` is the shell itself, not this script, so no checkout in the
+# current folder is ever mistaken for it: only a real $0 file counts.
+FROM_WEB=""
+HERE=""
+if [ -f "$0" ]; then
+    HERE=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
+else FROM_WEB=1
+fi
 if [ -n "${SLEEVE_SOURCE:-}" ]; then SOURCE="$SLEEVE_SOURCE"
 elif [ -n "$SHA256" ]; then SOURCE="$REPO_URL"             # a hash is for a downloaded wheel, never a checkout
 elif [ -n "$HERE" ] && [ -f "$HERE/pyproject.toml" ] && [ -d "$HERE/sleeve" ]; then SOURCE="$HERE"
 else SOURCE="$REPO_URL"; fi
 
 # Straight from the web the default is the newest published release (what `sleeve --update` follows), so a normal
-# install is never ahead of it. SLEEVE_FROM=main installs the newest source instead; no release, no curl or no network
-# falls back to the source too. A checkout, or SLEEVE_SOURCE, is always installed as it is.
+# install is never ahead of it. --dev (or SLEEVE_FROM=main) installs the newest source instead. If GitHub cannot be
+# reached at all, a piped install stops instead of silently installing source code; a checkout can still install
+# itself. If no release has been published yet, the newest source is installed and that is said out loud.
 RELEASE_API="https://api.github.com/repos/jieke238y34/sleeve/releases/latest"
 RELEASE_PREFIX="https://github.com/jieke238y34/sleeve/releases/download/"
+NET_FAIL=""
+# The wheel attached to the newest release, or nothing: a plain return 1 means "none found / no tools" and the
+# caller falls back; NET_FAIL=1 means GitHub was reachable but misbehaved, which a piped install must not survive
+# survive silently.
 latest_wheel() {
-    command -v curl >/dev/null 2>&1 || return 1
-    curl -fsSL --proto "=https" --proto-redir "=https" --max-time 20 -H "Accept: application/vnd.github+json" "$RELEASE_API" 2>/dev/null | "$PY" -c '
+    TMP="${TMPDIR:-/tmp}/sleeve-release.$$.http"
+    HTTP=""
+    if command -v curl >/dev/null 2>&1; then
+        HTTP=$(curl -sSL --proto "=https" --proto-redir "=https" --max-time 20 -H "Accept: application/vnd.github+json" \
+                     -o "$TMP" -w '%{http_code}' "$RELEASE_API" 2>/dev/null)
+        case "$HTTP" in *[!0-9]*|"") HTTP="000";; esac
+    elif command -v wget >/dev/null 2>&1; then
+        if wget -q -T 20 -O "$TMP" "$RELEASE_API" 2>/dev/null; then HTTP="200"; else HTTP="000"; fi
+    else rm -f "$TMP"; return 1
+    fi
+    case "$HTTP" in
+        200) W="$("$PY" -c '
 import json, sys
 try:
     assets = json.load(sys.stdin).get("assets", [])
@@ -124,14 +159,33 @@ for a in assets:
     if url.startswith(sys.argv[1]) and url.endswith(".whl"):
         print(url)
         sys.exit(0)
-sys.exit(1)' "$RELEASE_PREFIX"
+sys.exit(1)' "$RELEASE_PREFIX" < "$TMP")" ;;
+        404) W="" ;;                                 # no release published yet: an ordinary "none"
+        *) W=""; NET_FAIL=1 ;;                       # bad gateway, rate limit, no route: that is a different thing
+    esac
+    rm -f "$TMP"
+    [ -n "$W" ] || return 1
+    printf '%s\n' "$W"
 }
 RELEASE=""
+RELEASE_URL="${TMPDIR:-/tmp}/sleeve-release.$$.url"
 if [ "$SOURCE" = "$REPO_URL" ] && [ "${SLEEVE_FROM:-release}" != "main" ]; then
-    RELEASE=$(latest_wheel) || RELEASE=""
+    latest_wheel > "$RELEASE_URL" || true                       # the function runs unwrapped, so NET_FAIL survives it
+    RELEASE=$(cat "$RELEASE_URL") || RELEASE=""
+    rm -f "$RELEASE_URL"
     if [ -n "$RELEASE" ]; then SOURCE="$RELEASE"
     elif [ -n "$SHA256" ]; then fail "--sha256 needs a release wheel, and none could be fetched"
-    else say "note: no published release could be fetched; installing the newest source instead"; fi
+    elif [ -n "$NET_FAIL" ] && [ -n "$FROM_WEB" ]; then
+        fail "the newest release could not be fetched from GitHub, so nothing was installed: check the internet and run it again, or git clone the repository and run ./install.sh there"
+    elif [ -n "$NET_FAIL" ]; then
+        say "note: GitHub could not be reached; installing the newest source from the repository instead"
+    elif [ -n "$FROM_WEB" ]; then
+        say "note: no release has been published yet, so this installs the newest code on the main branch, not a released build"
+    else say "note: no published release could be fetched; installing the newest source instead"
+    fi
+fi
+if [ -z "$RELEASE" ] && [ "$SOURCE" = "$REPO_URL" ] && [ "${SLEEVE_FROM:-release}" = "main" ]; then
+    say "dev build: installing the newest code from the main branch. It is not a released build."
 fi
 
 WORK=""
@@ -144,8 +198,12 @@ if [ -n "$SHA256" ]; then
     esac
     WORK=$(mktemp -d)
     case "$SOURCE" in
-        https://*) command -v curl >/dev/null 2>&1 || fail "curl is needed to download the wheel"
-                   curl -fsSL --proto "=https" --proto-redir "=https" --max-time 300 -o "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE" ;;
+        https://*) command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || fail "curl or wget is needed to download the wheel"
+                   if command -v curl >/dev/null 2>&1; then
+                       curl -fsSL --proto "=https" --proto-redir "=https" --max-time 300 -o "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE"
+                   else
+                       wget -q -T 300 -O "$WORK/${SOURCE##*/}" "$SOURCE" || fail "could not download $SOURCE"
+                   fi ;;
         *) [ -f "$SOURCE" ] || fail "no such file: $SOURCE"
            cp "$SOURCE" "$WORK/${SOURCE##*/}" ;;
     esac
@@ -211,6 +269,9 @@ command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t 
 
 say ""
 say "Sleeve is installed. Start it from your application menu, or run: sleeve"
+if LABEL=$("$VENV/bin/python" -c 'from sleeve import build_label; print(build_label())' 2>/dev/null) && [ -n "$LABEL" ]; then
+    say "That is Sleeve $LABEL."
+fi
 case ":$PATH:" in *":$BIN:"*) ;; *) say "(add $BIN to your PATH to use the 'sleeve' command in a terminal)" ;; esac
 
 # --- optional helpers: say what is missing, never install anything without being asked --------------------------------
@@ -223,5 +284,6 @@ if [ -n "$missing" ]; then
     if command -v dnf >/dev/null 2>&1; then say "  Fedora:        sudo dnf install pulseaudio-utils ffmpeg-free"
     elif command -v apt >/dev/null 2>&1; then say "  Debian/Ubuntu: sudo apt install pulseaudio-utils ffmpeg"
     elif command -v pacman >/dev/null 2>&1; then say "  Arch:          sudo pacman -S libpulse ffmpeg"
+    elif command -v zypper >/dev/null 2>&1; then say "  openSUSE:      sudo zypper install pulseaudio-utils ffmpeg"
     fi
 fi

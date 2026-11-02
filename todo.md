@@ -7,7 +7,7 @@ Everything planned for Sleeve, with where it stands. Items move to the [changelo
 - **Partly**: something shipped; what is left is written next to it.
 - **Not started**: agreed, nothing exists yet.
 
-Current version: **0.2.0** (every build also shows its build number).
+Current version: **0.3.0** (every build also shows its build number).
 
 ## Done
 
@@ -25,7 +25,11 @@ Current version: **0.2.0** (every build also shows its build number).
 - [x] **Health: find tags online** from MusicBrainz, asks first, one request a second, you review before it writes.
 - [x] **Settings search**, the user guide moved out of the app to `docs/guide/`, lower idle CPU/GPU use.
 - [x] **GitHub checks pass** (Python 3.10, 3.12, 3.13, lint, bandit, CodeQL, pip-audit, build).
-- [x] **Version number**: 0.2.0, plus a build number on every build (`0.2.0 · build 93 (83504e0)`).
+- [x] **Version number**: 0.3.0, plus a build number on every build (`0.3.0 · build 247`).
+- [x] **Waveform strip**, **painted play/pause icons**, **queue commands on every song list** (Play now, Play next, Add
+      to queue), **click an artist or album name** to browse their songs, **hover tips switch**, **several saved
+      themes**, **Black accent**, **Advanced settings group**, **quiet while a game has the screen**, **Maid BT
+      status line**, and account files kept user-only (all in the changelog).
 - [x] **Test run no longer exits with a crash code** (a Qt shutdown segfault turned CI red).
 
 ## Check on screen
@@ -57,17 +61,17 @@ Current version: **0.2.0** (every build also shows its build number).
       listening data stays honest.
 - [ ] **Listening time already recorded** stays at 30 s per play; only new plays are measured properly.
 - [ ] **Thermals on this PC** are higher than usual and Cooler Control does not see the fans (outside Sleeve).
-- [ ] **README video and screenshots** must show the current version.
-- [ ] **Old `worktrees/app` folder** holds unfinished Oct 29 edits; keep or drop.
+- [ ] **README video and screenshots** must show the current version (the 0.3.0 look: waveform strip, Classic layout,
+      saved themes).
 
 ## Not started: player and lyrics
 
-- [ ] **Lyrics**: (junk lines at the edges of a lyric file are now stripped) lyrics in the expanded album view
-      (one line before, the next line underneath, the current one in the accent or text colour); download lyrics
-      while songs download; a faster stop command.
-- [ ] **Now Playing**: (featured artists now read "SBTRKT with Sampha") title colour follows the accent or text colour (configurable); the label says the playlist or
-      genre that is playing, not the word "playlist"; clean display of featured artists (SBTRKT with Sampha, not
-      "SBTRKT/Sampha").
+- [ ] **Lyrics**: lyrics in the expanded album view (one line before, the next line underneath, the current one in the
+      accent or text colour); download lyrics while songs download; a faster stop command. (Junk lines at the edges
+      of a lyric file are stripped. The five online lyric sources exist as a module, `lyrics_sources.py`, but no
+      button uses them yet.)
+- [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
+      genre that is playing, not the word "playlist". (Featured artists already read "SBTRKT with Sampha".)
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.
 - [ ] **Crossfade settings** (gapless is in); **play sets of tracks as one unit** in shuffle.
 - [ ] **Equaliser and DSP**: 5 to 15 band or parametric EQ with AutoEQ presets, bass boost, virtualiser, reverb,
@@ -77,20 +81,22 @@ Current version: **0.2.0** (every build also shows its build number).
 ## Not started: look and settings
 
 - [ ] **Less Spotify-like look**: show a concept first. Custom top panel (title bar) with edges that resize easily
-      instead of the grab bar. **Classic UI** option with text lists for playlists and the library.
+      instead of the grab bar. (Settings > Look > Classic layout is in; text lists for playlists and the library are
+      not.)
 - [ ] **Library tab** redesign; **Playlists tab**: covers (from Spotify or generated), your own images, per-playlist
       title colour, a create-playlist tile first, album-sized tiles.
 - [ ] **Text colour options** with default swatches, **custom fonts** (no font-size setting).
-- [ ] **Settings**: disable the dl.py integration (hides Downloads and Health until a downloader is attached); an
-      (an Update button and an Uninstall button are in, under Settings > Updates).
+- [ ] **Settings**: disable the dl.py integration (hides Downloads and Health until a downloader is attached).
+      (The Update and Uninstall buttons are in, under Settings > Updates.)
 
 ## Not started: services and downloads
 
-- [ ] **Last.fm** full integration (scrobbling, liked-song sync) and ListenBrainz; play counts.
+- [ ] **Last.fm** liked-song sync and ListenBrainz; play counts. (Scrobbling and "now playing" are in.)
 - [ ] **dl.py**: search a song by name and artist in plain text and download it with its lyrics, and a box for it in
       the Downloads page; podcast support; optional download sources (playlist-sync, ncspot).
 - [ ] **Health**: decide what belongs on Health rather than Downloads and rebuild it.
-- [ ] **Navidrome** support; **web radio**; **podcasts**.
+- [x] **Navidrome** page and Settings > Navidrome: search, albums, streaming, covers and Save to library.
+- [ ] **Web radio**; **podcasts**.
 - [ ] **Smart playlists and smart albums** that fill themselves; a **smart DJ** that picks from your library to match
       what you chose.
 - [ ] **Explicit label** on songs; **AI tag** for AI-made songs (needs a database to look them up in).
@@ -99,8 +105,10 @@ Current version: **0.2.0** (every build also shows its build number).
 
 ## Not started: project
 
-- [ ] **Wiki** (the GitHub wiki must be created once on the repository page first), README refresh, installation docs.
-- [ ] **GitHub**: About text and topics, release notes, a downloadable release for the tester (tag `v0.2.0`).
+- [ ] **Wiki** (the GitHub wiki must be created once on the repository page first).
+- [x] **README refresh and installation docs** for 0.3.0 plus the changes since (kept in step with each change).
+- [x] **Release**: 0.3.0 is published (tag `v0.3.0`), with release notes.
+- [ ] **GitHub**: a fuller About text and more topics (only `music` and `player` are set).
 
 ## To discuss (suggestions from ChatGPT, nothing agreed)
 

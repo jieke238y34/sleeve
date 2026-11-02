@@ -59,3 +59,19 @@ def test_a_black_accent_is_shown_light_where_it_is_drawn_on_the_window():
     style = theme.build_style("#000000")
     assert "QSlider::sub-page:horizontal { background: #d9d5ea;" in style    # the slider fill is visible
     assert "QListWidget#nav::item:selected { background: #000000; color: #ffffff;" in style   # the surface stays black
+
+
+def test_picking_black_wins_over_matching_the_song_and_turns_matching_off(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.show()
+        red = QPixmap(64, 64)
+        red.fill(QColor("#c01830"))
+        win.match_box.setChecked(True)
+        win._show_cover(red, "Song", "Artist", "Album")
+        assert win._accent_shown != "#000000"                              # following the red cover
+        win.accent_box.setCurrentIndex(win.accent_box.findText("Black"))   # the user picks Black
+        assert win.settings.accent == "Black" and win.settings.accent_from_cover is False
+        assert not win.match_box.isChecked() and win._accent_shown == "#000000"
+    finally:
+        win.close()

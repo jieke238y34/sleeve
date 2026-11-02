@@ -10,6 +10,8 @@ def _private_session_bus():
     to the desktop's own bus), so a test that publishes a media player or sends a notification would do it on the real
     desktop, where the panel, the lock screen and widgets watch for exactly that. This runs before Qt is touched."""
     dead = "unix:path=/nonexistent/sleeve-tests-have-no-bus"          # tests that need a bus skip themselves
+    if os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
+        os.environ["SLEEVE_TESTS_DESKTOP_BUS"] = os.environ["DBUS_SESSION_BUS_ADDRESS"]
     os.environ["DBUS_SESSION_BUS_ADDRESS"] = dead
     exe = shutil.which("dbus-daemon")
     if exe is None:

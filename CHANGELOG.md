@@ -8,18 +8,46 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Settings sections fold**: click a heading (Sound, Theme, Look, Advanced...) to close or open it, and Sleeve remembers.
+  The rarely used ones (Advanced, Startup, Listening, Updates) start closed, so the page is much shorter. Searching opens
+  every section it finds something in, and the jump chips open the section they go to.
+- **Smart folders** in the Library list: *Recently added* (files from the last 30 days, newest first), *Never played* and
+  *Most played* (from your listening history, which needs "Remember what I listen to"). They fill themselves, show how
+  many songs they hold, and change nothing on disk.
 - **Click an artist or an album name** (on Now Playing, or the artist in the player bar) to see all their songs in the
   Library. A chip beside the filter says what is shown (`Artist: Kendrick Lamar ✕`) and takes you back; picking a folder
   also leaves it. Right-click a song in the Library or the queue for *All songs by…* and *The album…*. A tag holding
   several artists asks which one.
+- **Queue commands everywhere**: right-click a song in a playlist, an album's track list or a Ctrl+K result for
+  *Play now*, *Play next* and *Add to queue* (the Library and the queue had them already). On an album, a track takes
+  the rest of the album with it, as a double-click does.
+- Settings > Look: a switch to **hide the hover tips** (the small labels on buttons).
+- Maid BT: when `maid-watcher` is installed, one line under the earbuds buttons shows the connection, the battery and
+  the Bluetooth codec. The codec is always called lossy; Sleeve never claims a bit-perfect Bluetooth path.
 - **Black** is an accent colour (and a custom accent may be as dark as you like). Text and icons on an accent surface turn
   white when the accent is dark; where the accent is drawn straight on the window (sliders, switch labels, icons) a black
   accent is shown as a light neutral so it never disappears.
 
+### Changed
+
+- Settings: backup, your files and the connections (APIs, Discord, Last.fm, Navidrome) now sit together under one
+  **Advanced** heading.
+- **The window steps aside for games**: while it is minimised or hidden, Sleeve stops loading row covers, redrawing
+  Settings > APIs and sweeping loudness over the library. Music, scrobbles and the Discord status carry on, and
+  everything resumes when the window comes back.
+- Accounts and settings stay private: `settings.json` and the Last.fm file are made readable by you only, even over an
+  older or looser file or an interrupted save.
+
 ### Fixed
 
+- **Your own themes are kept, not replaced**: making a new theme used to overwrite the last one, so *Edit my theme* only
+  ever showed the newest. Settings > Theme now has **New theme…** (adds one) and **Edit this theme…** (changes or removes
+  the one shown), and all of them are in the picker (up to 12). A theme from an older version moves over by itself.
+- **Picking an accent now wins over “Match the colours of the song”** (which is turned off for you, with a note), so
+  choosing Black, or any colour, no longer appears to do nothing while a song is playing.
 - A black cover (such as *meet the grahams*) no longer makes the accent green from its faint colour noise: it gives a
   black accent. Grey and white covers still give a soft white.
+- `install.sh` no longer stops when a KDE tool it asks for the log (Plasma, Frameworks, Qt versions) is missing.
 - The updater tests no longer depend on which version the app is (they broke when 0.3.0 was cut).
 
 ## [0.3.0] - 2026-11-01

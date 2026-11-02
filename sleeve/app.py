@@ -3,6 +3,8 @@ import argparse
 import dataclasses
 import os
 import random
+import secrets
+import shutil
 import sys
 import time
 from collections import Counter
@@ -14,6 +16,7 @@ from PySide6.QtCore import (
     QEvent,
     QModelIndex,
     QPoint,
+    QPointF,
     QProcess,
     QProcessEnvironment,
     QSize,
@@ -28,10 +31,12 @@ from PySide6.QtGui import (
     QCursor,
     QDesktopServices,
     QFont,
+    QFontMetrics,
     QGuiApplication,
     QIcon,
     QKeySequence,
     QPainter,
+    QPen,
     QPixmap,
     QShortcut,
 )
@@ -108,6 +113,7 @@ from . import (
     seasons,
     settings,
     singleton,
+    smart,
     stash,
     sync,
     tags,
@@ -142,6 +148,43 @@ CUSTOM_LABEL = "Custom…"
 QUEUE_ROW = QSize(10, 54)                    # every row of the queue is this tall, with or without its cover
 DL_HOME = "https://github.com/jieke238y34/playlist-sync"
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
+
+
+class FoldLabel(QLabel):
+    "A section heading in Settings that can be clicked to fold or unfold its section; a small chevron shows which."
+
+    clicked = Signal()
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.folded = False
+        self.setCursor(Qt.PointingHandCursor)
+
+    def set_folded(self, folded):
+        self.folded = bool(folded)
+        self.update()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        else:
+            super().mousePressEvent(e)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(hint.width() + 26, hint.height())
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(QColor(theme.MUTED), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        x, y = QFontMetrics(self.font()).horizontalAdvance(self.text()) + 14, self.height() / 2
+        if self.folded:                                     # ▸ closed: the section is folded away
+            p.drawPolyline([QPointF(x, y - 4), QPointF(x + 4, y), QPointF(x, y + 4)])
+        else:                                               # ▾ open
+            p.drawPolyline([QPointF(x - 2, y - 2), QPointF(x + 2, y + 2), QPointF(x + 6, y - 2)])
+        p.end()
 
 
 class TopButton(QPushButton):
@@ -211,6 +254,7 @@ HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe 
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = f"{labels.MARK} {labels.SONGS}"
 RECENT = "Recently played"
+SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists whose order is their point (kept until a header)
 
 
 def fmt_time(seconds):
@@ -607,12 +651,13 @@ class MainWindow(QMainWindow):
         self._closing = self._rescan_again = False
         self.songs, self.by_path = [], {}
         self.folder = ALL
+        self._mtimes = {}                                     # song path -> file time, for Recently added
         self._dragging = False
         self._seeking = False                               # a player seek is not listening time
         self._lyrics = []
         self._pos = self._dur = 0.0
         self.setWindowTitle("Sleeve")
-        theme.set_custom(self.settings.custom_theme)         # the user's own theme, if they made one
+        theme.set_customs(self.settings.custom_themes)       # the user's own themes, if they made any
         self._look = self._look_name()                      # the theme picked by hand, else the seasonal look, if any
         self._accent_shown = theme.look_accent(self._look) if self._look else self.settings.accent_color
         self.setStyleSheet(theme.build_style(self._accent_shown, theme.look_palette(self._look)))
@@ -828,6 +873,7 @@ class MainWindow(QMainWindow):
         for signal in (self.album_grid.enqueueAlbum, self.album_detail.enqueueAlbum):
             signal.connect(lambda paths: self.player.enqueue(paths))
         self.album_grid.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
+        self.album_detail.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         self.album_grid.openAlbum.connect(self._open_album)
         self.album_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.album_grid.customContextMenuRequested.connect(self._album_menu)
@@ -1459,7 +1505,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.settings_none)
 
         def section(text):
-            lab = QLabel(text)
+            lab = FoldLabel(text)
+            lab.setToolTip("Click to fold or unfold this section")
             lab.setObjectName("heading")
             lab.setAccessibleName(text)             # the section heading is announced as a heading
             lay.addSpacing(10)
@@ -1539,7 +1586,12 @@ class MainWindow(QMainWindow):
         self.earbuds_note = QLabel("")
         self.earbuds_note.setObjectName("muted")
         eb.addWidget(self.earbuds_note, 1)
+        self.earbuds_status = QLabel("")
+        self.earbuds_status.setObjectName("muted")
+        self.earbuds_status.setWordWrap(True)
+        lay.addWidget(self.earbuds_status)
         self.earbuds_frame.setVisible(earbuds.find_script() is not None)
+        self._refresh_earbuds_status()
         lay.addWidget(self.earbuds_frame)
 
         section("Theme")
@@ -1547,13 +1599,17 @@ class MainWindow(QMainWindow):
         self.theme_box = QuietCombo()
         self._fill_theme_box()
         self.theme_box.currentIndexChanged.connect(self._theme_changed)
-        self.theme_make_btn = QPushButton("")
-        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a theme")
-        self.theme_make_btn.clicked.connect(self._make_theme)
+        self.theme_make_btn = QPushButton("New theme…")
+        self.theme_make_btn.setToolTip("Pick your own colours and keep them as a new theme")
+        self.theme_make_btn.clicked.connect(lambda: self._make_theme())
+        self.theme_edit_btn = QPushButton("Edit this theme…")
+        self.theme_edit_btn.setToolTip("Change the colours of the theme shown here, or remove it")
+        self.theme_edit_btn.clicked.connect(lambda: self._make_theme(edit=True))
         self._theme_button_text()
         row.addWidget(QLabel("Theme"))
         row.addWidget(self.theme_box)
         row.addWidget(self.theme_make_btn)
+        row.addWidget(self.theme_edit_btn)
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(hint("A theme keeps its own colours and background whatever is playing (Dusk is peach on warm "
@@ -1687,7 +1743,8 @@ class MainWindow(QMainWindow):
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
 
-        section("APIs")
+        section("Advanced")
+        subsection("APIs")
         lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
                            "here runs until you switch it on. Below the list, each service has its own switch and its "
                            "keys, secrets and passwords; none of them is ever shown in the list."))
@@ -1800,8 +1857,50 @@ class MainWindow(QMainWindow):
         login = self.settings.navidrome
         self.nd_status = hint(f"Connected to {login['url']} as {login['user']}." if login else "Not connected.")
         lay.addWidget(self.nd_status)
-        lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Covers from the "
-                           "server are not shown yet."))
+        lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Browse covers on the "
+                           "Navidrome page, where Save to library also downloads songs into your music folder."))
+
+        subsection("Backup")
+        lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
+                           "covers and title colours. It never holds your music, your Last.fm sign-in or your dl.py "
+                           "approval."))
+        backup_btn = QPushButton("Back up my data…")
+        backup_btn.setToolTip("Save a zip of your settings, stashed songs, listening history and playlist looks")
+        backup_btn.clicked.connect(self._backup_data)
+        restore_btn = QPushButton("Restore from a backup…")
+        restore_btn.setToolTip("Put the files of a backup made here back; restart Sleeve afterwards")
+        restore_btn.clicked.connect(self._restore_data)
+        row = FlowLayout()
+        row.addWidget(backup_btn)
+        row.addWidget(restore_btn)
+        lay.addLayout(row)
+
+        subsection("Your files")
+        grid = QGridLayout()
+        for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
+                                            ("dl.py", self.cfg.dl_path or "not found (optional)"),
+                                            (labels.SONGS, self.stash.file), ("Settings", self.settings.file))):
+            value_label = QLabel(str(value))
+            value_label.setTextFormat(Qt.PlainText)
+            value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setObjectName("muted")
+            grid.addWidget(QLabel(label), r, 0)
+            grid.addWidget(value_label, r, 1)
+        grid.setColumnStretch(1, 1)
+        lay.addLayout(grid)
+        buttons = QHBoxLayout()
+        if not self.cfg.has_dl:                                # with a dl.py its config.ini says where the music is
+            change = QPushButton("Change music folder…")
+            change.clicked.connect(self._change_music_dir)
+            buttons.addWidget(change)
+        open_music = QPushButton("Open music folder")
+        open_music.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.cfg.music_dir))))
+        rescan = QPushButton("Rescan library")
+        rescan.clicked.connect(self.rescan)
+        buttons.addWidget(open_music)
+        buttons.addWidget(rescan)
+        buttons.addStretch(1)
+        lay.addLayout(buttons)
 
         section("Startup")
         self.session_box = Switch("Remember what was playing")
@@ -1828,48 +1927,6 @@ class MainWindow(QMainWindow):
         row.addWidget(clear)
         row.addWidget(art_clear)
         lay.addLayout(row)
-
-        section("Backup")
-        lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
-                           "covers and title colours. It never holds your music, your Last.fm sign-in or your dl.py "
-                           "approval."))
-        backup_btn = QPushButton("Back up my data…")
-        backup_btn.setToolTip("Save a zip of your settings, stashed songs, listening history and playlist looks")
-        backup_btn.clicked.connect(self._backup_data)
-        restore_btn = QPushButton("Restore from a backup…")
-        restore_btn.setToolTip("Put the files of a backup made here back; restart Sleeve afterwards")
-        restore_btn.clicked.connect(self._restore_data)
-        row = FlowLayout()
-        row.addWidget(backup_btn)
-        row.addWidget(restore_btn)
-        lay.addLayout(row)
-
-        section("Your files")
-        grid = QGridLayout()
-        for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
-                                            ("dl.py", self.cfg.dl_path or "not found (optional)"),
-                                            (labels.SONGS, self.stash.file), ("Settings", self.settings.file))):
-            value_label = QLabel(str(value))
-            value_label.setTextFormat(Qt.PlainText)
-            value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            value_label.setObjectName("muted")
-            grid.addWidget(QLabel(label), r, 0)
-            grid.addWidget(value_label, r, 1)
-        grid.setColumnStretch(1, 1)
-        lay.addLayout(grid)
-        buttons = QHBoxLayout()
-        if not self.cfg.has_dl:                                # with a dl.py its config.ini says where the music is
-            change = QPushButton("Change music folder…")
-            change.clicked.connect(self._change_music_dir)
-            buttons.addWidget(change)
-        open_music = QPushButton("Open music folder")
-        open_music.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.cfg.music_dir))))
-        rescan = QPushButton("Rescan library")
-        rescan.clicked.connect(self.rescan)
-        buttons.addWidget(open_music)
-        buttons.addWidget(rescan)
-        buttons.addStretch(1)
-        lay.addLayout(buttons)
 
         section("Updates")
         self.update_label = hint(f"You have Sleeve {build_label()}. Nothing is checked until you press the button.")
@@ -1920,6 +1977,8 @@ class MainWindow(QMainWindow):
             area = area.parentWidget()
         if area is not None:
             head.parentWidget().show()                          # a section the search hid comes back to be shown
+            if head.text() in self.settings.folded_sections:
+                self._toggle_fold(head.text(), folded=False)    # and a folded one opens
             area.verticalScrollBar().setValue(max(0, head.mapTo(page, QPoint(0, 0)).y() - 8))
 
     LABEL_COLUMN = 190
@@ -1990,7 +2049,7 @@ class MainWindow(QMainWindow):
     def _do_update(self):
         if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
             return
-        cmd = updater.update_command(self._release["tag"])
+        cmd = updater.update_command(self._release["tag"], wheel=self._release.get("wheel") or None)
         self.update_btn.setEnabled(False)
         self.update_label.setText(f"Updating to {updater.label(self._release)}… this can take a minute.")
         proc = self._update_proc = QProcess(self)
@@ -2078,17 +2137,46 @@ class MainWindow(QMainWindow):
                 current.append(item)
         for item in kept:
             lay.addItem(item)
-        self._setting_groups = []
+        self._setting_groups, self._folds, self._searching = [], {}, False
         for group in groups:
             box = QWidget()
             col = QVBoxLayout(box)
             col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(10)
-            for item in group:
+            at = next(i for i, item in enumerate(group) if item.widget() is not None)  # gap first, then title
+            for item in group[:at + 1]:
                 col.addItem(item)
                 self._adopt(item, box)
+            body = QWidget()                                    # everything under the title: what folding hides
+            rest = QVBoxLayout(body)
+            rest.setContentsMargins(0, 0, 0, 0)
+            rest.setSpacing(10)
+            for item in group[at + 1:]:
+                rest.addItem(item)
+                self._adopt(item, body)
+            col.addWidget(body)
             lay.addWidget(box)
             self._setting_groups.append(box)
+            heading = group[at].widget()
+            self._folds[heading.text()] = (heading, body)
+            heading.clicked.connect(lambda name=heading.text(): self._toggle_fold(name))
+        self._apply_folds()
+
+    def _apply_folds(self):
+        "Open or close every section as the settings say; while the search box has words, all of them stay open."
+        for name, (heading, body) in self._folds.items():
+            folded = name in self.settings.folded_sections
+            heading.set_folded(folded and not self._searching)
+            body.setVisible(not folded or self._searching)
+
+    def _toggle_fold(self, name, folded=None):
+        "Fold or unfold one section and remember it."
+        names = [n for n in self.settings.folded_sections if n != name]
+        now = (name not in self.settings.folded_sections) if folded is None else folded
+        if now:
+            names.append(name)
+        self._set_setting("folded_sections", names)
+        self._apply_folds()
 
     def _adopt(self, item, box):
         "Make the widgets of a layout item (and of the layouts inside it) children of `box`, keeping what was hidden."
@@ -2113,6 +2201,8 @@ class MainWindow(QMainWindow):
             box.setVisible(match)
             shown += match
         self.settings_none.setVisible(bool(words) and not shown)
+        self._searching = bool(words)                           # a search opens the sections it found
+        self._apply_folds()
 
     def _change_music_dir(self):
         from PySide6.QtWidgets import QFileDialog
@@ -2218,7 +2308,11 @@ class MainWindow(QMainWindow):
         self.settings.set("accent", name)
         self._save_settings()                                   # first, so a slip below cannot lose the choice
         self._show_accent_choice()
-        self._apply_accent()
+        if self.settings.accent_from_cover:                     # an accent you pick yourself must win over the song's
+            self.match_box.setChecked(False)                    # (this applies and saves it)
+            self.status.showMessage("Picking an accent turns off “Match the colours of the song”", 6000)
+        else:
+            self._apply_accent()
 
     def _effective_accent(self):
         """The accent to show: a theme picked by hand (Dusk, your own) keeps its own accent whatever is playing; else
@@ -2235,8 +2329,8 @@ class MainWindow(QMainWindow):
 
     def _accent_synced(self):
         "True while your own theme is worn and it ties its accent to the playing song (Theme creator > Sync)."
-        custom = self.settings.custom_theme
-        return bool(custom) and self.settings.theme == "custom" and "accent" in (custom.get("sync") or ())
+        custom = self._custom_theme()
+        return bool(custom) and "accent" in (custom.get("sync") or ())
 
     def _look_name(self):
         "The look to wear: the theme picked by hand, else the seasonal or holiday look for today, else None."
@@ -2254,26 +2348,41 @@ class MainWindow(QMainWindow):
         box.setCurrentIndex(max(box.findData(self.settings.theme), 0))
         box.blockSignals(False)
 
-    def _theme_button_text(self):
-        self.theme_make_btn.setText("Edit my theme…" if self.settings.custom_theme else "Create your own…")
+    def _custom_theme(self, look=None):
+        "The saved theme that is worn (or the one named `look`, such as custom-3fa2c1), else None."
+        look = look or self.settings.theme
+        return next((t for t in self.settings.custom_themes if theme.custom_key(t) == look), None)
 
-    def _make_theme(self):
-        "Open the colour picker for the user's own theme; keep what comes out and wear it."
-        start = self.settings.custom_theme
+    def _theme_button_text(self):
+        self.theme_edit_btn.setVisible(self._custom_theme() is not None)       # only a theme of yours can be edited
+
+    def _make_theme(self, edit=False):
+        "Open the colour picker for a new theme of your own, or for the one shown (edit); keep what comes out, wear it."
+        worn = self._custom_theme() if edit else None
+        start = worn
         if not start:
             bg, text, muted = theme.look_palette(self._look)
             start = {"bg": bg, "text": text, "muted": muted, "accent": self._accent_shown, "name": "", "backdrop": None}
-        dlg = ThemeDialog(self, start, can_remove=bool(self.settings.custom_theme))
+        dlg = ThemeDialog(self, start, can_remove=worn is not None)
         if dlg.exec() != QDialog.Accepted:
             return
-        if dlg.removed:
-            self.settings.set("custom_theme", None)
-            if self.settings.theme == "custom":
-                self.settings.set("theme", "default")
+        saved = list(self.settings.custom_themes)
+        if dlg.removed and worn is not None:
+            saved = [t for t in saved if t["id"] != worn["id"]]
+            self.settings.set("custom_themes", saved)
+            self.settings.set("theme", "default")
         else:
-            self.settings.set("custom_theme", dlg.result_theme())
-            self.settings.set("theme", "custom")
-        theme.set_custom(self.settings.custom_theme)
+            made = {**dlg.result_theme(), "id": worn["id"] if worn else secrets.token_hex(3)}
+            if worn:
+                saved = [made if t["id"] == worn["id"] else t for t in saved]
+            elif len(saved) >= settings.MAX_THEMES:
+                self.status.showMessage(f"You can keep {settings.MAX_THEMES} themes: remove one first", 6000)
+                return
+            else:
+                saved.append(made)
+            self.settings.set("custom_themes", saved)
+            self.settings.set("theme", theme.custom_key(made))
+        theme.set_customs(self.settings.custom_themes)
         self._save_settings()
         self._fill_theme_box()
         self._theme_button_text()
@@ -2284,6 +2393,7 @@ class MainWindow(QMainWindow):
         "The user picked a theme in Settings: save it and repaint everything."
         self.settings.set("theme", self.theme_box.currentData())
         self._save_settings()
+        self._theme_button_text()
         self._look = self._look_name()
         self._apply_accent(force=True)
 
@@ -2522,7 +2632,7 @@ class MainWindow(QMainWindow):
         return apis.summary(self.settings, self.presence.state, a.user, a.ready, self.scrobbler.active, len(a.queue))
 
     def _refresh_apis(self):
-        "Redraw the list in Settings > APIs from the current settings: only when someone could be looking at it."
+        "Redraw the list in Settings > APIs from the current settings — only when someone could be looking at it."
         if not hasattr(self, "api_box") or not self._on_settings or self._was_quiet:
             self._apis_stale = True                     # the changes are still true; the list is redrawn then
             return
@@ -2945,6 +3055,7 @@ class MainWindow(QMainWindow):
 
     def _scan_done(self, songs):
         keep_folder = self.folder
+        self._mtimes = {}                                    # file times are looked up again after every scan
         self.songs = songs
         self.by_path = {s.path: s for s in songs}
         groups = library.by_folder(songs)
@@ -2953,11 +3064,13 @@ class MainWindow(QMainWindow):
         self.folders.addItem(ALL)
         self.folders.addItem(LIKED)
         self.folders.addItem(RECENT)
+        for name in smart.NAMES:                            # lists that fill themselves
+            self.folders.addItem(name)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
         self._fill_folder_counts()
-        names = [ALL, LIKED, RECENT, *groups]
+        names = [ALL, LIKED, RECENT, *smart.NAMES, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
@@ -3082,11 +3195,13 @@ class MainWindow(QMainWindow):
             songs = [s for s in self.songs if s.path in self.stash]
         elif self.folder == RECENT:                          # newest first, until a column header is clicked
             songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
+        elif self.folder in smart.NAMES:
+            songs = smart.pick(self.folder, self.songs, self.history.counts(), self._mtime)
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
         if self._scope:
             songs = [s for s in songs if self._in_scope(s)]
-        self.model.keep_order = self.folder == RECENT
+        self.model.keep_order = self.folder in SMART_ORDERED
         self.model.set_songs(library.search(songs, self.search.text()))
         if self.model.placeholder is None:
             self.model.placeholder = self._blank_icon()
@@ -3151,6 +3266,28 @@ class MainWindow(QMainWindow):
 
     def _earbuds_done(self, proc, code):
         self.earbuds_note.setText("Done" if code == 0 else "Maid BT reported a problem")
+        proc.deleteLater()
+        self._refresh_earbuds_status()
+
+    def _refresh_earbuds_status(self):
+        "One honest line under the earbuds buttons: connection, battery, codec. Never a quality claim."
+        exe = shutil.which("maid-watcher")
+        if exe is None:
+            self.earbuds_status.setText("")
+            return
+        proc = QProcess(self)
+        proc.finished.connect(lambda code, _status, p=proc: self._earbuds_status_done(p))
+        proc.errorOccurred.connect(lambda _err, p=proc: self._earbuds_status_done(p))
+        self._earbuds_status_proc = proc
+        proc.start(exe, ["status", "--json"])
+
+    def _earbuds_status_done(self, proc):
+        try:
+            data = earbuds.status(run=lambda: bytes(proc.readAllStandardOutput()).decode())
+            line = earbuds.describe(data, earbuds.codec())
+        except Exception:
+            line = ""
+        self.earbuds_status.setText(line)
         proc.deleteLater()
 
     def polish_controls(self):
@@ -3569,9 +3706,20 @@ class MainWindow(QMainWindow):
         self._refresh_listening()
         self.status.showMessage("Listening history cleared", 6000)
 
+    def _mtime(self, path):
+        "When a song's file was last changed (None if it cannot be read); looked up once per scan."
+        cache = self._mtimes
+        if path not in cache:
+            try:
+                cache[path] = os.stat(path).st_mtime
+            except OSError:
+                cache[path] = None
+        return cache[path]
+
     def _fill_folder_counts(self):
         "The number of songs beside each folder in the list: all, stashed, recently played, and each genre folder."
         per_folder = Counter(s.folder for s in self.songs)
+        counts = self.history.counts()
         for i in range(self.folders.count()):
             item = self.folders.item(i)
             name = item.text()
@@ -3581,6 +3729,8 @@ class MainWindow(QMainWindow):
                 count = sum(1 for s in self.songs if s.path in self.stash)
             elif name == RECENT:
                 count = sum(1 for p in self.history.recent() if p in self.by_path)
+            elif name in smart.NAMES:
+                count = len(smart.pick(name, self.songs, counts, self._mtime))
             else:
                 count = per_folder.get(name, 0)
             item.setData(COUNT_ROLE, count)
@@ -4061,6 +4211,7 @@ class MainWindow(QMainWindow):
             return
         m = theme.Menu(self)
         m.addAction("Play now", lambda: self._play_queue([s.path for s in songs], 0, self._playlist_source()))
+        m.addAction("Play next", lambda: self.player.enqueue([s.path for s in songs], next_up=True))
         m.addAction("Add to queue", lambda: self.player.enqueue([s.path for s in songs]))
         m.addAction(labels.UNDO if all(s.path in self.stash for s in songs) else labels.VERB,
                     lambda: self._toggle_stash([s.path for s in songs]))

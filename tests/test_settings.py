@@ -22,6 +22,18 @@ def test_defaults_save_and_reload(tmp_path):
     assert again.max_volume == 60 and again.accent_color == settings.ACCENTS["Emerald"]
 
 
+def test_a_loose_file_is_quieted_and_a_stale_tmp_cannot_bring_the_mode_down(tmp_path):
+    f = tmp_path / "settings.json"
+    f.write_text('{"volume": 90}')
+    os.chmod(f, 0o666)
+    assert settings.Settings(f).volume == 90
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600          # the server login and account details stay user-only
+    (tmp_path / "settings.json.tmp").write_text("stale")    # as an interrupted save would leave behind
+    os.chmod(tmp_path / "settings.json.tmp", 0o666)
+    settings.Settings(f).save()
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600
+
+
 def test_bad_values_never_get_in(tmp_path):
     f = tmp_path / "settings.json"
     f.write_text(json.dumps({"volume": 500, "max_volume": 5, "gapless": "yes", "accent": "Neon", "other": 1,

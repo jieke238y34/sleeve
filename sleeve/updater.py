@@ -132,7 +132,18 @@ def latest_release(opener=urllib.request.urlopen):
     if parse_version(tag) is None or not str(tag).startswith("v"):
         raise UpdateError("The newest release has a name Sleeve does not understand.")
     version = ".".join(map(str, parse_version(tag)))
-    return {"tag": tag, "version": version, "build": parse_build(tag, title), "url": f"{RELEASES_PAGE}/tag/{tag}"}
+    wheel = ""
+    for asset in data.get("assets") or []:
+        url = asset.get("browser_download_url", "")
+        ours = (isinstance(url, str) and url.startswith(f"https://github.com/{REPO}/")
+                and url.split("?")[0].endswith(".whl"))
+        if ours and not wheel:
+            wheel = url                                  # the first wheel the release itself attaches
+        if ours and url.rsplit("/", 1)[-1] == f"sleeve-{version}-py3-none-any.whl":
+            wheel = url                                  # the name the release workflow attaches beats anything else
+            break
+    return {"tag": tag, "version": version, "build": parse_build(tag, title),
+            "url": f"{RELEASES_PAGE}/tag/{tag}", "wheel": wheel}
 
 
 def prefix_dir(env=None):
@@ -193,7 +204,8 @@ def fetch_wheel(url, dest, opener=urllib.request.urlopen):
 def update_command(tag, python=None, wheel=None):
     """The pip command that puts a release into the running environment. A newer build of the version already
     installed has the same version number, so pip is told to reinstall it (without touching Qt and the rest).
-    `wheel` is a file already downloaded and checked; without it pip fetches the release's own address."""
+    `wheel` is the release wheel, as an address or as a file already downloaded and checked; without it pip fetches
+    the address the release's tag suggests."""
     url = wheel or wheel_url(tag)
     if parse_version(tag) < parse_version(__version__):
         raise ValueError("that release is older than this copy")             # never a downgrade, whoever asks
@@ -379,12 +391,14 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
         return 0
     out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
     if sha256 is None:
-        done = run(update_command(release["tag"]), check=False)  # noqa: S603  # nosec B603
+        done = run(update_command(release["tag"], wheel=release.get("wheel") or None),
+                   check=False)  # noqa: S603  # nosec B603
     else:
         with tempfile.TemporaryDirectory(prefix="sleeve-update-") as folder:
-            wheel = Path(folder) / wheel_url(release["tag"]).rsplit("/", 1)[1]
+            url = release.get("wheel") or wheel_url(release["tag"])
+            wheel = Path(folder) / url.rsplit("/", 1)[1]
             try:
-                fetch_wheel(wheel_url(release["tag"]), wheel, opener)
+                fetch_wheel(url, wheel, opener)
             except UpdateError as e:
                 out(str(e))
                 return 1

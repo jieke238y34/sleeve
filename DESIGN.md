@@ -28,8 +28,11 @@ between songs, smooth scrolling and the lyric line following the song.
 
 - The system's default sans font at 10 pt, so it matches the desktop. Lists use 10 to 13 pt by importance. Logs use
   the system monospace because they are logs.
-- Radius: 15 px on buttons and inputs, 12 px on panels, 8 px on list rows, full circle on transport buttons. Round
-  controls are the transport buttons only; panels are not pills.
+- Radius comes in set sizes, and every one is straight from `theme.build_style`: 8 px on list rows, 10 px on nav
+  rows, 12 px on panels and containers, 14 px on chips, 15 px on buttons and inputs, 20 px on the round 40 px icon
+  buttons, 22 px on the 44 px skip buttons, 28 px on the 56 px play button. Only the small ones (chips, round icon
+  buttons) are full circles; bigger transport buttons are not. If the stylesheet and this page ever disagree, the
+  stylesheet is the truth and this page gets fixed.
 
 ## Components
 

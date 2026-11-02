@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 
 from . import navidrome, themes
@@ -18,6 +19,8 @@ ACCENTS = {                        # bold, in the order of the colour wheel, the
 }
 CUSTOM = "Custom"                  # the accent name when the user picked their own colour (see accent_custom)
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
+_THEME_ID = re.compile(r"[a-z0-9]{3,12}")
+MAX_THEMES = 12                    # the themes a person keeps; more would make the picker a chore
 
 # name -> default. A value that fails its check falls back to the default, so a hand-edited file cannot break the app.
 DEFAULTS = {
@@ -28,7 +31,8 @@ DEFAULTS = {
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
     "accent_custom": "#a595f0",    # the colour used when accent is CUSTOM
     "accent_from_cover": False,    # let the accent follow the colours of the song that is playing
-    "custom_theme": None,      # the user's own theme: {name, bg, text, muted, accent, backdrop} or None (see theme.py)
+    "custom_theme": None,      # the one theme of older versions; moved into custom_themes on load
+    "custom_themes": [],       # your own themes: [{id, name, bg, text, muted, accent, backdrop?, sync?}] (see theme.py)
     "theme": "default",        # "default" (accent colour and seasons) or a theme from theme.CUSTOM_THEMES
     "seasonal": "off",         # "off", "seasons", "holidays" or "both": which looks follow the calendar
     "season_choice": "auto",   # "auto" or "spring"/"summer"/"autumn"/"winter": pin a season by hand
@@ -56,6 +60,7 @@ DEFAULTS = {
     "tooltips": True,                  # the little labels that appear when the pointer rests on a button
     "side_art": True,                  # the small album art under the sidebar list is shown
     "legacy_layout": False,            # the classic look: the player bar across the whole window, with the art in it
+    "folded_sections": ["Advanced", "Startup", "Listening", "Updates"],   # Settings sections that start closed
     "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
@@ -70,7 +75,9 @@ DEFAULTS = {
 def _valid_custom_theme(value):
     "{name, bg, text, muted, accent, backdrop?}: four #rrggbb colours, a short name, and three more colours or None."
     if not isinstance(value, dict) or not {"bg", "text", "muted", "accent"} <= set(value) <= {
-            "name", "bg", "text", "muted", "accent", "backdrop", "sync"}:
+            "id", "name", "bg", "text", "muted", "accent", "backdrop", "sync"}:
+        return False
+    if "id" in value and not (isinstance(value["id"], str) and _THEME_ID.fullmatch(value["id"])):
         return False
     if not all(isinstance(value[k], str) and _HEX.fullmatch(value[k]) for k in ("bg", "text", "muted", "accent")):
         return False
@@ -107,9 +114,16 @@ def _valid(key, value):
     if key in ("np_queue_side", "np_lyrics_side"):
         return value in ("left", "right")
     if key == "theme":
-        return value == "default" or value == "custom" or value in themes.NAMES
+        return (value == "default" or value in themes.NAMES
+                or (isinstance(value, str) and re.fullmatch(r"custom(-[a-z0-9]{3,12})?", value) is not None))
     if key == "custom_theme":
         return value is None or _valid_custom_theme(value)
+    if key == "folded_sections":
+        return (isinstance(value, list) and len(value) <= 30
+                and all(isinstance(n, str) and 0 < len(n) <= 40 for n in value))
+    if key == "custom_themes":
+        return (isinstance(value, list) and len(value) <= MAX_THEMES and all(
+            _valid_custom_theme(t) and "id" in t for t in value) and len({t["id"] for t in value}) == len(value))
     if key == "seasonal":
         return value in ("off", "seasons", "holidays", "both")
     if key == "season_choice":
@@ -150,7 +164,10 @@ class Settings:
     def load(self):
         self.values = dict(DEFAULTS)
         try:
-            if self.file.stat().st_size > MAX_BYTES:
+            st = self.file.stat()
+            if st.st_mode & 0o777 != 0o600:                 # a file old versions or an editor left looser: quiet it
+                os.chmod(self.file, 0o600)                  # this file carries account details; user-only is right
+            if st.st_size > MAX_BYTES:
                 return
             data = json.loads(self.file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -159,6 +176,18 @@ class Settings:
             for key, value in data.items():
                 if key in DEFAULTS and _valid(key, value):
                     self.values[key] = value.lower() if key == "accent_custom" else value
+        self._migrate_single_theme()
+
+    def _migrate_single_theme(self):
+        "Older versions kept one theme in `custom_theme` (worn as theme 'custom'); it becomes the first saved theme."
+        old = self.values.get("custom_theme")
+        if not old or self.values.get("custom_themes"):
+            return
+        new_id = secrets.token_hex(3)
+        self.values["custom_themes"] = [{**old, "id": new_id}]
+        self.values["custom_theme"] = None
+        if self.values.get("theme") == "custom":
+            self.values["theme"] = f"custom-{new_id}"
 
     def __getattr__(self, name):
         try:
@@ -185,10 +214,11 @@ class Settings:
         return ACCENTS[self.values["accent"]]
 
     def save(self):
-        "Write the file (mode 0600, replaced atomically). Raises OSError."
+        "Write the file (mode 0600 even over a stale or looser file, replaced atomically). Raises OSError."
         self.file.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.file.with_name(self.file.name + ".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)                    # a .tmp left over from an interrupted save may carry another mode
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(self.values, fh, indent=1, sort_keys=True)
         os.replace(tmp, self.file)

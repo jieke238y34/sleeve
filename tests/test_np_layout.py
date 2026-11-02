@@ -1,6 +1,8 @@
 """Now Playing: the playlist on the left, the art in the middle, the lyrics on the right. The art never starts above the
 top of the lists beside it, it stays centered over the page, and each panel can be hidden."""
 
+import time
+
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QPushButton
@@ -8,6 +10,19 @@ from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
 SIZES = [(800, 560), (900, 640), (1000, 600), (1180, 760), (1500, 700), (1500, 1100), (2000, 1000), (2560, 1440)]
+
+
+def settle_for(app, condition, seconds=5.0):
+    """A slow machine (or a busy test run) cannot count event passes: wait for the layout to be what the test
+    says, then let a few extra passes through, and only let the plain assert speak when the wait is over."""
+    end = time.time() + seconds
+    while time.time() < end:
+        if condition():
+            for _ in range(4):
+                app.processEvents()
+            return
+        app.processEvents()
+        time.sleep(0.01)
 
 
 def open_page(qapp, win, size=(1180, 760)):  # noqa: F811
@@ -94,14 +109,13 @@ def test_a_narrow_window_shows_one_panel_at_a_time_and_remembers_what_you_chose(
         win.tab_lyrics.setChecked(False)
         qapp.processEvents()
         win.tab_lyrics.setChecked(True)                      # asking for the lyrics puts the playlist away for now
-        qapp.processEvents()
+        settle_for(qapp, lambda: win.np_lyrics_side.isVisible() and not win.np_side.isVisible())
         assert win.np_lyrics_side.isVisible() and not win.np_side.isVisible()
         assert win.settings.np_queue_shown and win.settings.np_lyrics_shown          # neither choice was lost
         assert win.np_cover.side() >= 260                    # CI fonts are a little taller than a desktop's: some slack
         win.resize(1700, 800)                                # room again: the playlist is not a casualty of the squeeze
         win.tab_queue.setChecked(True)
-        for _ in range(4):
-            qapp.processEvents()
+        settle_for(qapp, lambda: win.np_side.isVisible() and win.np_lyrics_side.isVisible())
         assert win.np_side.isVisible() and win.np_lyrics_side.isVisible()
     finally:
         win.close()
