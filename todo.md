@@ -49,12 +49,11 @@ Current version: **0.3.2** (every build also shows its build number).
       new Identity panels (listening over time, time of day, most revisited albums).
 - [ ] **Same-volume levelling**: the engine works (ReplayGain tags or measured with `ffmpeg`, on by default). (The ReplayGain opt-out, the per-song gain
       on Now Playing and the quiet-song boost setting are in.)
-- [ ] **Sleeve must not change the PipeWire setup**: audited 2026-11-02. Done: the boost only sets the volume of
-      streams whose process id is Sleeve's (`boost.py`), never a device, the default sink or a WirePlumber rule; it is
-      off unless the volume ceiling is moved above 100% (default 75%), with a note under the slider, and it puts the
-      streams back to 100% on a clean quit. Left: WirePlumber remembers a stream's volume under its `media.role`
-      (`Music` here), so the slider position, and a boost left behind by a crash, can be restored for other apps that
-      also say `music`. Decide whether Sleeve keeps `media.role=music` (Maid BT matches on it) or drops it.
+- [x] **Sleeve must not change the PipeWire setup**: audited 2026-11-02. The boost only sets the volume of streams
+      whose process id is Sleeve's (`boost.py`), never a device, the default sink or a WirePlumber rule; it is off unless
+      the volume ceiling is moved above 100% (default 75%), with a note under the slider, and it puts the streams back to
+      100% on a clean quit. WirePlumber remembers a stream's volume under its `media.role`, so leaving that label out is
+      a setting now (Settings > Advanced > Sound server; on by default because Maid BT matches it).
 
 ## Not started: bugs
 

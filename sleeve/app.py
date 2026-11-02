@@ -1855,6 +1855,15 @@ class MainWindow(QMainWindow):
         self._show_shortcuts()
 
         section("Advanced")
+        subsection("Sound server")
+        self.role_box = Switch("Label Sleeve's sound as \u201cmusic\u201d for the sound server")
+        self.role_box.setChecked(self.settings.sound_role_music)
+        self.role_box.toggled.connect(self._role_toggled)
+        lay.addWidget(self.role_box)
+        lay.addWidget(hint("Tools that look for music streams (Maid BT, your own WirePlumber rules) match this label. "
+                           "WirePlumber also remembers a stream's volume per label, so with it on, other apps that "
+                           "say \u201cmusic\u201d can come up at Sleeve's volume. Takes effect the next time Sleeve "
+                           "starts."))
         subsection("APIs")
         lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
                            "here runs until you switch it on. Below the list, each service has its own switch and its "
@@ -2447,6 +2456,10 @@ class MainWindow(QMainWindow):
     def _library_order_changed(self):
         self._set_setting("library_order", self.order_box.currentData())
         self._apply_library_order(fresh=True)
+
+    def _role_toggled(self, on):
+        self._set_setting("sound_role_music", on)
+        self.status.showMessage("The sound label changes the next time Sleeve starts.", 6000)
 
     def _title_accent_toggled(self, on):
         self._set_setting("title_in_accent", on)
@@ -5917,6 +5930,13 @@ def attach_media_keys(win, app, suffix="sleeve"):
     return mpris
 
 
+def pulse_prop(role_music=True):
+    """The labels Sleeve's sound streams carry (the PULSE_PROP text). `media.role=music` is what Maid BT and WirePlumber
+    rules match on, but WirePlumber also remembers a stream's volume per role, so it can be left off in Settings."""
+    props = ["application.id=io.github.jieke238y34.Sleeve", "application.icon_name=io.github.jieke238y34.Sleeve"]
+    return " ".join((["media.role=music"] if role_music else []) + props)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
@@ -5965,8 +5985,7 @@ def main(argv=None):
         return updater.cli_uninstall(full=args.full, playlist_dir=playlist_dir)
     command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
     # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
-    os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
-                                        "application.icon_name=io.github.jieke238y34.Sleeve")
+    os.environ.setdefault("PULSE_PROP", pulse_prop(settings.Settings().sound_role_music))
     app = QApplication(sys.argv[:1])
     instance_name = singleton.NAME + ("-preview" if args.preview else "")
     if singleton.already_running(instance_name, command=command):   # Sleeve is open already, given the command
