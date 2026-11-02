@@ -311,7 +311,7 @@ class AlbumGrid(QListWidget):
             pix.fill(Qt.transparent)
             p = QPainter(pix)
             p.setFont(font)
-            p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor(theme.TEXT))
+            p.setPen(QColor(wanted) if wanted else QColor(theme.TEXT))
             p.drawText(QRect(0, 0, side, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
                        fm.elidedText(album.name, Qt.ElideRight, side))
             p.setFont(small)

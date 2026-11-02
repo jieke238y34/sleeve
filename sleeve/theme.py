@@ -450,6 +450,7 @@ def rounded_pixmap(pix, size, radius):
     return out
 
 
+BLACK_COVER = ("#1b1b1e", "#131315", "#0d0d0f")      # the backdrop for a black cover: no hue of its faint noise
 NEUTRAL = ("#2a2640", "#1d1a2c", "#16131f")        # the backdrop when there is no cover (or it has no colour)
 
 
@@ -620,9 +621,12 @@ class Backdrop(QWidget):
             self._retarget()
 
     def _retarget(self):
-        colours = self._fixed or palette_from(self._pix) or [QColor(c) for c in NEUTRAL]
+        black = self._pix is not None and not self._pix.isNull() and _is_black(self._pix)
+        palette = [] if black else palette_from(self._pix)         # a black cover has no colour to follow
+        colours = self._fixed or palette or [QColor(c) for c in (BLACK_COVER if black else NEUTRAL)]
         if self._blend:
-            colours = cover_gradient(palette_from(self._pix), self._fixed[2]) if self._pix is not None else colours
+            if self._pix is not None:
+                colours = [QColor(c) for c in BLACK_COVER] if black else cover_gradient(palette, self._fixed[2])
             colours = [QColor(c) for c in colours]
         self._from, self._to = resample(self._now, len(colours)), colours     # 3 and 5 colours fade into each other
         self._fade.stop()

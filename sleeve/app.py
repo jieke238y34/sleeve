@@ -4111,9 +4111,9 @@ class MainWindow(QMainWindow):
         chosen = QColorDialog.getColor(start, self, f"Title colour for {tile.name}")
         if not chosen.isValid():
             return
-        if not theme.readable(chosen.name()):
-            self.status.showMessage("That colour is too dark to read on Sleeve's background. Pick a lighter one.", 8000)
-            return
+        if not theme.readable(chosen.name()):                   # any colour is allowed; the person is only told
+            self.status.showMessage("Colour applied. It is hard to read on this background, so some details may be "
+                                    "hidden.", 8000)
         self._set_playlist_look(tile, colour=chosen.name())
 
     def _load_playlists(self, select=None):
