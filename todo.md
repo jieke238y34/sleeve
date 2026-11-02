@@ -7,7 +7,7 @@ Everything planned for Sleeve, with where it stands. Items move to the [changelo
 - **Partly**: something shipped; what is left is written next to it.
 - **Not started**: agreed, nothing exists yet.
 
-Current version: **0.3.0** (every build also shows its build number).
+Current version: **0.3.1** (every build also shows its build number).
 
 ## Done
 
@@ -65,8 +65,7 @@ Current version: **0.3.0** (every build also shows its build number).
       listening data stays honest.
 - [ ] **Listening time already recorded** stays at 30 s per play; only new plays are measured properly.
 - [ ] **Thermals on this PC** are higher than usual and Cooler Control does not see the fans (outside Sleeve).
-- [ ] **README video and screenshots** must show the current version (the 0.3.0 look: waveform strip, Classic layout,
-      saved themes).
+- [x] **README video and screenshots** retaken from the real library for 0.3.1 (2026-11-02).
 
 ## Not started: player and lyrics
 
