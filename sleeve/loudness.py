@@ -167,21 +167,22 @@ class LoudnessCache:
             pass
 
 
-def gain_for(path, cache, use_tags=True):
+def gain_for(path, cache, use_tags=True, max_boost=MAX_BOOST):
     "dB to apply to a song: from its ReplayGain tag (unless tags are switched off), else the cache; None if unknown."
     g = tag_gain_db(path) if use_tags else None
     if g is not None:
-        return min(g, MAX_BOOST)
+        return min(g, max_boost)
     lufs = cache.get(path)
-    return None if lufs is None else adjust_db(lufs)
+    return None if lufs is None else adjust_db(lufs, max_boost=max_boost)
 
 
 class LoudnessWorker(QThread):
     measured = Signal(str, float)               # path, dB to apply
 
-    def __init__(self, paths, cache, ffmpeg, parent=None, use_tags=True):
+    def __init__(self, paths, cache, ffmpeg, parent=None, use_tags=True, max_boost=MAX_BOOST):
         super().__init__(parent)
         self.paths, self.cache, self.ffmpeg, self.use_tags = list(paths), cache, ffmpeg, use_tags
+        self.max_boost = max_boost
 
     def run(self):
         done = 0
@@ -194,7 +195,7 @@ class LoudnessWorker(QThread):
             if lufs is None:
                 continue
             self.cache.set(path, lufs)
-            self.measured.emit(path, adjust_db(lufs))
+            self.measured.emit(path, adjust_db(lufs, max_boost=self.max_boost))
             done += 1
             if done % 10 == 0:
                 self.cache.save()

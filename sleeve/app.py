@@ -104,6 +104,7 @@ from . import (
     library,
     loudness,
     lrc,
+    lyrics_sources,
     musicbrainz,
     myplaylists,
     navidrome,
@@ -112,6 +113,7 @@ from . import (
     plstyle,
     seasons,
     settings,
+    shuffleorder,
     singleton,
     smart,
     stash,
@@ -473,6 +475,7 @@ class SongModel(QAbstractTableModel):
         self.icons, self.placeholder = {}, None   # path -> cover icon, shared with the window; the mark until one loads
         self._sort = None                     # (column, order) the header shows; kept when the list changes
         self.keep_order = False               # the list is in an order of its own (recently played): do not sort it
+        self.shuffle_seed = 0                 # not 0 and no column chosen: the list is mixed by this seed
 
     def set_songs(self, songs):
         self.beginResetModel()
@@ -484,6 +487,8 @@ class SongModel(QAbstractTableModel):
         if self._sort and not self.keep_order:
             col, order = self._sort
             self.songs.sort(key=self.SORT_KEYS[col], reverse=order == Qt.DescendingOrder)
+        elif not self._sort and self.shuffle_seed and not self.keep_order:
+            self.songs.sort(key=lambda s: shuffleorder.key(self.shuffle_seed, s.path))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.songs)
@@ -516,7 +521,7 @@ class SongModel(QAbstractTableModel):
 
     def sort(self, column, order=Qt.AscendingOrder):
         self.beginResetModel()                # a reset also drops the selection, which would point at other songs
-        self._sort = (column, order)
+        self._sort = (column, order) if column >= 0 else None      # -1: the header shows no sort
         self._apply_sort()
         self.endResetModel()
 
@@ -538,6 +543,25 @@ class NavWorker(QThread):
             self.failed.emit(str(e))
         except Exception:                                    # a bug must not leave the page waiting for ever
             self.failed.emit("Something went wrong talking to the server.")
+
+
+class LyricsWorker(QThread):
+    "Asks the online lyrics sources about one song off the window's thread: `done` has its path and a Lyric or None."
+
+    done = Signal(str, object)
+
+    def __init__(self, path, artist, title, album, duration, parent=None):
+        super().__init__(parent)
+        self._ask = (artist, title, album, duration)
+        self.path = path
+
+    def run(self):
+        artist, title, album, duration = self._ask
+        try:
+            found = lyrics_sources.lookup(artist, title, album=album, duration=duration)
+        except Exception:                                    # a source misbehaving must not leave the button waiting
+            found = None
+        self.done.emit(self.path, found)
 
 
 class ScanWorker(QThread):
@@ -828,6 +852,7 @@ class MainWindow(QMainWindow):
         queue_key.setContext(Qt.WidgetShortcut)
         self._style_table(self.table)
         self.table.setSortingEnabled(True)
+        self._apply_library_order()
         self.table.setAlternatingRowColors(False)             # a clean list: no stripes
         self.table.setIconSize(QSize(36, 36))
         self.table.verticalHeader().setDefaultSectionSize(46)
@@ -1099,6 +1124,9 @@ class MainWindow(QMainWindow):
         self.queue_list.setDefaultDropAction(Qt.MoveAction)
         self.queue_list.setDropIndicatorShown(True)
         self.queue_list.model().rowsMoved.connect(self._queue_rows_moved)
+        for key, step in (("Alt+Up", -1), ("Alt+Down", 1)):               # the selected song, one place at a time
+            sc = QShortcut(QKeySequence(key), self.queue_list, lambda s=step: self._queue_nudge(s))
+            sc.setContext(Qt.WidgetShortcut)
         queue_page = QWidget()
         ql = QVBoxLayout(queue_page)
         ql.setContentsMargins(0, 0, 0, 0)
@@ -1139,6 +1167,11 @@ class MainWindow(QMainWindow):
         ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
         ll.addWidget(self.lyrics_empty, 1)
+        self.lyrics_find_btn = QPushButton("Find lyrics online")
+        self.lyrics_find_btn.setToolTip("Ask LRCLIB, Netease, Kugou, Genius and lyrics.ovh for this song and keep "
+                                        "the answer next to it as a .lrc or .txt file")
+        self.lyrics_find_btn.clicked.connect(self._find_lyrics_online)
+        ll.addWidget(self.lyrics_find_btn, 0, Qt.AlignHCenter)
         ll.addWidget(self.lyrics_note)
         self.tab_queue.toggled.connect(lambda on: self._np_panel_toggled("queue", on))
         self.tab_lyrics.toggled.connect(lambda on: self._np_panel_toggled("lyrics", on))
@@ -1195,6 +1228,8 @@ class MainWindow(QMainWindow):
         self._np_arrange()                                   # the panels on the sides the user chose, the art between
         self._np_apply_panels()                              # panels and the centering are right from the first paint
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
+        self._lyrics_worker = None
+        self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
@@ -1488,8 +1523,8 @@ class MainWindow(QMainWindow):
         "Preferences. Each change is applied at once and saved."
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
         title = QLabel("Settings")
         title.setObjectName("heading")
         note = QLabel("Changes are applied and saved as you make them.")
@@ -1513,14 +1548,14 @@ class MainWindow(QMainWindow):
             lab.setToolTip("Click to fold or unfold this section")
             lab.setObjectName("heading")
             lab.setAccessibleName(text)             # the section heading is announced as a heading
-            lay.addSpacing(10)
+            lay.addSpacing(6)
             lay.addWidget(lab)
 
         def subsection(text):
             lab = QLabel(text)
             lab.setObjectName("subhead")
             lab.setAccessibleName(text)
-            lay.addSpacing(8)
+            lay.addSpacing(4)
             lay.addWidget(lab)
 
         def hint(text):
@@ -1565,6 +1600,38 @@ class MainWindow(QMainWindow):
         self.same_volume_hint = hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and "
                                      "measures the rest in the background if ffmpeg is installed.")
         lay.addWidget(self.same_volume_hint)
+        boost_row = QHBoxLayout()
+        self.boost_slider = ClickSlider(Qt.Horizontal)
+        self.boost_slider.setRange(0, 12)
+        self.boost_slider.setValue(self.settings.boost_db)
+        self.boost_slider.setMinimumWidth(220)
+        self.boost_slider.setMaximumWidth(280)
+        self.boost_label = QLabel(f"{self.settings.boost_db} dB")
+        self.boost_label.setMinimumWidth(56)
+        self.boost_slider.valueChanged.connect(self._boost_changed)
+        boost_row.addWidget(QLabel("Turn up quiet songs"))
+        boost_row.addWidget(self.boost_slider)
+        boost_row.addWidget(self.boost_label)
+        boost_row.addStretch(1)
+        lay.addLayout(boost_row)
+        lay.addWidget(hint("The most a quiet song is turned up when songs are played at the same volume. 0 never "
+                           "turns anything up; loud songs are always turned down."))
+        fade_row = QHBoxLayout()
+        self.fade_slider = ClickSlider(Qt.Horizontal)
+        self.fade_slider.setRange(0, 12)
+        self.fade_slider.setValue(self.settings.crossfade)
+        self.fade_slider.setMinimumWidth(220)
+        self.fade_slider.setMaximumWidth(280)
+        self.fade_label = QLabel(self._fade_text(self.settings.crossfade))
+        self.fade_label.setMinimumWidth(56)
+        self.fade_slider.valueChanged.connect(self._crossfade_changed)
+        fade_row.addWidget(QLabel("Crossfade"))
+        fade_row.addWidget(self.fade_slider)
+        fade_row.addWidget(self.fade_label)
+        fade_row.addStretch(1)
+        lay.addLayout(fade_row)
+        lay.addWidget(hint("The end of a song fades out as the next one fades in. It needs gapless playback, and only "
+                           "applies when a song ends by itself, not when you skip or pick one."))
         self.replaygain_box = Switch("Use the ReplayGain tags in my files")
         self.replaygain_box.setChecked(self.settings.use_replaygain)
         self.replaygain_box.toggled.connect(self._replaygain_toggled)
@@ -1643,6 +1710,10 @@ class MainWindow(QMainWindow):
         row.addWidget(self.cover_label)
         row.addStretch(1)
         lay.addLayout(row)
+        self.title_accent_box = Switch("Colour the song title on Now Playing with the accent")
+        self.title_accent_box.setChecked(self.settings.title_in_accent)
+        self.title_accent_box.toggled.connect(self._title_accent_toggled)
+        lay.addWidget(self.title_accent_box)
         self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
@@ -1927,6 +1998,19 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.listening_box)
         lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
                            "the top songs on the Identity page and is never sent anywhere."))
+        order_row = QHBoxLayout()
+        self.order_box = QuietCombo()
+        for mode in shuffleorder.MODES:
+            self.order_box.addItem(shuffleorder.LABELS[mode], mode)
+        self.order_box.setCurrentIndex(max(self.order_box.findData(self.settings.library_order), 0))
+        self.order_box.currentIndexChanged.connect(self._library_order_changed)
+        order_row.addWidget(QLabel("Library order"))
+        order_row.addWidget(self.order_box)
+        order_row.addStretch(1)
+        lay.addLayout(order_row)
+        lay.addWidget(hint("Shuffled mixes the library list instead of sorting it, so playing from the top does not "
+                           "favour the same songs and your listening history stays even. Clicking a column header "
+                           "sorts as usual."))
         clear = QPushButton("Clear listening history")
         clear.clicked.connect(self._clear_listening)
 
@@ -2004,11 +2088,11 @@ class MainWindow(QMainWindow):
                 is_form = isinstance(first, QLabel) and not first.objectName() and not first.wordWrap()
                 if is_form:
                     first.setMinimumWidth(self.LABEL_COLUMN)
-                row.setSpacing(14)
+                row.setSpacing(12)
                 self._after_form_row = is_form
             elif isinstance(widget, QLabel) and widget.objectName() == "muted":
                 inset = self.LABEL_COLUMN + 14 if getattr(self, "_after_form_row", False) else 0
-                widget.setContentsMargins(inset, 2, 0, 10)
+                widget.setContentsMargins(inset, 0, 0, 5)
                 self._after_form_row = False
             else:
                 self._after_form_row = False
@@ -2157,7 +2241,7 @@ class MainWindow(QMainWindow):
             box = QWidget()
             col = QVBoxLayout(box)
             col.setContentsMargins(0, 0, 0, 0)
-            col.setSpacing(10)
+            col.setSpacing(6)
             at = next(i for i, item in enumerate(group) if item.widget() is not None)  # gap first, then title
             for item in group[:at + 1]:
                 col.addItem(item)
@@ -2165,7 +2249,7 @@ class MainWindow(QMainWindow):
             body = QWidget()                                    # everything under the title: what folding hides
             rest = QVBoxLayout(body)
             rest.setContentsMargins(0, 0, 0, 0)
-            rest.setSpacing(10)
+            rest.setSpacing(6)
             for item in group[at + 1:]:
                 rest.addItem(item)
                 self._adopt(item, body)
@@ -2268,6 +2352,21 @@ class MainWindow(QMainWindow):
         if on:
             self._measure_loudness()
 
+    @staticmethod
+    def _fade_text(seconds):
+        return f"{seconds} s" if seconds else "Off"
+
+    def _crossfade_changed(self, value):
+        self.fade_label.setText(self._fade_text(value))
+        self._set_setting("crossfade", value)
+        self.player.set_crossfade(value)
+
+    def _boost_changed(self, value):
+        self.boost_label.setText(f"{value} dB")
+        self._set_setting("boost_db", value)
+        self.player.set_max_boost(value)
+        self._measure_loudness()
+
     def _replaygain_toggled(self, on):
         self.player.set_use_tags(on)
         self._set_setting("use_replaygain", on)
@@ -2289,7 +2388,7 @@ class MainWindow(QMainWindow):
             self._loud_when_seen = True
         self._loud_again = False
         self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self,
-                                          use_tags=self.settings.use_replaygain)
+                                          use_tags=self.settings.use_replaygain, max_boost=self.settings.boost_db)
         self._loud.measured.connect(self.player.set_norm)
         self._loud.finished.connect(self._loudness_done)
         self._loud.start()
@@ -2300,6 +2399,33 @@ class MainWindow(QMainWindow):
                 self._loud_when_seen = True
             else:
                 self._measure_loudness()
+
+    def _apply_library_order(self, fresh=False):
+        "Mix the library list by a seed (new at every start, or once a day or week), or sort it by the header again."
+        s = self.settings
+        seed, at = shuffleorder.reseed(s.library_order, 0 if fresh else s.order_seed, s.order_seed_at)
+        if (seed, at) != (s.order_seed, s.order_seed_at):
+            self._set_setting("order_seed", seed)
+            self._set_setting("order_seed_at", at)
+        self.model.shuffle_seed = seed
+        header = self.table.horizontalHeader()
+        if seed:
+            header.setSortIndicator(-1, Qt.AscendingOrder)          # no column is chosen: the shuffled order shows
+        elif fresh:
+            header.setSortIndicator(0, Qt.AscendingOrder)
+
+    def _library_order_changed(self):
+        self._set_setting("library_order", self.order_box.currentData())
+        self._apply_library_order(fresh=True)
+
+    def _title_accent_toggled(self, on):
+        self._set_setting("title_in_accent", on)
+        self._apply_title_colour()
+
+    def _apply_title_colour(self):
+        "The title on Now Playing wears the accent (as it is shown on the dark window) or the plain text colour."
+        lit = theme.visible_accent(getattr(self, "_accent_shown", theme.LAVENDER))
+        self.np_title.setStyleSheet(f"color: {lit};" if self.settings.title_in_accent else "")
 
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
@@ -2445,6 +2571,7 @@ class MainWindow(QMainWindow):
         self.wave.set_accent(lit)                                           # drawn straight on the dark window
         self.identity_page.set_accent(lit)
         self._vol_bubble.set_accent(lit)
+        self._apply_title_colour()
         for switch in self.findChildren(Switch):
             switch.update()
         self._update_toggle_icons()
@@ -3435,6 +3562,7 @@ class MainWindow(QMainWindow):
             if song is not None and song.artist.strip():
                 artists[song.artist.strip()] += play.plays
         insights["artists"] = len(artists)
+        insights["estimated"] = self.history.estimated(PERIODS[period])
         insights["top_artists"] = artists.most_common(5)
         card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening, insights)
 
@@ -4211,7 +4339,31 @@ class MainWindow(QMainWindow):
 
     def _queue_rows_moved(self, _parent, start, _end, _dest_parent, row):
         "A song was dragged to another place in the queue list: the player's queue follows."
-        self.player.move(start, row if row < start else row - 1)
+        self._queue_apply_move(start, row if row < start else row - 1)
+
+    def _queue_apply_move(self, src, dst):
+        "Tell the player; the list already shows the move (a drag did it), so it is not built again."
+        self._queue_moving = True
+        try:
+            self.player.move(src, dst)
+        finally:
+            self._queue_moving = False
+
+    def _queue_move(self, src, dst):
+        "Move the song in row `src` to row `dst` (menu and keys): the list and the player follow; it stays selected."
+        n = self.queue_list.count()
+        if not (0 <= src < n and 0 <= dst < n) or src == dst:
+            return
+        self.queue_list.insertItem(dst, self.queue_list.takeItem(src))        # sends no rowsMoved: only a drag does
+        self.queue_list.setCurrentRow(dst)
+        self._queue_apply_move(src, dst)
+        self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
+        self.queue_list.scrollToItem(self.queue_list.item(dst))
+
+    def _queue_nudge(self, step):
+        row = self.queue_list.currentRow()
+        if row >= 0:
+            self._queue_move(row, row + step)
 
     def _queue_menu(self, pos):
         item = self.queue_list.itemAt(pos)
@@ -4227,11 +4379,13 @@ class MainWindow(QMainWindow):
             last = len(self.player.queue) - 1
             now = max(self.player.index, 0)
             if row != now:                                      # "play next" means right after the one playing
-                m.addAction("Play next", lambda: self.player.move(row, now if row < now else now + 1))
+                m.addAction("Play next", lambda: self._queue_move(row, now if row < now else now + 1))
             if row > 0:
-                m.addAction("Move up", lambda: self.player.move(row, row - 1))
+                m.addAction("Move to top", lambda: self._queue_move(row, 0))
+                m.addAction("Move up\tAlt+Up", lambda: self._queue_move(row, row - 1))
             if row < last:
-                m.addAction("Move down", lambda: self.player.move(row, row + 1))
+                m.addAction("Move down\tAlt+Down", lambda: self._queue_move(row, row + 1))
+                m.addAction("Move to bottom", lambda: self._queue_move(row, last))
         if songs:
             self._add_to_playlist_menu(m, songs)
             self._browse_actions(m, songs[0])
@@ -4389,10 +4543,10 @@ class MainWindow(QMainWindow):
     def _album_source(self, paths):
         "The album name of the songs about to play."
         song = self.by_path.get(paths[0]) if paths else None
-        return (song.album if song and song.album else "Album")
+        return song.album if song and song.album else (Path(paths[0]).parent.name if paths else "")
 
     def _playlist_source(self):
-        return self._pl_current[0] if self._pl_current else "Playlist"
+        return self._pl_current[0] if self._pl_current else ""
 
     def _play_tile(self, tile):
         "The play button on a playlist cover: one click and it plays."
@@ -4404,15 +4558,21 @@ class MainWindow(QMainWindow):
     def _play_tile_paths(self, paths):
         tile = self.pl_grid.current_album()
         if paths:
-            self._play_queue(paths, 0, tile.name if tile is not None else "Playlist")
+            self._play_queue(paths, 0, tile.name if tile is not None else "")
 
     def _refresh_queue(self):
         queue = list(self.player.queue)
         if not queue:
             self._queue_source = ""
         self.queue_heading.setText(self._queue_source or "Queue")
-        self.queue_heading.setToolTip(self._queue_source)
-        if queue != self._queue_shown:                       # a different queue: build the rows again
+        tip = "Drag a song to move it, or press Alt+Up / Alt+Down"
+        self.queue_heading.setToolTip(f"{self._queue_source}\n{tip}" if self._queue_source else tip)
+        if queue != self._queue_shown and self._queue_moving:   # a song was moved: the list shows it already
+            self._queue_shown, self._queue_rows = queue, {}
+            for i, path in enumerate(queue):
+                self._queue_rows.setdefault(path, []).append(i)
+            self._queue_playing = -1
+        elif queue != self._queue_shown:                     # a different queue: build the rows again
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
             self.queue_list.setUpdatesEnabled(False)
@@ -4822,6 +4982,7 @@ class MainWindow(QMainWindow):
         screen.set_song(self._np_pix, self.np_title.text(), self.np_artist.text())
         screen.set_progress(self._pos, self._dur)
         self._cover_screen = screen
+        self._update_cover_lyrics()
         if self.screen() is not None:
             screen.setScreen(self.screen())                   # on the screen this window is on
         screen.showFullScreen()
@@ -5367,6 +5528,7 @@ class MainWindow(QMainWindow):
             item.setTextAlignment(Qt.AlignCenter)
             self.lyrics.addItem(item)
         self._set_lyrics_state()
+        self._update_cover_lyrics()
 
     def _set_lyrics_state(self):
         "The lyrics list when there are lyrics, otherwise a plain message."
@@ -5376,6 +5538,7 @@ class MainWindow(QMainWindow):
                                     else "No lyrics found")
         self.lyrics.setVisible(has)
         self.lyrics_empty.setVisible(not has)
+        self.lyrics_find_btn.setVisible(not has and self._lyrics_can_look())
         self.lyrics_note.setVisible(has and not self._lyric_synced)
 
     def _mark_lyric(self, row):
@@ -5393,6 +5556,73 @@ class MainWindow(QMainWindow):
             item.setForeground(QColor(self._accent_shown))
             item.setFont(font)
         self.lyrics.setCurrentRow(row)
+        self._update_cover_lyrics()
+
+    def _lyrics_can_look(self):
+        "A song from a file here, with an artist and a title to ask about."
+        song = self.by_path.get(self._current_path)
+        return song is not None and bool(song.artist.strip() and song.title.strip())
+
+    def _confirm_lyrics_online(self):
+        "Ask once before the song's names go over the internet. A seam: tests replace it."
+        if self.settings.lyrics_online_ok:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Find lyrics online")
+        box.setText("Sleeve will send the artist, title, album and length of the song to public lyrics sites (LRCLIB, "
+                    "Netease, Kugou, Genius and lyrics.ovh) until one has the lyrics. Nothing else is sent. The "
+                    "answer is saved next to the song as a .lrc (synced) or .txt file; your audio file is not changed.")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return False
+        self._set_setting("lyrics_online_ok", True)
+        return True
+
+    def _find_lyrics_online(self):
+        song = self.by_path.get(self._current_path)
+        if song is None or self._lyrics_worker is not None or not self._confirm_lyrics_online():
+            return
+        self.lyrics_find_btn.setEnabled(False)
+        self.lyrics_empty.setText("Looking for lyrics…")
+        self._lyrics_worker = LyricsWorker(song.path, song.artist, song.title, song.album, song.length, self)
+        self._lyrics_worker.done.connect(self._lyrics_found)
+        self._lyrics_worker.start()
+
+    def _lyrics_found(self, path, found):
+        worker, self._lyrics_worker = self._lyrics_worker, None
+        if worker is not None:
+            worker.wait()
+        self.lyrics_find_btn.setEnabled(True)
+        self.lyrics_empty.setText("No imported lyrics found")
+        if found is None:
+            self.lyrics_empty.setText("No lyrics found online for this song")
+            return
+        target = Path(path).with_suffix(".lrc" if found.synced else ".txt")
+        try:
+            if not target.exists():                          # never replace a file that is already there
+                target.write_text(found.synced or found.plain, encoding="utf-8")
+        except OSError as e:
+            self.status.showMessage(f"Found the lyrics but could not save them: {e}", 8000)
+            return
+        if path == self._current_path and path in self.by_path:
+            self._load_lyrics(self.by_path[path])
+        self.status.showMessage(f"Lyrics saved next to the song (from {found.source}).", 6000)
+
+    def _update_cover_lyrics(self):
+        "The fullscreen cover shows the line being sung, with the one before and the one after."
+        screen = self._cover_screen
+        if screen is None:
+            return
+        row, count = self._lyric_row, self.lyrics.count()
+
+        def text(i):
+            return self.lyrics.item(i).text() if 0 <= i < count else ""
+
+        if self._lyric_synced and 0 <= row < count:
+            screen.set_lyrics(text(row - 1), text(row), text(row + 1), theme.visible_accent(self._accent_shown))
+        else:
+            screen.set_lyrics("", "", "")
 
     def _lyric_clicked(self, item):
         "Clicking a line of synced lyrics jumps the song to that line."

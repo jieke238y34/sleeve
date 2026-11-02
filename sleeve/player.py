@@ -6,6 +6,7 @@ real audio files ever reach either of them (no URLs, playlists or devices).
 """
 
 import random
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QObject, QTimer, QUrl, Signal
@@ -62,6 +63,7 @@ class _Slot:
         self.media.setAudioOutput(self.audio)
         self.path = ""
         self.failed = False
+        self.fade = 1.0                    # 0 to 1: how far a crossfade has brought this player in (or out)
 
     def ready(self):
         return not self.failed and self.media.mediaStatus() in (QMediaPlayer.LoadedMedia, QMediaPlayer.BufferedMedia)
@@ -90,9 +92,15 @@ class Player(QObject):
         self._resume_ms = 0                     # where a restored song goes to once it has loaded (see restore)
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
+        self.crossfade = 0                      # seconds the end of a song and the start of the next overlap; 0: none
+        self._fade = None                       # (started at, milliseconds, the player coming in, the one going out)
+        self._fade_timer = QTimer(self)
+        self._fade_timer.setInterval(40)
+        self._fade_timer.timeout.connect(self._fade_tick)
         self.resolver = None                    # maps a `navidrome:<id>` entry to its stream address (the app sets it)
         self.on_boost = None                    # called with the wanted stream level in percent (100 or more)
         self.same_volume = True
+        self.max_boost = loudness.MAX_BOOST      # dB a quiet song may be turned up
         self.use_tags = True                    # the files' ReplayGain tags count; off: only measured loudness
         self.norm_db = {}                  # song path -> dB to add so it sounds as loud as the others
         self._norm_checked = set()         # paths whose tags and saved measurement were already looked at
@@ -134,8 +142,10 @@ class Player(QObject):
         "Take the saved preferences (see sleeve.settings.Settings)."
         self.max_gain = settings.max_volume / 100
         self.gapless = settings.gapless
+        self.crossfade = settings.crossfade
         self.same_volume = settings.same_volume
         self.use_tags = settings.use_replaygain
+        self.max_boost = settings.boost_db
         self.output_id = settings.output_device
         self._reroute()
         self.set_volume(settings.volume)
@@ -171,6 +181,14 @@ class Player(QObject):
         self.same_volume = bool(on)
         self._apply_volume()
 
+    def set_max_boost(self, db):
+        "How far a quiet song may be turned up: what was worked out is forgotten and worked out again."
+        self.max_boost = float(db)
+        self.norm_db.clear()
+        self._norm_checked.clear()
+        self._apply_volume()
+        self.normChanged.emit("")
+
     def set_use_tags(self, on):
         "Trust the ReplayGain tags in the files (or not): what was read from them is forgotten and read again."
         self.use_tags = bool(on)
@@ -196,7 +214,7 @@ class Player(QObject):
             return 0.0                          # a server track has no file here to read loudness tags from
         if path not in self.norm_db and path not in self._norm_checked:
             self._norm_checked.add(path)
-            found = loudness.gain_for(path, self.loudness_cache, self.use_tags)
+            found = loudness.gain_for(path, self.loudness_cache, self.use_tags, self.max_boost)
             if found is not None:
                 self.norm_db[path] = found
         return self.norm_db.get(path, 0.0)
@@ -204,10 +222,47 @@ class Player(QObject):
     def _apply_volume(self):
         "Set each player's output level: the slider, the ceiling and that song's own adjustment."
         for slot in self._slots:
-            slot.audio.setVolume(min(1.0, gain(self.volume, self.max_gain) * 10 ** (self._norm_for(slot.path) / 20)))
+            slot.audio.setVolume(min(1.0, gain(self.volume, self.max_gain) * 10 ** (self._norm_for(slot.path) / 20)
+                                     * slot.fade))
         if self.on_boost is not None:           # Qt stops at 100%; whatever is beyond that is asked of PipeWire
             now = gain(self.volume, self.max_gain) * 10 ** (self._norm_for(self._slots[self._cur].path) / 20)
             self.on_boost(max(1.0, now) * 100)
+
+    def set_crossfade(self, seconds):
+        "How long two songs overlap when one ends and the next begins by itself (needs gapless; 0 is off)."
+        self.crossfade = max(0, min(12, int(seconds)))
+        self._arm_switch()
+
+    def _fade_ms(self):
+        "The overlap to use now: the setting, but never more than a third of the song that is ending."
+        if not self.crossfade or not self.gapless:
+            return 0
+        return int(min(self.crossfade * 1000, max(0.0, self.duration) * 1000 / 3))
+
+    def _fade_start(self, coming, going, ms):
+        self._fade_finish()
+        coming.fade, going.fade = 0.0, 1.0
+        self._fade = (time.monotonic(), ms, coming, going)
+        self._fade_timer.start()
+        self._apply_volume()
+
+    def _fade_tick(self):
+        if self._fade is None:
+            self._fade_timer.stop()
+            return
+        began, ms, coming, going = self._fade
+        done = min(1.0, (time.monotonic() - began) * 1000 / max(1, ms))
+        coming.fade, going.fade = done, 1.0 - done          # the sum of the two stays steady enough by ear
+        self._apply_volume()
+        if done >= 1.0:
+            self._fade_finish()
+
+    def _fade_finish(self):
+        self._fade_timer.stop()
+        for slot in self._slots:
+            slot.fade = 1.0
+        self._fade = None
+        self._apply_volume()
 
     def set_gapless(self, on):
         self.gapless = bool(on)
@@ -292,6 +347,7 @@ class Player(QObject):
     def close(self):
         "Stop playback and let go of the files."
         self._switch_timer.stop()
+        self._fade_timer.stop()
         for slot in self._slots:
             m = slot.media
             for sig in (m.positionChanged, m.durationChanged, m.playbackStateChanged, m.mediaStatusChanged,
@@ -335,13 +391,13 @@ class Player(QObject):
             return
         since = self._clock.elapsed() if self._clock.isValid() else 0
         left = self.duration * 1000 - self.position * 1000 - since
-        self._switch_timer.start(max(0, int(left) - LEAD_MS))
+        self._switch_timer.start(max(0, int(left) - max(LEAD_MS, self._fade_ms())))
 
     def _switch(self):
         if self.index >= 0 and self._plan and self._plan[0] == self.index and self._plan[1] is not None:
-            self._take_over(self._plan[1], TAIL_MS)     # if the next song is not ready, EndOfMedia loads it instead
+            self._take_over(self._plan[1], TAIL_MS, self._fade_ms())    # not ready: EndOfMedia loads it instead
 
-    def _take_over(self, n, tail_ms=0):
+    def _take_over(self, n, tail_ms=0, fade_ms=0):
         "Start song n on the idle player, which already has it loaded. False if it is not ready."
         idle, old = self._idle, self._slots[self._cur]
         if not 0 <= n < len(self.queue) or idle.path != self.queue[n] or not idle.ready():
@@ -350,6 +406,9 @@ class Player(QObject):
         self._cur = 1 - self._cur
         self._remember(n)
         self.index, self._errors, self._plan = n, 0, None
+        if fade_ms:
+            self._fade_start(idle, old, fade_ms)                # the next song comes in as the last one goes out
+            tail_ms = fade_ms + TAIL_MS
         idle.media.play()
         self.position = 0.0
         self.duration = idle.media.duration() / 1000
@@ -506,6 +565,7 @@ class Player(QObject):
         self.positionChanged.emit(0.0)
         self.durationChanged.emit(0.0)
         self._switch_timer.stop()
+        self._fade_finish()                # a song that is chosen starts at full level, whatever was fading
         if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
             self._idle.media.stop()
         slot = self._slots[self._cur]
@@ -529,6 +589,7 @@ class Player(QObject):
         self.positionChanged.emit(0.0)
         self.durationChanged.emit(0.0)
         self._switch_timer.stop()
+        self._fade_finish()                # a song that is chosen starts at full level, whatever was fading
         if self._idle.media.playbackState() != QMediaPlayer.StoppedState:
             self._idle.media.stop()        # the tail of a song that was handed over from, still ringing
         slot = self._slots[self._cur]

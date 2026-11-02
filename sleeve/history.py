@@ -18,6 +18,7 @@ MAX_BYTES = 20_000_000        # a history file larger than this is not ours
 MAX_EVENTS = 50_000
 KEEP_DAYS = 400
 DAY = 86400
+TIME_MEASURED_FROM = 1793389321   # 2026-10-30 19:42 UTC: from here on the time listened is real (it was 30 s a play)
 PERIODS = {"week": 7, "month": 30}      # days
 
 
@@ -102,6 +103,10 @@ class History:
     def seconds(self, days, now=None):
         "Total time listened in the last `days` days."
         return sum(e[2] for e in self._within(days, now))
+
+    def estimated(self, days, now=None):
+        "How many plays in the last `days` days were recorded before the time was measured: each is exactly 30 s."
+        return sum(1 for e in self._within(days, now) if e[1] < TIME_MEASURED_FROM and e[2] == 30)
 
     def insights(self, days, now=None):
         """What the last `days` days looked like: plays, songs, time, how many songs were new to the history, the time

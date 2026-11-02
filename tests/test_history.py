@@ -346,3 +346,12 @@ def test_keyboard_and_lyric_seeks_are_not_credited_as_listening(qapp, cfg, monke
         assert win._seeking is True and win.player.calls[-1] == ("seek", (30.0,))
     finally:
         win.close()
+
+
+def test_plays_from_before_the_time_was_measured_are_called_an_estimate(tmp_path):
+    h = history.History(tmp_path / "h.json")
+    now = history.TIME_MEASURED_FROM + 3 * history.DAY
+    h.events = [["/m/a.mp3", history.TIME_MEASURED_FROM - 100, 30],     # old: a flat 30 s
+                ["/m/b.mp3", history.TIME_MEASURED_FROM - 200, 95],     # old, but it carries a real time
+                ["/m/c.mp3", history.TIME_MEASURED_FROM + 100, 30]]     # new, and it happened to be 30 s
+    assert h.estimated(7, now=now) == 1

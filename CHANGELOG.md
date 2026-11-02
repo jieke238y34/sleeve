@@ -18,8 +18,24 @@ All notable changes to this project are documented here. The format follows
   Library. A chip beside the filter says what is shown (`Artist: Kendrick Lamar ✕`) and takes you back; picking a folder
   also leaves it. Right-click a song in the Library or the queue for *All songs by…* and *The album…*. A tag holding
   several artists asks which one.
+- Settings > Look: **colour the song title with the accent** on Now Playing (off by default). The queue heading no longer says
+  "Playlist" or "Album" when it has no name to show.
+- **Listening page says what is an estimate**: plays recorded before 30 Oct 2026 count as 30 seconds each (the time was not
+  measured yet), and the page now says how many of the plays that is.
+- **Library order** (Settings > Listening): the library list can be shuffled instead of sorted, at every start, once a day or
+  once a week, so playing from the top does not favour the same songs and your listening history stays even. The order
+  holds steady between changes; clicking a column header sorts as usual.
+- **Crossfade** (Settings > Sound): 0 to 12 seconds during which the end of a song fades out as the next one fades in. It
+  needs gapless playback and only applies when a song ends by itself; a short song gives at most a third of itself.
+- **Lyrics on the fullscreen cover**: the line being sung, with the one before and the one after it, under the title.
+- **Find lyrics online** on Now Playing when a song has none: it asks first, then tries LRCLIB, Netease, Kugou, Genius and
+  lyrics.ovh, and keeps the answer next to the song as a `.lrc` or `.txt` file (never replacing one that is there).
+- **Turn up quiet songs** (Settings > Sound): how many dB, 0 to 12 (6 by default), a quiet song may be turned up when songs are
+  played at the same volume.
+- **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.
 - **Reorder the queue**: drag a song to a new place in the Now Playing queue, or right-click it for *Play next*, *Move up*
-  and *Move down*. The song that is playing keeps playing and the one after it is worked out again.
+  and *Move down*, or select a song and press **Alt+Up / Alt+Down**; the menu also has *Move to top* and *Move to
+  bottom*. The song stays selected and in view, and the song that is playing keeps playing.
 - **ReplayGain switch and gain readout**: Settings > Sound has *Use the ReplayGain tags in my files*; off, the tags are
   ignored and Sleeve measures the songs itself (needs ffmpeg). Now Playing shows the levelling a song gets, for example
   `FLAC · 96 kHz · 24-bit · lossless · levelling −3.2 dB`.

@@ -52,7 +52,7 @@ def test_a_boost_never_goes_past_full_scale(qapp, tmp_path):  # noqa: F811
 def test_tags_are_looked_up_once_per_song(qapp, tmp_path, monkeypatch):  # noqa: F811
     (a,) = songs(tmp_path, "a.mp3")
     calls = []
-    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True: calls.append(path) or -3.0)
+    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True, max_boost=6.0: calls.append(path) or -3.0)
     p = player.Player()
     p.set_queue([a])
     for v in (10, 20, 30, 40):                             # dragging the slider must not read the file each time
@@ -64,7 +64,7 @@ def test_tags_are_looked_up_once_per_song(qapp, tmp_path, monkeypatch):  # noqa:
 def test_a_song_with_nothing_known_is_not_looked_up_again(qapp, tmp_path, monkeypatch):  # noqa: F811
     (a,) = songs(tmp_path, "a.mp3")
     calls = []
-    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True: calls.append(path))
+    monkeypatch.setattr(loudness, "gain_for", lambda path, cache, use_tags=True, max_boost=6.0: calls.append(path))
     p = player.Player()
     p.set_queue([a])
     p.set_volume(50)
@@ -78,7 +78,7 @@ class FakeWorker(QObject):
     finished = Signal()
     made = []
 
-    def __init__(self, paths, cache, ffmpeg, parent=None, use_tags=True):
+    def __init__(self, paths, cache, ffmpeg, parent=None, use_tags=True, max_boost=6.0):
         super().__init__(parent)
         self.paths, self.ffmpeg, self.running = paths, ffmpeg, False
         FakeWorker.made.append(self)
@@ -164,3 +164,45 @@ def test_the_switch_and_the_gain_line_in_the_window(qapp, cfg, monkeypatch, tmp_
         assert win.settings.use_replaygain is False
     finally:
         win.close()
+
+
+def test_a_quiet_song_is_turned_up_by_at_most_the_setting(qapp, tmp_path, monkeypatch):  # noqa: F811
+    a, = songs(tmp_path, "a.mp3")
+    monkeypatch.setattr(loudness, "tag_gain_db", lambda path: None)
+    p = player.Player()
+    p.loudness_cache.set(a, -30.0)                         # 12 dB under the target
+    p.set_queue([a])
+    assert p.gain_db(a) == 6.0                             # the default allows 6
+    p.set_max_boost(10)
+    assert p.gain_db(a) == 10.0
+    p.set_max_boost(0)
+    assert p.gain_db(a) is None                            # never turned up
+    p.close()
+
+
+def test_crossfade_brings_one_song_in_as_the_other_goes_out(qapp, tmp_path, monkeypatch):  # noqa: F811
+    a, b = songs(tmp_path, "a.mp3", "b.mp3")
+    p = player.Player()
+    p.set_queue([a, b])
+    plain = player.gain(p.volume, p.max_gain)
+    assert p._fade_ms() == 0                               # off by default
+    p.set_crossfade(6)
+    p.duration = 300.0
+    assert p._fade_ms() == 6000
+    p.duration = 12.0
+    assert p._fade_ms() == 4000                            # a short song gives at most a third of itself
+    p.set_gapless(False)
+    assert p._fade_ms() == 0                               # nothing is preloaded without gapless
+    p.set_gapless(True)
+    now = [100.0]
+    monkeypatch.setattr(player.time, "monotonic", lambda: now[0])
+    p._fade_start(p._slots[1], p._slots[0], 2000)
+    assert abs(level(p, 0) - plain) < 1e-4 and level(p, 1) == 0.0
+    now[0] += 1.0                                          # half way
+    p._fade_tick()
+    assert abs(level(p, 0) - plain * 0.5) < 1e-4 and abs(level(p, 1) - plain * 0.5) < 1e-4
+    now[0] += 1.5
+    p._fade_tick()                                         # done: both back to the plain level, no timer left
+    assert p._fade is None and not p._fade_timer.isActive()
+    assert abs(level(p, 0) - plain) < 1e-4 and abs(level(p, 1) - plain) < 1e-4
+    p.close()

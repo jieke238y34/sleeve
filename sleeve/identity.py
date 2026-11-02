@@ -866,7 +866,12 @@ class ListeningCard(Card):
             lay.addWidget(text, 1)
             lay.addWidget(_label(_plural(plays, "play"), 10, MUTED))
             self.rows.addWidget(line)
-        self.total.setText(f"You listened for {_span(seconds)} {name}.")
+        text = f"You listened for {_span(seconds)} {name}."
+        guessed = (insights or {}).get("estimated", 0)
+        if guessed:                                  # the early history only knew "played", so each play counts 30 s
+            text += (f" {_plural(guessed, 'play')} from before 30 Oct 2026 count as 30 seconds each, so that part "
+                     "is an estimate.")
+        self.total.setText(text)
         self._show_insights(insights, seconds)
 
 

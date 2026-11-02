@@ -299,6 +299,9 @@ class CoverScreen(theme.Backdrop):
         self.cover.clicked.connect(self.close)
         self.title = _Line(26, bold=True)
         self.artist = _Line(15)
+        self.line_before, self.line_now, self.line_after = _Line(13), _Line(18, bold=True), _Line(13)
+        for line in (self.line_before, self.line_after):         # the lines around the one being sung stay quiet
+            line.setStyleSheet("color: rgba(246, 243, 238, 150); background: transparent;")
         self.seek = SeekBar()
         self.seek.seekRequested.connect(self.seekRequested)
         label_style = "color: rgba(246, 243, 238, 200); background: transparent; font-size: 10pt;"
@@ -322,6 +325,11 @@ class CoverScreen(theme.Backdrop):
         lay.addWidget(self.cover, 1)
         lay.addWidget(self.title)
         lay.addWidget(self.artist)
+        for line in (self.line_before, self.line_now, self.line_after):
+            keep = line.sizePolicy()
+            keep.setRetainSizeWhenHidden(True)                # no lyrics, or a gap: the bar below does not jump
+            line.setSizePolicy(keep)
+            lay.addWidget(line)
         lay.addLayout(bar)
         lay.addWidget(self.hint)
         keep = self.hint.sizePolicy()
@@ -345,6 +353,13 @@ class CoverScreen(theme.Backdrop):
         self.set_cover(pix)
         self.title.setText(title)
         self.artist.setText(artist)
+
+    def set_lyrics(self, before, now, after, accent="#f6f3ee"):
+        "The line being sung with the one before it and the one after it; all three blank when there is none."
+        self.line_now.setStyleSheet(f"color: {accent}; background: transparent;")
+        for line, text in ((self.line_before, before), (self.line_now, now), (self.line_after, after)):
+            line.setText(text)
+            line.setVisible(bool(now))
 
     def keyPressEvent(self, e):
         key = e.key()

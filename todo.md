@@ -47,8 +47,8 @@ Current version: **0.3.0** (every build also shows its build number).
       for dl.py; relabel "Set up…" to "Add IDs" once a music folder is set.
 - [ ] **Identity that learns from listening**: top songs are in. Left: let it shape the persona and traits, and the
       new Identity panels (listening over time, time of day, most revisited albums).
-- [ ] **Same-volume levelling**: the engine works (ReplayGain tags or measured with `ffmpeg`, on by default). Left:
-      a boost for quiet songs. (The ReplayGain opt-out and the per-song gain on Now Playing are in.)
+- [ ] **Same-volume levelling**: the engine works (ReplayGain tags or measured with `ffmpeg`, on by default). (The ReplayGain opt-out, the per-song gain
+      on Now Playing and the quiet-song boost setting are in.)
 - [ ] **Sleeve must not change the PipeWire setup**: audited 2026-11-02. Done: the boost only sets the volume of
       streams whose process id is Sleeve's (`boost.py`), never a device, the default sink or a WirePlumber rule; it is
       off unless the volume ceiling is moved above 100% (default 75%), with a note under the slider, and it puts the
@@ -77,7 +77,7 @@ Current version: **0.3.0** (every build also shows its build number).
 - [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
       genre that is playing, not the word "playlist". (Featured artists already read "SBTRKT with Sampha".)
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.
-- [ ] **Crossfade settings** (gapless is in); **play sets of tracks as one unit** in shuffle.
+- [ ] **Crossfade** is in (checked with tests only, not by ear); **play sets of tracks as one unit** in shuffle.
 - [ ] **Equaliser and DSP**: 5 to 15 band or parametric EQ with AutoEQ presets, bass boost, virtualiser, reverb,
       stereo expansion (find and review first).
 - [ ] **Bluetooth**: better audio quality for Maid BT and the BlueZ stack; support more earbuds.
