@@ -232,9 +232,9 @@ class ThemeDialog(QDialog):
         self.back_box.setVisible(self.own_back.isChecked() and not self.sync_back.isChecked())
         self.preview.show_colours(shown, self._backdrop())
         found = theme.problems(*(shown[k] for k, _ in FIELDS))
-        self.warning.setText("\n".join(found))
-        self.warning.setVisible(bool(found))
-        self.save_btn.setEnabled(not found)
+        self.warning.setText("\n".join(["These colours may hide some details (you can still save them):", *found])
+                             if found else "")
+        self.warning.setVisible(bool(found))                      # a warning only: any colours can be saved
 
     def _backdrop(self):
         if self.sync_back.isChecked():

@@ -54,13 +54,13 @@ def test_covers_kept_in_memory_are_bounded(qapp, monkeypatch):  # noqa: F811
     assert not grid.tile_pixmap(last).isNull()                              # what was dropped is simply drawn again
 
 
-def test_a_dark_title_colour_is_not_accepted_and_not_painted(qapp):  # noqa: F811
+def test_the_readability_check_tells_dark_from_light_colours(qapp):  # noqa: F811
     assert theme.readable("#ffffff") and theme.readable("#f5bb87") and theme.readable("#ff8800")
     assert not theme.readable("#202020") and not theme.readable("#15131d") and not theme.readable("nonsense")
     assert theme.readable("#000000", background="#ffffff")
 
 
-def test_the_colour_chooser_refuses_a_colour_that_cannot_be_read(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_colour_chooser_takes_any_colour_and_warns_about_one_that_is_hard_to_read(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         used = win.my_playlists.create("Gym", win.songs[:1])
@@ -68,10 +68,12 @@ def test_the_colour_chooser_refuses_a_colour_that_cannot_be_read(qapp, cfg, monk
         tile = win.pl_grid.tile_for(str(win.my_playlists.path_for("Gym")))
         monkeypatch.setattr("sleeve.app.QColorDialog.getColor", staticmethod(lambda *a, **k: QColor("#202020")))
         win._choose_playlist_colour(tile)
-        assert win.pl_styles.colour(tile.path) == "" and "too dark" in win.status.currentMessage()
+        assert win.pl_styles.colour(tile.path) == "#202020"                 # kept, whatever it is
+        assert "some details may be hidden" in win.status.currentMessage()    # and the person is told
+        win.status.clearMessage()
         monkeypatch.setattr("sleeve.app.QColorDialog.getColor", staticmethod(lambda *a, **k: QColor("#ffaa00")))
         win._choose_playlist_colour(tile)
-        assert win.pl_styles.colour(tile.path) == "#ffaa00"
+        assert win.pl_styles.colour(tile.path) == "#ffaa00" and "hidden" not in win.status.currentMessage()
     finally:
         win.close()
 

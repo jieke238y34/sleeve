@@ -53,6 +53,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Any colour is allowed.** The theme maker, the playlist title colour and the accent no longer refuse or ignore a
+  colour for being hard to read. Sleeve only warns that some details may be hidden, and applies it.
 - Settings: backup, your files and the connections (APIs, Discord, Last.fm, Navidrome) now sit together under one
   **Advanced** heading.
 - **The window steps aside for games**: while it is minimised or hidden, Sleeve stops loading row covers, redrawing
@@ -63,6 +65,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A black cover no longer tints the window green** (or any other faint hue): the backdrop for a black cover is a plain
+  near-black, as the accent already was.
 - **Your own themes are kept, not replaced**: making a new theme used to overwrite the last one, so *Edit my theme* only
   ever showed the newest. Settings > Theme now has **New theme…** (adds one) and **Edit this theme…** (changes or removes
   the one shown), and all of them are in the picker (up to 12). A theme from an older version moves over by itself.

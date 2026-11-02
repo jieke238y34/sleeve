@@ -155,7 +155,7 @@ def write_names(pix, tile, font, band, side):
     p.setRenderHint(QPainter.TextAntialiasing)
     p.setFont(bold)
     wanted = tile.colour
-    p.setPen(QColor(wanted) if wanted and theme.readable(wanted) else QColor("#ffffff"))
+    p.setPen(QColor(wanted) if wanted else QColor("#ffffff"))
     top = side - band + 7
     p.drawText(QRect(12, top, side - 24, fm.height()), Qt.AlignLeft | Qt.AlignVCenter,
                fm.elidedText(tile.name, Qt.ElideRight, side - 24))

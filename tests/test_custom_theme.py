@@ -42,12 +42,13 @@ def test_set_custom_adds_and_removes_the_look():
     assert "custom" not in theme.LOOKS and "custom" not in theme.CUSTOM_THEMES
 
 
-def test_the_dialog_blocks_saving_unreadable_colours(qapp):  # noqa: F811
+def test_the_dialog_warns_about_unreadable_colours_but_still_saves_them(qapp):  # noqa: F811
     dlg = ThemeDialog(None, MINE)
     assert dlg.save_btn.isEnabled() and not dlg.warning.isVisibleTo(dlg)
     dlg._colours["text"] = "#182028"
     dlg._refresh()
-    assert not dlg.save_btn.isEnabled() and dlg.warning.isVisibleTo(dlg)
+    assert dlg.save_btn.isEnabled() and dlg.warning.isVisibleTo(dlg)        # a warning only: it can still be saved
+    assert "hide some details" in dlg.warning.text() and dlg.result_theme()["text"] == "#182028"
     dlg._colours["text"] = "#ffffff"
     dlg.own_back.setChecked(True)
     dlg._refresh()
