@@ -26,7 +26,8 @@ All notable changes to this project are documented here. The format follows
   played at the same volume.
 - **Settings are more compact**: less space between rows, hints and sections, so about 15% less scrolling.
 - **Reorder the queue**: drag a song to a new place in the Now Playing queue, or right-click it for *Play next*, *Move up*
-  and *Move down*. The song that is playing keeps playing and the one after it is worked out again.
+  and *Move down*, or select a song and press **Alt+Up / Alt+Down**; the menu also has *Move to top* and *Move to
+  bottom*. The song stays selected and in view, and the song that is playing keeps playing.
 - **ReplayGain switch and gain readout**: Settings > Sound has *Use the ReplayGain tags in my files*; off, the tags are
   ignored and Sleeve measures the songs itself (needs ffmpeg). Now Playing shows the levelling a song gets, for example
   `FLAC · 96 kHz · 24-bit · lossless · levelling −3.2 dB`.

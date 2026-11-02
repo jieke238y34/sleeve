@@ -63,6 +63,32 @@ def test_dragging_a_row_in_now_playing_moves_the_song_and_the_menu_has_the_comma
         monkeypatch.setattr("sleeve.app.theme.Menu.exec", lambda self, *a: texts.extend(x.text() for x in self.actions()))
         win.queue_list.setCurrentRow(1)
         win._queue_menu(win.queue_list.visualItemRect(win.queue_list.item(1)).center())
-        assert "Move up" in texts and "Move down" in texts and "Remove from queue" in texts
+        assert any(t.startswith("Move up") for t in texts) and any(t.startswith("Move down") for t in texts)
+        assert "Move to top" in texts and "Move to bottom" in texts and "Remove from queue" in texts
+    finally:
+        win.close()
+
+
+def test_menu_and_keys_move_the_row_in_place_and_keep_it_selected(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1100, 700)
+        win.show()
+        songs = sorted(win.songs, key=lambda s: s.path)
+        win.player.queue, win.player.index = [s.path for s in songs], 0
+        win._refresh_queue()
+        for _ in range(6):
+            qapp.processEvents()
+        names = [win.queue_list.item(i).text() for i in range(3)]
+        win.queue_list.setCurrentRow(2)
+        win._queue_nudge(-1)                                          # Alt+Up on the last song
+        assert win.queue_list.currentRow() == 1
+        assert [win.queue_list.item(i).text() for i in range(3)] == [names[0], names[2], names[1]]
+        assert win.player.calls[-1] == ("move", (2, 1))
+        win._queue_move(1, 2)                                         # and back down
+        assert [win.queue_list.item(i).text() for i in range(3)] == names and win.queue_list.currentRow() == 2
+        before = len(win.player.calls)
+        win._queue_nudge(1)                                           # already last: nothing happens
+        assert len(win.player.calls) == before
     finally:
         win.close()

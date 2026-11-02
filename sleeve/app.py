@@ -1099,6 +1099,9 @@ class MainWindow(QMainWindow):
         self.queue_list.setDefaultDropAction(Qt.MoveAction)
         self.queue_list.setDropIndicatorShown(True)
         self.queue_list.model().rowsMoved.connect(self._queue_rows_moved)
+        for key, step in (("Alt+Up", -1), ("Alt+Down", 1)):               # the selected song, one place at a time
+            sc = QShortcut(QKeySequence(key), self.queue_list, lambda s=step: self._queue_nudge(s))
+            sc.setContext(Qt.WidgetShortcut)
         queue_page = QWidget()
         ql = QVBoxLayout(queue_page)
         ql.setContentsMargins(0, 0, 0, 0)
@@ -1195,6 +1198,7 @@ class MainWindow(QMainWindow):
         self._np_arrange()                                   # the panels on the sides the user chose, the art between
         self._np_apply_panels()                              # panels and the centering are right from the first paint
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
+        self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
@@ -4248,7 +4252,31 @@ class MainWindow(QMainWindow):
 
     def _queue_rows_moved(self, _parent, start, _end, _dest_parent, row):
         "A song was dragged to another place in the queue list: the player's queue follows."
-        self.player.move(start, row if row < start else row - 1)
+        self._queue_apply_move(start, row if row < start else row - 1)
+
+    def _queue_apply_move(self, src, dst):
+        "Tell the player; the list already shows the move (a drag did it), so it is not built again."
+        self._queue_moving = True
+        try:
+            self.player.move(src, dst)
+        finally:
+            self._queue_moving = False
+
+    def _queue_move(self, src, dst):
+        "Move the song in row `src` to row `dst` (menu and keys): the list and the player follow; it stays selected."
+        n = self.queue_list.count()
+        if not (0 <= src < n and 0 <= dst < n) or src == dst:
+            return
+        self.queue_list.insertItem(dst, self.queue_list.takeItem(src))        # sends no rowsMoved: only a drag does
+        self.queue_list.setCurrentRow(dst)
+        self._queue_apply_move(src, dst)
+        self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
+        self.queue_list.scrollToItem(self.queue_list.item(dst))
+
+    def _queue_nudge(self, step):
+        row = self.queue_list.currentRow()
+        if row >= 0:
+            self._queue_move(row, row + step)
 
     def _queue_menu(self, pos):
         item = self.queue_list.itemAt(pos)
@@ -4264,11 +4292,13 @@ class MainWindow(QMainWindow):
             last = len(self.player.queue) - 1
             now = max(self.player.index, 0)
             if row != now:                                      # "play next" means right after the one playing
-                m.addAction("Play next", lambda: self.player.move(row, now if row < now else now + 1))
+                m.addAction("Play next", lambda: self._queue_move(row, now if row < now else now + 1))
             if row > 0:
-                m.addAction("Move up", lambda: self.player.move(row, row - 1))
+                m.addAction("Move to top", lambda: self._queue_move(row, 0))
+                m.addAction("Move up\tAlt+Up", lambda: self._queue_move(row, row - 1))
             if row < last:
-                m.addAction("Move down", lambda: self.player.move(row, row + 1))
+                m.addAction("Move down\tAlt+Down", lambda: self._queue_move(row, row + 1))
+                m.addAction("Move to bottom", lambda: self._queue_move(row, last))
         if songs:
             self._add_to_playlist_menu(m, songs)
             self._browse_actions(m, songs[0])
@@ -4448,8 +4478,14 @@ class MainWindow(QMainWindow):
         if not queue:
             self._queue_source = ""
         self.queue_heading.setText(self._queue_source or "Queue")
-        self.queue_heading.setToolTip(self._queue_source)
-        if queue != self._queue_shown:                       # a different queue: build the rows again
+        tip = "Drag a song to move it, or press Alt+Up / Alt+Down"
+        self.queue_heading.setToolTip(f"{self._queue_source}\n{tip}" if self._queue_source else tip)
+        if queue != self._queue_shown and self._queue_moving:   # a song was moved: the list shows it already
+            self._queue_shown, self._queue_rows = queue, {}
+            for i, path in enumerate(queue):
+                self._queue_rows.setdefault(path, []).append(i)
+            self._queue_playing = -1
+        elif queue != self._queue_shown:                     # a different queue: build the rows again
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
             self.queue_list.setUpdatesEnabled(False)
