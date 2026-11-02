@@ -603,6 +603,7 @@ class MainWindow(QMainWindow):
         SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
+        self._np_album_text = ("", "")                    # album and file detail, before levelling is added
         self.player = player or Player(parent=self)
         self._on_np = False                                   # Now Playing is on show: the player bar folds by itself
         self._get_dl_proc = None                             # the running `git clone` of dl.py
@@ -1564,6 +1565,12 @@ class MainWindow(QMainWindow):
         self.same_volume_hint = hint("Quiet and loud songs are evened out. Uses the loudness tags in your files, and "
                                      "measures the rest in the background if ffmpeg is installed.")
         lay.addWidget(self.same_volume_hint)
+        self.replaygain_box = Switch("Use the ReplayGain tags in my files")
+        self.replaygain_box.setChecked(self.settings.use_replaygain)
+        self.replaygain_box.toggled.connect(self._replaygain_toggled)
+        lay.addWidget(self.replaygain_box)
+        lay.addWidget(hint("Off: the tags are ignored and every song is measured by Sleeve (needs ffmpeg). "
+                           "The gain a song gets shows under its album on Now Playing."))
 
         row = QHBoxLayout()
         self.output_box = QuietCombo()
@@ -2252,6 +2259,7 @@ class MainWindow(QMainWindow):
             self.same_volume_hint.setText("ffmpeg was not found, so only songs that carry loudness tags are evened "
                                           "out. Installing ffmpeg lets Sleeve measure the rest.")
         self.player.queueChanged.connect(self._loud_timer.start)
+        self.player.normChanged.connect(self._norm_changed)
         self._measure_loudness()
 
     def _same_volume_toggled(self, on):
@@ -2259,6 +2267,11 @@ class MainWindow(QMainWindow):
         self._set_setting("same_volume", on)
         if on:
             self._measure_loudness()
+
+    def _replaygain_toggled(self, on):
+        self.player.set_use_tags(on)
+        self._set_setting("use_replaygain", on)
+        self._measure_loudness()                          # songs the tags no longer cover are measured
 
     def _measure_loudness(self):
         "Measure the queued songs in the background (the one playing first), so they can play at the same volume."
@@ -2275,7 +2288,8 @@ class MainWindow(QMainWindow):
             paths = paths[:4]                           # only what may start next is measured now; the sweep waits
             self._loud_when_seen = True
         self._loud_again = False
-        self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self)
+        self._loud = loudness.LoudnessWorker(paths, self.player.loudness_cache, self._ffmpeg, self,
+                                          use_tags=self.settings.use_replaygain)
         self._loud.measured.connect(self.player.set_norm)
         self._loud.finished.connect(self._loudness_done)
         self._loud.start()
@@ -4753,12 +4767,27 @@ class MainWindow(QMainWindow):
         self.np_title.setText(title or "Nothing playing")
         self._np_who = (artist or "", album or "")
         self.np_artist.setText(artists.display(artist))
-        self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
-        self.np_album.setToolTip(detail)
+        self._np_album_text = (album or "", detail or "")
+        self._show_album_line()
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
         QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
         if self._cover_screen is not None:
             self._cover_screen.set_song(self._np_pix, title, artist)
+
+    def _show_album_line(self):
+        "The album and, under it, what the file is and how much levelling adds to it."
+        album, detail = self._np_album_text
+        db = self.player.gain_db(self._current_path) if self._current_path else None
+        if db is not None and abs(db) >= 0.05:
+            gain = f"levelling {db:+.1f} dB".replace("-", "\u2212")
+            detail = f"{detail} · {gain}" if detail else gain
+        self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
+        self.np_album.setToolTip(detail)
+        self.np_cover.refresh()
+
+    def _norm_changed(self, path):
+        if not path or path == self._current_path:
+            self._show_album_line()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

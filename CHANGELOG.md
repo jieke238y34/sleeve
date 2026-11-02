@@ -20,6 +20,9 @@ All notable changes to this project are documented here. The format follows
   several artists asks which one.
 - **Reorder the queue**: drag a song to a new place in the Now Playing queue, or right-click it for *Play next*, *Move up*
   and *Move down*. The song that is playing keeps playing and the one after it is worked out again.
+- **ReplayGain switch and gain readout**: Settings > Sound has *Use the ReplayGain tags in my files*; off, the tags are
+  ignored and Sleeve measures the songs itself (needs ffmpeg). Now Playing shows the levelling a song gets, for example
+  `FLAC · 96 kHz · 24-bit · lossless · levelling −3.2 dB`.
 - **Queue commands everywhere**: right-click a song in a playlist, an album's track list or a Ctrl+K result for
   *Play now*, *Play next* and *Add to queue* (the Library and the queue had them already). On an album, a track takes
   the rest of the album with it, as a double-click does.

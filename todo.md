@@ -48,7 +48,7 @@ Current version: **0.3.0** (every build also shows its build number).
 - [ ] **Identity that learns from listening**: top songs are in. Left: let it shape the persona and traits, and the
       new Identity panels (listening over time, time of day, most revisited albums).
 - [ ] **Same-volume levelling**: the engine works (ReplayGain tags or measured with `ffmpeg`, on by default). Left:
-      a boost for quiet songs, an opt in/out for ReplayGain, and showing the applied gain per song.
+      a boost for quiet songs. (The ReplayGain opt-out and the per-song gain on Now Playing are in.)
 - [ ] **Sleeve must not change the PipeWire setup**: audit that the above-100% boost and the stream labels only touch
       Sleeve's own stream, and make the boost opt in with a note.
 
