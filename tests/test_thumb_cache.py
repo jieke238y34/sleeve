@@ -25,8 +25,9 @@ def test_the_window_shares_one_cache_and_it_stays_bounded(qapp, cfg, monkeypatch
     try:
         assert win._thumbs is win.model.icons                  # one cache: the queue, the library, the playlists
         win._thumbs.limit = 2
-        for p in ("/m/a.mp3", "/m/b.mp3", "/m/c.mp3"):
-            win._thumbs[p] = win._blank_icon()
-        assert len(win._thumbs) == 2 and list(win._thumbs) == ["b", "c"]
+        keys = [f"/m/{n}.mp3" for n in "abc"]
+        for k in keys:
+            win._thumbs[k] = win._blank_icon()
+        assert len(win._thumbs) == 2 and list(win._thumbs) == keys[1:]      # the oldest cover goes first
     finally:
         win.close()
