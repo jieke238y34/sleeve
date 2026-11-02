@@ -402,17 +402,35 @@ def main():
     s.settle(40)
     songs = win.songs
     queue = [alb[0] for alb in albums]                        # one song of every album: a queue in 24 colours
+    for nth in (1, 2):                                        # then the other songs, so the queue is a long one
+        queue += [alb[nth] for alb in albums if alb[nth] not in queue]
+    used = set()                                              # songs a picture already showed: none is shown twice
 
-    def play(album, source=None):
-        "Play the first song of this album, with the whole queue around it."
-        win.player.queue, win.player.index = queue, album
+    def play(album, source=None, show=True):
+        """Play a song of the queue (its place in the queue, or its path), with the whole queue around it. Without
+        `show` the page stays where it is: the song only changes the cover, the accent and the colours around it."""
+        index = album if isinstance(album, int) else queue.index(album)
+        used.add(queue[index])
+        win.player.queue, win.player.index = queue, index
         win._queue_source = source or ("All songs" if real else "Road trip")
-        win._on_track(album, queue[album])
+        win._on_track(index, queue[index])
         win._refresh_queue()
         win.player.durationChanged.emit(214.0)
         win._on_position(71.0)
-        s.page("Now Playing")
-        s.settle(60)
+        if show:
+            s.page("Now Playing")
+            s.settle(60)
+        else:
+            s.settle(40)
+
+    def fresh(hue, nth=0):
+        "A song of about this hue (index = hue / 15 degrees) that no picture showed yet; the nearest hues if need be."
+        for step in range(24):
+            for sign in (1, -1):
+                for path in albums[(hue + sign * step) % 24][nth:] + albums[(hue + sign * step) % 24][:nth]:
+                    if path not in used and path in queue:
+                        return path
+        return queue[hue % len(queue)]
 
     win.match_box.setChecked(True)                            # accent and backdrop follow the cover
     play(PURPLE)
@@ -437,6 +455,8 @@ def main():
     win.resize(1180, 760)
     s.settle(30)
 
+    if real:
+        play(fresh(16, 1), show=False)                        # every page has a song and a colour of its own
     s.page("Library")
     s.settle(60)                                              # cover thumbnails load in the background
     s.shot("library")
@@ -457,6 +477,8 @@ def main():
         win.pl_styles.set_colour(files["Late night"], "#f2a65a")
         win.pl_styles.set_colour(files["Gym"], "#7fd6c2")
     win._refresh_playlist_grid()
+    if real:
+        play(fresh(8, 0), show=False)
     s.page("Playlists")
     s.settle(60)
     vp = win.pl_grid.viewport()
@@ -470,6 +492,8 @@ def main():
     else:
         shown_path = files["Road trip"]
     assert win._select_playlist_path(shown_path)
+    if real:
+        play(fresh(4, 1), show=False)
     win.pl_stack.setCurrentIndex(1)
     s.settle(40)
     s.shot("playlist-detail")
@@ -481,12 +505,16 @@ def main():
         for k in range((i * 7) % 5 + 1):
             win.history.record(song.path, 150 + 20 * k, when=now - ((i * 3 + k * 2) % 10) * 86400 - 3600 * (k + 1))
     win._refresh_listening()
+    if real:
+        play(fresh(22, 2), show=False)
     s.page("Identity")
     win.identity_page.set_tab("identity")
     s.settle(40)
     s.shot("identity")
     win.identity_page.set_tab("listening")
     win._refresh_listening()
+    if real:
+        play(fresh(10, 0), show=False)
     s.settle(40)
     s.shot("listening")
     win.identity_page.set_tab("identity")
@@ -512,18 +540,18 @@ def main():
 
     # the fullscreen cover (F11 or double-click on the art), then the Dusk theme
     s.page("Now Playing")
-    play(RED)
+    play(fresh(14, 1) if real else RED)
     win._toggle_fullscreen()
     s.settle(60)
     s.shot("cover-view", widget=win._cover_screen)
     win._cover_screen.close()
     for name, album in (("np-red", RED), ("np-teal", TEAL), ("np-purple", PURPLE), ("np-orange", ORANGE)):
-        play(album)
+        play(fresh(album, 1) if real else album)              # another song of the same colour than the first time
         s.shot(name, tour_only=True)
     s.page("Settings")
     win.theme_box.setCurrentIndex(win.theme_box.findData("dusk"))
     s.settle(30)
-    play(PURPLE)
+    play(fresh(6, 0) if real else PURPLE)                     # Now Playing, worn in the Dusk theme
     s.shot("dusk")
     if not real:
         colour_showcase(win, s, play)
