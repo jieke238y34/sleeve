@@ -2006,7 +2006,7 @@ class MainWindow(QMainWindow):
     def _do_update(self):
         if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
             return
-        cmd = updater.update_command(self._release["tag"])
+        cmd = updater.update_command(self._release["tag"], wheel=self._release.get("wheel") or None)
         self.update_btn.setEnabled(False)
         self.update_label.setText(f"Updating to {updater.label(self._release)}… this can take a minute.")
         proc = self._update_proc = QProcess(self)
