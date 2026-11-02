@@ -1816,8 +1816,8 @@ class MainWindow(QMainWindow):
         login = self.settings.navidrome
         self.nd_status = hint(f"Connected to {login['url']} as {login['user']}." if login else "Not connected.")
         lay.addWidget(self.nd_status)
-        lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Covers from the "
-                           "server are not shown yet."))
+        lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Browse covers on the "
+                           "Navidrome page, where Save to library also downloads songs into your music folder."))
 
         subsection("Backup")
         lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
