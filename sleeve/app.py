@@ -1719,6 +1719,10 @@ class MainWindow(QMainWindow):
         self.title_accent_box.setChecked(self.settings.title_in_accent)
         self.title_accent_box.toggled.connect(self._title_accent_toggled)
         lay.addWidget(self.title_accent_box)
+        self.album_lyrics_box = Switch("Show the line being sung in the album view")
+        self.album_lyrics_box.setChecked(self.settings.album_lyrics)
+        self.album_lyrics_box.toggled.connect(self._album_lyrics_toggled)
+        lay.addWidget(self.album_lyrics_box)
         self.tooltips_box = Switch("Show tooltips on hover (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
@@ -2469,6 +2473,10 @@ class MainWindow(QMainWindow):
     def _role_toggled(self, on):
         self._set_setting("sound_role_music", on)
         self.status.showMessage("The sound label changes the next time Sleeve starts.", 6000)
+
+    def _album_lyrics_toggled(self, on):
+        self._set_setting("album_lyrics", on)
+        self._album_lyric_refresh()                              # the strip shows or goes at once
 
     def _title_accent_toggled(self, on):
         self._set_setting("title_in_accent", on)
@@ -5787,7 +5795,7 @@ class MainWindow(QMainWindow):
 
     def _album_lyric_refresh(self):
         "The album view's lyric strip: the line being sung with its neighbours, for the song playing now."
-        lines = [line for _, line in self._lyrics] if self._lyric_synced else []
+        lines = [line for _, line in self._lyrics] if self._lyric_synced and self.settings.album_lyrics else []
         self.album_detail.set_lyric_strip(self._current_path, lines, self._lyric_row)
 
     def _set_lyrics_state(self):
