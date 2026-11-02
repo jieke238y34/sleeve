@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-02
+
 ### Added
 
 - **Settings sections fold**: click a heading (Sound, Theme, Look, Advanced...) to close or open it, and Sleeve remembers.
