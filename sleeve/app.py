@@ -787,7 +787,8 @@ class MainWindow(QMainWindow):
         self.runner.runningChanged.connect(self._on_sync_running)
         self.runner.finished.connect(self._on_sync_finished)
         self._build_shortcuts()
-        QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)     # leaving fullscreen is not rebound
+        self._esc_fullscreen = QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)   # not rebindable
+        QApplication.instance().focusChanged.connect(self._esc_for_focus)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.player.resolver = self._nd_stream               # lets the player stream `navidrome:<id>` tracks
         self.scrobbler.changed.connect(self._refresh_apis)
@@ -4431,6 +4432,8 @@ class MainWindow(QMainWindow):
             "quick_search": (self, self._quick_search, False),
             "toggle_bar": (self, self._toggle_bar, False),
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
+            "queue_play": (self.queue_list, self._queue_play_selected, True),
+            "queue_unselect": (self.queue_list, self._queue_unselect, True),
             "queue_remove": (self.queue_list, self._queue_remove_selected, True),
             "queue_up": (self.queue_list, lambda: self._queue_nudge(-1), True),
             "queue_down": (self.queue_list, lambda: self._queue_nudge(1), True),
@@ -4447,7 +4450,26 @@ class MainWindow(QMainWindow):
     def _apply_shortcuts(self):
         mine = shortcuts.clean(self.settings.shortcuts)
         for action_id, sc in self._shortcuts.items():
-            sc.setKey(QKeySequence(shortcuts.key_for(mine, action_id)))
+            key = shortcuts.key_for(mine, action_id)
+            keys = [QKeySequence(key)]
+            if key == "Return":
+                keys.append(QKeySequence("Enter"))               # the keypad's Enter does the same
+            sc.setKeys(keys)
+
+    def _esc_for_focus(self, _old, new):
+        "Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so this one waits."
+        self._esc_fullscreen.setEnabled(new is not self.queue_list)
+
+    def _queue_play_selected(self):
+        "Start the song that is selected in the queue (what a double-click does)."
+        row = self.queue_list.currentRow()
+        if self.queue_list.item(row) is not None and 0 <= row < len(self.player.queue):
+            self.player.play_index(row)
+
+    def _queue_unselect(self):
+        "Nothing is selected in the queue afterwards (the song that is playing stays in bold)."
+        self.queue_list.clearSelection()
+        self.queue_list.setCurrentItem(None)
 
     def _queue_remove_selected(self):
         "Take the selected song off the queue (the file stays); the next one is selected so the key can be repeated."
