@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QEvent,
     QModelIndex,
     QPoint,
+    QPointF,
     QProcess,
     QProcessEnvironment,
     QSize,
@@ -30,10 +31,12 @@ from PySide6.QtGui import (
     QCursor,
     QDesktopServices,
     QFont,
+    QFontMetrics,
     QGuiApplication,
     QIcon,
     QKeySequence,
     QPainter,
+    QPen,
     QPixmap,
     QShortcut,
 )
@@ -145,6 +148,43 @@ CUSTOM_LABEL = "Custom…"
 QUEUE_ROW = QSize(10, 54)                    # every row of the queue is this tall, with or without its cover
 DL_HOME = "https://github.com/jieke238y34/playlist-sync"
 SCROLLED_PAGES = ("Playlists", "Downloads", "Settings")     # these scroll when the window is small, never grow it
+
+
+class FoldLabel(QLabel):
+    "A section heading in Settings that can be clicked to fold or unfold its section; a small chevron shows which."
+
+    clicked = Signal()
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.folded = False
+        self.setCursor(Qt.PointingHandCursor)
+
+    def set_folded(self, folded):
+        self.folded = bool(folded)
+        self.update()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        else:
+            super().mousePressEvent(e)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(hint.width() + 26, hint.height())
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(QColor(theme.MUTED), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        x, y = QFontMetrics(self.font()).horizontalAdvance(self.text()) + 14, self.height() / 2
+        if self.folded:                                     # ▸ closed: the section is folded away
+            p.drawPolyline([QPointF(x, y - 4), QPointF(x + 4, y), QPointF(x, y + 4)])
+        else:                                               # ▾ open
+            p.drawPolyline([QPointF(x - 2, y - 2), QPointF(x + 2, y + 2), QPointF(x + 6, y - 2)])
+        p.end()
 
 
 class TopButton(QPushButton):
@@ -1465,7 +1505,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.settings_none)
 
         def section(text):
-            lab = QLabel(text)
+            lab = FoldLabel(text)
+            lab.setToolTip("Click to fold or unfold this section")
             lab.setObjectName("heading")
             lab.setAccessibleName(text)             # the section heading is announced as a heading
             lay.addSpacing(10)
@@ -1936,6 +1977,8 @@ class MainWindow(QMainWindow):
             area = area.parentWidget()
         if area is not None:
             head.parentWidget().show()                          # a section the search hid comes back to be shown
+            if head.text() in self.settings.folded_sections:
+                self._toggle_fold(head.text(), folded=False)    # and a folded one opens
             area.verticalScrollBar().setValue(max(0, head.mapTo(page, QPoint(0, 0)).y() - 8))
 
     LABEL_COLUMN = 190
@@ -2094,17 +2137,46 @@ class MainWindow(QMainWindow):
                 current.append(item)
         for item in kept:
             lay.addItem(item)
-        self._setting_groups = []
+        self._setting_groups, self._folds, self._searching = [], {}, False
         for group in groups:
             box = QWidget()
             col = QVBoxLayout(box)
             col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(10)
-            for item in group:
+            at = next(i for i, item in enumerate(group) if item.widget() is not None)  # gap first, then title
+            for item in group[:at + 1]:
                 col.addItem(item)
                 self._adopt(item, box)
+            body = QWidget()                                    # everything under the title: what folding hides
+            rest = QVBoxLayout(body)
+            rest.setContentsMargins(0, 0, 0, 0)
+            rest.setSpacing(10)
+            for item in group[at + 1:]:
+                rest.addItem(item)
+                self._adopt(item, body)
+            col.addWidget(body)
             lay.addWidget(box)
             self._setting_groups.append(box)
+            heading = group[at].widget()
+            self._folds[heading.text()] = (heading, body)
+            heading.clicked.connect(lambda name=heading.text(): self._toggle_fold(name))
+        self._apply_folds()
+
+    def _apply_folds(self):
+        "Open or close every section as the settings say; while the search box has words, all of them stay open."
+        for name, (heading, body) in self._folds.items():
+            folded = name in self.settings.folded_sections
+            heading.set_folded(folded and not self._searching)
+            body.setVisible(not folded or self._searching)
+
+    def _toggle_fold(self, name, folded=None):
+        "Fold or unfold one section and remember it."
+        names = [n for n in self.settings.folded_sections if n != name]
+        now = (name not in self.settings.folded_sections) if folded is None else folded
+        if now:
+            names.append(name)
+        self._set_setting("folded_sections", names)
+        self._apply_folds()
 
     def _adopt(self, item, box):
         "Make the widgets of a layout item (and of the layouts inside it) children of `box`, keeping what was hidden."
@@ -2129,6 +2201,8 @@ class MainWindow(QMainWindow):
             box.setVisible(match)
             shown += match
         self.settings_none.setVisible(bool(words) and not shown)
+        self._searching = bool(words)                           # a search opens the sections it found
+        self._apply_folds()
 
     def _change_music_dir(self):
         from PySide6.QtWidgets import QFileDialog

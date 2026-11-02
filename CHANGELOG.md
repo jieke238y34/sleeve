@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Settings sections fold**: click a heading (Sound, Theme, Look, Advanced...) to close or open it, and Sleeve remembers.
+  The rarely used ones (Advanced, Startup, Listening, Updates) start closed, so the page is much shorter. Searching opens
+  every section it finds something in, and the jump chips open the section they go to.
 - **Smart folders** in the Library list: *Recently added* (files from the last 30 days, newest first), *Never played* and
   *Most played* (from your listening history, which needs "Remember what I listen to"). They fill themselves, show how
   many songs they hold, and change nothing on disk.
