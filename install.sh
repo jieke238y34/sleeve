@@ -269,7 +269,7 @@ command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t 
 
 say ""
 say "Sleeve is installed. Start it from your application menu, or run: sleeve"
-if LABEL=$("$VENV/bin/python" -c 'from sleeve import build_label; print(build_label())' 2>/dev/null) && [ -n "$LABEL" ]; then
+if LABEL=$(cd / && "$VENV/bin/python" -c 'from sleeve import build_label; print(build_label())' 2>/dev/null) && [ -n "$LABEL" ]; then
     say "That is Sleeve $LABEL."
 fi
 case ":$PATH:" in *":$BIN:"*) ;; *) say "(add $BIN to your PATH to use the 'sleeve' command in a terminal)" ;; esac
