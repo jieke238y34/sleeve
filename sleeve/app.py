@@ -1685,7 +1685,8 @@ class MainWindow(QMainWindow):
         self.seasonal_box.currentIndexChanged.connect(self._seasonal_changed)
         lay.addLayout(row)
 
-        section("APIs")
+        section("Advanced")
+        subsection("APIs")
         lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
                            "here runs until you switch it on. Below the list, each service has its own switch and its "
                            "keys, secrets and passwords; none of them is ever shown in the list."))
@@ -1801,33 +1802,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint("Plain http is fine on your own network; over the internet use https. Covers from the "
                            "server are not shown yet."))
 
-        section("Startup")
-        self.session_box = Switch("Remember what was playing")
-        self.session_box.setChecked(self.settings.remember_session)
-        self.session_box.toggled.connect(self._remember_session_toggled)
-        lay.addWidget(self.session_box)
-        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
-                           "spot; press play to carry on. Kept in a file on this computer only."))
-
-        section("Listening")
-        self.listening_box = Switch("Remember what I listen to")
-        self.listening_box.setChecked(self.settings.track_listening)
-        self.listening_box.toggled.connect(self._track_listening_toggled)
-        lay.addWidget(self.listening_box)
-        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
-                           "the top songs on the Identity page and is never sent anywhere."))
-        clear = QPushButton("Clear listening history")
-        clear.clicked.connect(self._clear_listening)
-
-        art_clear = QPushButton("Clear cached artwork")
-        art_clear.setToolTip("Forget the cover addresses Sleeve looked up online. Covers inside your own files stay.")
-        art_clear.clicked.connect(self._clear_art_cache)
-        row = FlowLayout()                                  # side by side, and one under the other when narrow
-        row.addWidget(clear)
-        row.addWidget(art_clear)
-        lay.addLayout(row)
-
-        section("Backup")
+        subsection("Backup")
         lay.addWidget(hint("Keep your Sleeve data in one file: settings, stashed songs, listening history, playlist "
                            "covers and title colours. It never holds your music, your Last.fm sign-in or your dl.py "
                            "approval."))
@@ -1842,7 +1817,7 @@ class MainWindow(QMainWindow):
         row.addWidget(restore_btn)
         lay.addLayout(row)
 
-        section("Your files")
+        subsection("Your files")
         grid = QGridLayout()
         for r, (label, value) in enumerate((("Music folder", self.cfg.music_dir),
                                             ("dl.py", self.cfg.dl_path or "not found (optional)"),
@@ -1868,6 +1843,32 @@ class MainWindow(QMainWindow):
         buttons.addWidget(rescan)
         buttons.addStretch(1)
         lay.addLayout(buttons)
+
+        section("Startup")
+        self.session_box = Switch("Remember what was playing")
+        self.session_box.setChecked(self.settings.remember_session)
+        self.session_box.toggled.connect(self._remember_session_toggled)
+        lay.addWidget(self.session_box)
+        lay.addWidget(hint("When Sleeve opens again it loads the queue and the song you were on, paused at the same "
+                           "spot; press play to carry on. Kept in a file on this computer only."))
+
+        section("Listening")
+        self.listening_box = Switch("Remember what I listen to")
+        self.listening_box.setChecked(self.settings.track_listening)
+        self.listening_box.toggled.connect(self._track_listening_toggled)
+        lay.addWidget(self.listening_box)
+        lay.addWidget(hint("Which songs you play and for how long, kept in a file on this computer only. It feeds "
+                           "the top songs on the Identity page and is never sent anywhere."))
+        clear = QPushButton("Clear listening history")
+        clear.clicked.connect(self._clear_listening)
+
+        art_clear = QPushButton("Clear cached artwork")
+        art_clear.setToolTip("Forget the cover addresses Sleeve looked up online. Covers inside your own files stay.")
+        art_clear.clicked.connect(self._clear_art_cache)
+        row = FlowLayout()                                  # side by side, and one under the other when narrow
+        row.addWidget(clear)
+        row.addWidget(art_clear)
+        lay.addLayout(row)
 
         section("Updates")
         self.update_label = hint(f"You have Sleeve {build_label()}. Nothing is checked until you press the button.")
