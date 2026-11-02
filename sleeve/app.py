@@ -3471,6 +3471,7 @@ class MainWindow(QMainWindow):
             if song is not None and song.artist.strip():
                 artists[song.artist.strip()] += play.plays
         insights["artists"] = len(artists)
+        insights["estimated"] = self.history.estimated(PERIODS[period])
         insights["top_artists"] = artists.most_common(5)
         card.set_data(rows, self.history.seconds(PERIODS[period]), self.settings.track_listening, insights)
 
