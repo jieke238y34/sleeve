@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import theme
+from . import coverstore, theme
 from .smoothscroll import SmoothScroll
 
 VARIOUS = "Various artists"
@@ -182,15 +182,18 @@ class AlbumGrid(QListWidget):
 
     def __init__(self, cover_loader=None, parent=None):
         super().__init__(parent)
-        if cover_loader is None:
-            from . import art
-            cover_loader = art.cover_bytes
         self.cover_loader = cover_loader
+        self._storing = cover_loader is None      # without a loader of its own the grid reads the shared store,
+        if self._storing:                         # whose `ready` says when a cover on the road has landed
+            coverstore.shared().ready.connect(self._cover_ready)
         self.tile = TILE_WANT
         self._albums = []
         self._sources = {}            # album key -> QPixmap of the real cover, or None (use the placeholder)
         self._tiles = {}              # album key -> rounded pixmap at the current tile size
         self._labels = {}             # (album key, tile size, ...) -> the drawn name and line under a tile
+        self._waiting = {}            # album key -> (album, the paths whose decodes its ask still waits for)
+        self._parts = {}              # album key -> covers collected so far, while the rest of a mosaic decodes
+        self._tries = {}              # album key -> how many of its songs have been asked so far, across ticks
         self.loads = 0                # how many covers were asked from the loader (for tests)
         self.setViewMode(QListView.IconMode)
         self.setMovement(QListView.Static)
@@ -225,6 +228,9 @@ class AlbumGrid(QListWidget):
         live = {a.key for a in self._albums}
         self._sources = {k: v for k, v in self._sources.items() if k in live}
         self._tiles = {k: v for k, v in self._tiles.items() if k in live}
+        self._waiting = {k: w for k, w in self._waiting.items() if k in live}
+        self._parts = {k: v for k, v in self._parts.items() if k in live}
+        self._tries = {k: v for k, v in self._tries.items() if k in live}
         self.setUpdatesEnabled(False)
         self.clear()
         size = self.gridSize()
@@ -266,8 +272,11 @@ class AlbumGrid(QListWidget):
         return menu
 
     def cover_pixmap(self, album, size=SOURCE_SIDE):
-        "The cover of an album at `size`, loaded now if it was not yet (for the detail view); placeholder if none."
-        self._ensure_source(album)
+        "The cover of an album at `size`, read now if it was not yet (the detail view opens on click and needs it)."
+        if self._storing:
+            self._read_detail_source(album)
+        else:
+            self._ensure_source(album)
         src = self._sources.get(album.key)
         if src is None:
             return placeholder_pixmap(album.name, size)
@@ -287,10 +296,16 @@ class AlbumGrid(QListWidget):
         return pix
 
     def _trim(self):
-        "Forget the oldest covers beyond the limit; one that is still wanted is simply loaded again when it is drawn."
-        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES)):
+        "Forget the oldest covers and asks beyond the limit; one that is still wanted is loaded again when drawn."
+        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES), (self._tries, KEEP_SOURCES)):
             while len(cache) > limit:
                 cache.pop(next(iter(cache)))
+
+    def _put_source(self, key, src):
+        self._sources[key] = src
+        self._tiles.pop(key, None)
+        self._parts.pop(key, None)
+        self._trim()
 
     def label_pixmap(self, album, base_font):
         "The name and the line under it of a tile, drawn once and kept (a repaint then only copies the picture)."
@@ -372,12 +387,49 @@ class AlbumGrid(QListWidget):
             self._timer.start()
 
     def _ensure_source(self, album):
+        if album.key in self._sources or album.key in self._waiting:
+            return
+        if not self._storing:                     # a loader handed in (tests): read it here, as the old ticks did
+            self.loads += 1
+            self._put_source(album.key, load_cover(album, self.cover_loader))
+            return
+        store = coverstore.shared()
+        asked = self._tries.get(album.key, 0)
+        pending = []
+        for i, s in enumerate(album.songs[asked:COVER_TRIES], asked):
+            self._tries[album.key] = i + 1
+            pix = store.pixmap(s.path, SOURCE_SIDE)
+            if pix is not None:
+                self._put_source(album.key, pix)
+                return
+            if store.state(s.path) == "pending":
+                pending.append(s.path)            # its decode is on the road: `_cover_ready` brings this album back
+        if pending:
+            self._waiting[album.key] = (album, pending)
+        else:
+            self._put_source(album.key, None)     # none of these files has a cover: the placeholder shows
+
+    def _read_detail_source(self, album):
+        """The cover decoded right now: the time a worker takes is too slow for a view that opens at once, and the
+        store remembers it when done, so nothing reads these files more than once in the end."""
         if album.key in self._sources:
             return
-        self.loads += 1
-        self._sources[album.key] = load_cover(album, self.cover_loader)
-        self._tiles.pop(album.key, None)
-        self._trim()
+        self._waiting.pop(album.key, None)
+        store = coverstore.shared()
+        for s in album.songs[:COVER_TRIES]:
+            pix = store.pixmap(s.path, SOURCE_SIDE, wait=True)
+            if pix is not None:
+                self._put_source(album.key, pix)
+                return
+        self._put_source(album.key, None)
+
+    def _cover_ready(self, path):
+        "A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."
+        for key, waited in list(self._waiting.items()):
+            if path in waited[1]:
+                del self._waiting[key]
+                self._ensure_source(waited[0])
+                self.viewport().update()
 
     def _visible_unloaded(self, limit):
         "Up to `limit` albums on screen (or just below it) whose cover was not asked for yet."
@@ -393,7 +445,7 @@ class AlbumGrid(QListWidget):
             if rect.top() > bottom:
                 break
             a = self.item(row).data(Qt.UserRole)
-            if a.key not in self._sources:
+            if a.key not in self._sources and a.key not in self._waiting:
                 out.append(a)
             row += 1
         return out
