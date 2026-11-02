@@ -23,7 +23,7 @@ def test_the_rare_sections_start_folded_and_a_click_opens_and_remembers(qapp, cf
     win = open_settings(qapp, cfg, monkeypatch, tmp_path)
     try:
         heading, body = win._folds["Advanced"]
-        assert win.settings.folded_sections == ["Advanced", "Startup", "Listening", "Updates"]
+        assert win.settings.folded_sections == ["Advanced", "Startup", "Listening", "Shortcuts", "Updates"]
         assert body.isHidden() and heading.folded and not win._folds["Sound"][1].isHidden()
         heading.clicked.emit()                                              # open Advanced
         assert not body.isHidden() and not heading.folded and "Advanced" not in win.settings.folded_sections
@@ -45,7 +45,7 @@ def test_a_search_opens_every_section_it_finds_and_closing_it_folds_them_again(q
         win.settings_search.setText("")
         settle(qapp)
         assert win._folds["Updates"][1].isHidden()                          # back to how it was
-        assert win.settings.folded_sections == ["Advanced", "Startup", "Listening", "Updates"]   # searching saved nothing
+        assert win.settings.folded_sections == ["Advanced", "Startup", "Listening", "Shortcuts", "Updates"]   # searching saved nothing
     finally:
         win.close()
 
