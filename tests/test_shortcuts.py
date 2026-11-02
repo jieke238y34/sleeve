@@ -238,3 +238,37 @@ def test_the_queue_scrolls_with_the_selector_so_it_is_never_lost(qapp, cfg, monk
         assert view.currentRow() == 35 and in_view()
     finally:
         win.close()
+
+
+def test_a_song_change_does_not_pull_the_selector_away_from_a_person_in_the_queue(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = long_queue_window(qapp, cfg, monkeypatch, tmp_path, copies=3)
+    try:
+        view = win.queue_list
+        view.setFocus()
+        view.setCurrentRow(3)
+        win._mark_playing(5)                                    # the next song starts by itself
+        assert view.currentRow() == 3 and win._queue_playing == 5       # the person's selector stays, the bold moves
+        view.clearFocus()
+        win.search.setFocus()                                   # not in the queue any more: it follows what plays
+        win._mark_playing(6)
+        assert view.currentRow() == 6
+    finally:
+        win.close()
+
+
+def test_a_stray_key_in_the_queue_brings_a_selector_that_was_scrolled_away_back_into_view(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win = long_queue_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        view = win.queue_list
+        view.setCurrentRow(2)
+        view.verticalScrollBar().setValue(view.verticalScrollBar().maximum())       # the wheel took the view far away
+        rect = view.visualRect(view.model().index(2, 0))
+        assert rect.bottom() < 0                                                    # row 2 is out of sight
+        QTest.keyClick(view, Qt.Key_Shift)                                          # any key
+        QTest.qWait(600)
+        rect = view.visualRect(view.model().index(view.currentRow(), 0))
+        assert rect.top() >= 0 and rect.bottom() <= view.viewport().height()
+    finally:
+        win.close()

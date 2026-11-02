@@ -1709,7 +1709,7 @@ class MainWindow(QMainWindow):
         self.title_accent_box.setChecked(self.settings.title_in_accent)
         self.title_accent_box.toggled.connect(self._title_accent_toggled)
         lay.addWidget(self.title_accent_box)
-        self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
+        self.tooltips_box = Switch("Show tooltips on hover (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
         lay.addWidget(self.tooltips_box)
@@ -3353,9 +3353,8 @@ class MainWindow(QMainWindow):
         if (ev.type() == QEvent.KeyPress and obj is self.queue_list and self._queue_grabbed is not None
                 and not ev.modifiers() and self._queue_grab_key(ev.key())):
             return True                                           # the held song moved: the selector does not
-        if (ev.type() == QEvent.KeyPress and obj is self.queue_list
-                and ev.key() in (Qt.Key_Up, Qt.Key_Down, Qt.Key_PageUp, Qt.Key_PageDown, Qt.Key_Home, Qt.Key_End)):
-            QTimer.singleShot(0, self._queue_follow)               # once the list has moved its selector
+        if ev.type() == QEvent.KeyPress and obj is self.queue_list:
+            QTimer.singleShot(0, self._queue_follow)               # whatever moved the selector (arrows, type-ahead)
         if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
             QTimer.singleShot(0, self._np_apply_panels)          # the page has its real width now (it starts hidden)
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
@@ -4798,7 +4797,8 @@ class MainWindow(QMainWindow):
             font = self.queue_list.font()
             font.setBold(True)
             item.setFont(font)
-            self.queue_list.setCurrentRow(row)
+            if not self.queue_list.hasFocus():                    # a person moving about the queue keeps their selector
+                self.queue_list.setCurrentRow(row)
         self._queue_playing = row
 
     def _queue_catch_up(self):

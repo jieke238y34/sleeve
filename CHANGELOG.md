@@ -19,6 +19,13 @@ All notable changes to this project are documented here. The format follows
 
 - **The queue follows the selector**: moving the selection with the arrow keys, or carrying a song, scrolls the Now
   Playing queue so the selected song is never lost off the edge.
+- **The selector is left where you put it**: when the next song starts by itself while you are moving about in the queue,
+  your selection no longer jumps to the song that is playing. Any key that moves the selector (typing a letter to jump,
+  for example) also scrolls the queue to it.
+- **The 5-point gradient stays five points on a black cover**: in the accent-following mode it fell back to three colours
+  after the black-cover fix.
+- **The tooltip switch can be found**: Settings > Look now says *Show tooltips on hover*, so searching for "tooltips"
+  finds it (it said "hover tips"). Switching it off hides every tip.
 
 ## [0.3.1] - 2026-11-02
 
