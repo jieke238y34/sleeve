@@ -86,12 +86,13 @@ from PySide6.QtWidgets import (
 from . import (
     activity,
     apis,
-    art,
+    art,  # noqa: F401 (tests point their cover reader at sleeve.app.art; keep the name reachable for them)
     artists,
     audioinfo,
     backup,
     build_label,
     config,
+    coverstore,
     desktop,
     dlsetup,
     earbuds,
@@ -617,6 +618,10 @@ class MainWindow(QMainWindow):
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
         self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
+        self._np_pending = None                  # the song whose cover is still decoding; its words are shown already
+        self._np_words = ()                             # what `_cover_arrived` shows again once that cover is in
+        self._queue_rows = {}                           # path -> the queue rows showing it (the page fills this in)
+        coverstore.shared().ready.connect(self._cover_arrived)
         self._queue_source = ""                        # what the queue was started from: a playlist, an album, a folder
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._scrobbled, self._started_at = False, 0           # last.fm: sent for this play yet, and when it began
@@ -5042,23 +5047,26 @@ class MainWindow(QMainWindow):
             if not self._thumb_todo:
                 break
             path = self._thumb_todo.pop()
-            self._thumbs[path] = self._make_thumb(path)
+            icon = self._make_thumb(path)
+            if icon is None:                       # decoding in a worker: `_cover_arrived` puts it in the row
+                continue
+            self._thumbs[path] = icon
             for row in self._queue_rows.get(path, ()):
                 item = self.queue_list.item(row)
                 if item is not None:
-                    item.setIcon(self._thumbs[path])
+                    item.setIcon(icon)
         if self._thumb_todo and not self._closing:
             self._thumb_timer.start()
 
     def _make_thumb(self, path):
-        "The 44 pixel cover icon of a song, or the Sleeve mark when it has none."
-        try:
-            data = art.cover_bytes(path)
-        except Exception:
-            data = None
-        pix = QPixmap()
-        if data and pix.loadFromData(data):
+        """The 44 pixel cover icon of a song, or the Sleeve mark when the store knows the file has none. None means
+        the decode is still on its way: `_cover_arrived` comes back to the rows with the icon then."""
+        store = coverstore.shared()
+        pix = store.pixmap(path, 44)              # one decode serves this and every other list in the window
+        if pix is not None:
             return QIcon(theme.rounded_pixmap(pix, 44, 8))
+        if store.state(path) == "pending":
+            return None
         return QIcon(self._placeholder_thumb())
 
     def _blank_icon(self):
@@ -5089,11 +5097,16 @@ class MainWindow(QMainWindow):
         return range(top, min(count, (count - 1 if bottom < 0 else bottom) + 3))
 
     def _load_library_thumbs(self):
-        "Covers for the rows of the song table that are on screen, three a tick, so the window never stalls."
+        "Covers for the rows of the song table that are on screen, five a tick, so the window never stalls."
         songs = self.model.songs
-        todo = [r for r in self._visible_rows(self.table, len(songs)) if songs[r].path not in self._thumbs][:5]
+        store = coverstore.shared()
+        todo = [r for r in self._visible_rows(self.table, len(songs))
+                if songs[r].path not in self._thumbs and store.state(songs[r].path) != "pending"][:5]
         for r in todo:
-            self._thumbs[songs[r].path] = self._make_thumb(songs[r].path)
+            icon = self._make_thumb(songs[r].path)
+            if icon is None:                       # its decode got under way just now: `_cover_arrived` brings it in
+                continue
+            self._thumbs[songs[r].path] = icon
             ix = self.model.index(r, 0)
             self.model.dataChanged.emit(ix, ix, [Qt.DecorationRole])
         self._trim_thumbs()
@@ -5103,10 +5116,15 @@ class MainWindow(QMainWindow):
     def _load_playlist_thumbs(self):
         "The same for the playlist on show."
         entries = self._playlist_entries
+        store = coverstore.shared()
         rows = self._visible_rows(self.pl_table, len(entries))
-        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists][:5]
+        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists
+                and store.state(entries[r].path) != "pending"][:5]
         for r in todo:
-            self._thumbs[entries[r].path] = self._make_thumb(entries[r].path)
+            icon = self._make_thumb(entries[r].path)
+            if icon is None:                       # its decode is under way: `_cover_arrived` brings the rows in
+                continue
+            self._thumbs[entries[r].path] = icon
         for r in rows:
             item = self.pl_table.item(r, 0)
             icon = self._thumbs.get(entries[r].path)
@@ -5116,17 +5134,40 @@ class MainWindow(QMainWindow):
         if todo and not self._closing:
             self._pl_thumb_timer.start()
 
+    def _cover_arrived(self, path):
+        "The store finished a file: the queue rows that asked for it paint it, and a starting song shows it."
+        rows = self._queue_rows.get(path)
+        if rows:
+            icon = self._make_thumb(path)
+            if icon is None:                       # the file changed while it decoded and is going again
+                return
+            self._thumbs[path] = icon
+            for row in rows:
+                item = self.queue_list.item(row)
+                if item is not None:
+                    item.setIcon(icon)
+        if self._np_pending == path:
+            self._show_song_art(path)
+        self._lib_thumb_timer.start()              # the table rows take it the next tick they are on screen for
+        self._pl_thumb_timer.start()
+
     def _placeholder_thumb(self):
         logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(44, 44)
         return theme.rounded_pixmap(logo, 44, 8) if not logo.isNull() else logo
 
     def _show_cover(self, pix, title, artist, album, detail=""):
-        "The Now Playing page, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
+        "The Now Playing art, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
+        if self._cover_screen is not None:
+            self._cover_screen.set_song(self._np_pix, title, artist)
+        self._show_words(title, artist, album, detail)
+
+    def _show_words(self, title, artist, album, detail=""):
+        "The words of the Now Playing page for one song; set on their own while its cover is still being decoded."
         self.np_title.setText(title or "Nothing playing")
         self._np_who = (artist or "", album or "")
         self.np_artist.setText(artists.display(artist))
@@ -5134,8 +5175,16 @@ class MainWindow(QMainWindow):
         self._show_album_line()
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
         QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
-        if self._cover_screen is not None:
-            self._cover_screen.set_song(self._np_pix, title, artist)
+
+    def _show_song_art(self, path):
+        "The song that started gets its cover when the store has it: side art, Now Playing page and backdrop together."
+        store = coverstore.shared()
+        pix = store.pixmap(path)
+        if pix is None and store.state(path) == "pending":
+            return                                # the file changed mid-decode and goes again: its next round ends this
+        self._np_pending = None
+        self._set_side_art(pix)
+        self._show_cover(pix, *self._np_words)
 
     def _show_album_line(self):
         "The album and, under it, what the file is and how much levelling adds to it."
@@ -5693,17 +5742,16 @@ class MainWindow(QMainWindow):
         if getattr(self.player, "playing", False):          # a song brought back paused is not being played
             self.scrobbler.now_playing(s)
         self.setWindowTitle(f"{artists.display(s.artist)} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
-        try:
-            data = art.cover_bytes(path)
-        except Exception:
-            data = None
-        pix = QPixmap()
-        if data and pix.loadFromData(data):
-            self._set_side_art(pix)
-            self._show_cover(pix, s.name, s.artist, s.album, audioinfo.describe(s))
+        store = coverstore.shared()
+        desc = audioinfo.describe(s)
+        pix = store.pixmap(path)                  # the file's one decode, shared with every list that shows it
+        if pix is None and store.state(path) == "pending":
+            self._np_pending = path               # the last song keeps the frame each moment until its cover is in
+            self._np_words = (s.name, s.artist, s.album, desc)
+            self._show_words(s.name, s.artist, s.album, desc)
         else:
-            self._set_side_art(None)
-            self._show_cover(None, s.name, s.artist, s.album, audioinfo.describe(s))
+            self._set_side_art(pix)
+            self._show_cover(pix, s.name, s.artist, s.album, desc)       # pix None: the Sleeve mark shows
         self._load_lyrics(s)
 
     def _read_lyrics_file(self, path):

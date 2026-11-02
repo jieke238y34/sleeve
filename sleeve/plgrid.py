@@ -18,7 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QListWidgetItem, QStyle
 
-from . import theme
+from . import coverstore, theme
 from .albums import GAP, SOURCE_SIDE, AlbumGrid, _TileDelegate, placeholder_pixmap
 
 MOSAIC_LOOK = 24             # songs of a playlist looked at to find up to four different album covers
@@ -281,6 +281,9 @@ class PlaylistGrid(AlbumGrid):
         live = {t.key for t in self._albums}
         self._sources = {k: v for k, v in self._sources.items() if k in live}
         self._tiles = {k: v for k, v in self._tiles.items() if k in live}
+        self._waiting = {k: w for k, w in self._waiting.items() if k in live}
+        self._parts = {k: v for k, v in self._parts.items() if k in live}
+        self._tries = {k: v for k, v in self._tries.items() if k in live}
         self.setUpdatesEnabled(False)
         self.clear()
         size = self.gridSize()
@@ -296,19 +299,46 @@ class PlaylistGrid(AlbumGrid):
         self._kick()
 
     def _ensure_source(self, tile):
-        if tile.key in self._sources:
+        if tile.key in self._sources or tile.key in self._waiting:
             return
-        self.loads += 1
-        self._sources[tile.key] = load_cover(tile, self.cover_loader)
-        self._tiles.pop(tile.key, None)
-        self._trim()
-
-    def cover_pixmap(self, tile, size=SOURCE_SIDE):
-        self._ensure_source(tile)
-        src = self._sources.get(tile.key)
-        if src is None:
-            return placeholder_pixmap(tile.name, size)
-        return theme.rounded_pixmap(src, size, size // 14)
+        if not self._storing:                     # a loader handed in (tests): read it here, as the old ticks did
+            self.loads += 1
+            self._put_source(tile.key, load_cover(tile, self.cover_loader))
+            return
+        if tile.new:
+            self._put_source(tile.key, new_tile_pixmap(SOURCE_SIDE))
+            return
+        if tile.image:
+            pix = QPixmap(tile.image)
+            if not pix.isNull():
+                self._put_source(tile.key, pix.scaled(SOURCE_SIDE, SOURCE_SIDE,
+                                                      Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                return
+        store = coverstore.shared()               # the mosaic: every piece is the store's copy of one file
+        covers = self._parts.pop(tile.key, [])
+        pending, seen = [], set()
+        asked = self._tries.get(tile.key, 0)
+        for i, s in enumerate(tile.songs[asked:MOSAIC_LOOK], asked):
+            album = (s.album or s.path).casefold()
+            if album in seen:
+                self._tries[tile.key] = i + 1
+                continue
+            seen.add(album)
+            self._tries[tile.key] = i + 1
+            pix = store.pixmap(s.path, SOURCE_SIDE)
+            if pix is not None:
+                covers.append(pix)
+                if len(covers) >= 4:
+                    break                          # the mosaic fills its grid with two by two, no more is wanted
+            elif store.state(s.path) == "pending":
+                pending.append(s.path)            # its decode is on the road: `_cover_ready` brings this tile back
+        if pending and len(covers) < 4:
+            self._waiting[tile.key] = (tile, pending)
+            self._parts[tile.key] = covers        # the pieces already in are kept while the rest decode
+        elif covers:
+            self._put_source(tile.key, mosaic(covers, SOURCE_SIDE))
+        else:
+            self._put_source(tile.key, None)      # none of these files has a cover: the generated one shows
 
     def tile_pixmap(self, tile):
         "The tile picture: cover, glass band and the name written on it, made once and kept until something changes."
