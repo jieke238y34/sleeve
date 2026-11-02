@@ -224,11 +224,13 @@ class TopButton(QPushButton):
         return False
 
 
-def scrollable(page, top_button=False):
+def scrollable(page, top_button=False, center=False):
     "The page inside a scroll area, so that a small window scrolls it instead of being forced to grow."
     area = QScrollArea()
     if top_button:
         area.top_button = TopButton(area)
+    if center:
+        area.setAlignment(Qt.AlignHCenter)               # a page with a working width: centred on wider windows
     area.setWidget(page)
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.NoFrame)
@@ -718,7 +720,8 @@ class MainWindow(QMainWindow):
                            ("Health", self._health_page()),
                            ("Settings", self._settings_page())):
             self.nav.addItem(name)
-            self.stack.addWidget(scrollable(page, top_button=name == "Settings") if name in SCROLLED_PAGES else page)
+            self.stack.addWidget(scrollable(page, top_button=name == "Settings", center=name == "Settings")
+                                 if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
         self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
         self.splitter.setChildrenCollapsible(False)
@@ -1516,6 +1519,7 @@ class MainWindow(QMainWindow):
     def _settings_page(self):
         "Preferences. Each change is applied at once and saved."
         page = QWidget()
+        page.setMaximumWidth(1040)                       # the form reads best at this width; wider windows centre it
         lay = QVBoxLayout(page)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
@@ -1557,6 +1561,7 @@ class MainWindow(QMainWindow):
             lab.setObjectName("muted")
             lab.setWordWrap(True)
             lab.setTextFormat(Qt.PlainText)
+            lab.setCursor(Qt.ArrowCursor)             # a status line reads; it is not selectable text
             return lab
 
         section("Sound")
@@ -2072,7 +2077,6 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
 
-        lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._align_settings(lay)
         self._settings_jump_row(page, lay)
