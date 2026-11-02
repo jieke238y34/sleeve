@@ -12,6 +12,14 @@ All notable changes to this project are documented here. The format follows
   line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
   *Show the line being sung in the album view*, to opt out; it is on by default.
 
+### Fixed
+
+- **A queue of a whole library no longer eats memory**: the queue decoded a cover for every row, one after another, and
+  kept them all, so with a big library queued Sleeve kept working and growing for as long as Now Playing was open. It now
+  loads the covers of the rows in view, a margin around them and the playing song, follows the scrolling, and keeps the
+  icon cache to its limit. Queuing 5,000 songs: 41 covers planned instead of 5,011, and memory stays flat instead of
+  growing about 70 MB a minute.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added

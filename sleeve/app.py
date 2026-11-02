@@ -1238,6 +1238,11 @@ class MainWindow(QMainWindow):
         self._thumb_timer.setSingleShot(True)
         self._thumb_timer.setInterval(20)
         self._thumb_timer.timeout.connect(self._load_thumbs)
+        self._thumb_replan = QTimer(self)                      # the queue was scrolled: cover the rows now in view
+        self._thumb_replan.setSingleShot(True)
+        self._thumb_replan.setInterval(80)
+        self._thumb_replan.timeout.connect(self._replan_thumbs)
+        self.queue_list.verticalScrollBar().valueChanged.connect(lambda _v: self._thumb_replan.start())
         self._show_cover(None, "", "", "")
         return page
 
@@ -5042,12 +5047,34 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._lyrics_catch_up)
         QTimer.singleShot(0, self._np_balance)
 
+    THUMB_AHEAD, THUMB_AROUND_PLAYING = 30, 20     # rows beyond the ones in view, and around the song that plays
+
     def _plan_thumbs(self):
-        "Which covers to load next: the ones nearest the playing song first."
-        around = max(self.player.index, 0)
-        wanted = {p: min(rows, key=lambda r: abs(r - around)) for p, rows in self._queue_rows.items()
-                  if p not in self._thumbs}
-        self._thumb_todo = sorted(wanted, key=lambda p: abs(wanted[p] - around), reverse=True)   # popped from the end
+        """Which covers to load next: those of the rows in view, a margin around them and a few around the playing song,
+        nearest the middle first. Not the whole queue: a queue of a whole library would otherwise decode a cover for
+        every row, one after another, for as long as it takes, and keep them all."""
+        view, count = self.queue_list, len(self._queue_shown)
+        playing = max(self.player.index, 0)
+        near = self.THUMB_AROUND_PLAYING
+        rows = set(range(max(0, playing - near), min(count, playing + near + 1)))
+        centre = playing
+        top = view.indexAt(QPoint(4, 4)).row() if view.isVisible() else -1
+        if top >= 0:
+            bottom = view.indexAt(QPoint(4, max(5, view.viewport().height() - 4))).row()
+            bottom = count - 1 if bottom < 0 else bottom
+            rows |= set(range(max(0, top - self.THUMB_AHEAD), min(count, bottom + self.THUMB_AHEAD + 1)))
+            centre = (top + bottom) // 2
+        wanted = {}
+        for r in rows:
+            path = self._queue_shown[r]
+            if path not in self._thumbs and (path not in wanted or abs(r - centre) < wanted[path]):
+                wanted[path] = abs(r - centre)
+        self._thumb_todo = sorted(wanted, key=wanted.get, reverse=True)          # popped from the end
+
+    def _replan_thumbs(self):
+        self._plan_thumbs()
+        if self._thumb_todo and not self._closing:
+            self._thumb_timer.start()
 
     def _load_thumbs(self):
         "Cover thumbnails for the queue, two songs per tick so the window never stalls."
@@ -5065,6 +5092,7 @@ class MainWindow(QMainWindow):
                 item = self.queue_list.item(row)
                 if item is not None:
                     item.setIcon(icon)
+        self._trim_thumbs()
         if self._thumb_todo and not self._closing:
             self._thumb_timer.start()
 
