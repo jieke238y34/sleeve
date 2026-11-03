@@ -3784,7 +3784,7 @@ class MainWindow(QMainWindow):
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
-    ART_GAP = 1.1                                           # seconds between two cover lookups
+    ART_GAP = 0.3                                       # seconds between two cover lookups (MusicBrainz allows this)
 
     def _want_art(self, album, artist, first=True):
         "Queue a cover lookup. The song playing now goes to the front, the ones coming up behind it."
@@ -3812,7 +3812,7 @@ class MainWindow(QMainWindow):
         if self._was_quiet:
             return                                      # nobody is looking (a game fills the screen): they can wait
         queue, here = self.player.queue, max(self.player.index, 0)
-        for path in queue[here + 1:here + 4]:
+        for path in queue[here + 1:here + 8]:               # the covers of the next few songs are wanted now
             song = self.by_path.get(path)
             if song is not None and song.album and not self._art_cache.get(song.album, song.artist)[0]:
                 self._want_art(song.album, song.artist, first=False)
