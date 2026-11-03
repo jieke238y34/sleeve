@@ -241,8 +241,12 @@ QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; 
                        background: transparent; }}
 QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
-                    padding: 0; font-size: 18pt; background: {accent}; color: {ink}; }}
-QPushButton#play:hover {{ background: {hover}; }}
+                    padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
+QPushButton#play:hover {{ background: {CREAM}; }}
+QPushButton#playbig {{ border-radius: 38px; min-width: 76px; max-width: 76px; min-height: 76px; max-height: 76px;
+                       padding: 0; background: {accent}; color: {bg}; }}
+QPushButton#playbig:hover {{ background: {CREAM}; }}
+QPushButton#playbig:focus {{ padding: 0; }}
 
 QPushButton#primary {{ background: {accent}; color: {ink}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
                        border-radius: 22px; }}
@@ -310,10 +314,9 @@ STYLE = build_style()
 
 
 def transport_icon(kind, color, size=24):
-    """A painted icon for the transport buttons ("play", "pause", "prev" or "next"), drawn in `color` and crisp at any
-    scale. Sleeve's own shapes rather than the usual ones: play is a solid soft-cornered triangle,
-    pause two equal bars, and the skips are chevrons with a fading trail behind the leading one, so they point the way
-    the music moves."""
+    """A painted icon for the skip buttons ("prev" or "next"), drawn in `color` and crisp at any scale: two chevrons
+    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the record
+    player in discbutton.py.)"""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
@@ -322,32 +325,18 @@ def transport_icon(kind, color, size=24):
     p.setRenderHint(QPainter.Antialiasing)
     p.scale(size / 24, size / 24)
     ink = QColor(color)
-    if kind == "play":                           # a solid triangle with soft corners, nudged right so it looks centred
-        p.setPen(QPen(ink, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        p.setBrush(ink)
-        tri = QPainterPath(QPointF(9.7, 6.4))
-        tri.lineTo(QPointF(17.5, 12))
-        tri.lineTo(QPointF(9.7, 17.6))
-        tri.closeSubpath()
-        p.drawPath(tri)
-    elif kind == "pause":                        # two equal bars with rounded ends, centred on the middle
-        p.setPen(Qt.NoPen)
-        p.setBrush(ink)
-        p.drawRoundedRect(QRectF(6.9, 5.4, 3.6, 13.2), 1.5, 1.5)
-        p.drawRoundedRect(QRectF(13.5, 5.4, 3.6, 13.2), 1.5, 1.5)
-    else:                                        # prev / next: two chevrons, the leading one solid, the trail faded
-        forward = kind == "next"
-        trail = QColor(ink)
-        trail.setAlphaF(0.38)
-        for shift, colour in ((-5.2, trail), (2.4, ink)) if forward else ((5.2, trail), (-2.4, ink)):
-            p.setPen(QPen(colour, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            p.setBrush(Qt.NoBrush)
-            x = 12 + shift
-            tip, back = (x + 4.0, x - 4.0) if forward else (x - 4.0, x + 4.0)
-            chevron = QPainterPath(QPointF(back, 5.6))
-            chevron.lineTo(QPointF(tip, 12))
-            chevron.lineTo(QPointF(back, 18.4))
-            p.drawPath(chevron)
+    forward = kind == "next"
+    trail = QColor(ink)
+    trail.setAlphaF(0.38)
+    for shift, colour in ((-5.2, trail), (2.4, ink)) if forward else ((5.2, trail), (-2.4, ink)):
+        p.setPen(QPen(colour, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        x = 12 + shift
+        tip, back = (x + 4.0, x - 4.0) if forward else (x - 4.0, x + 4.0)
+        chevron = QPainterPath(QPointF(back, 5.6))
+        chevron.lineTo(QPointF(tip, 12))
+        chevron.lineTo(QPointF(back, 18.4))
+        p.drawPath(chevron)
     p.end()
     return pix
 
