@@ -11,6 +11,8 @@ All notable changes to this project are documented here. The format follows
 - **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
   line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
   *Show the line being sung in the album view*, to opt out; it is on by default.
+- **Keep the player bar on Now Playing** (Settings > Look): the bar normally folds away there by itself and the waveform strip
+  stands in; with the switch on, the bar stays. Off by default, so nothing changes unless you turn it on.
 
 ### Fixed
 

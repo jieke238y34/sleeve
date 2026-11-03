@@ -1757,6 +1757,10 @@ class MainWindow(QMainWindow):
         self.album_lyrics_box.setChecked(self.settings.album_lyrics)
         self.album_lyrics_box.toggled.connect(self._album_lyrics_toggled)
         lay.addWidget(self.album_lyrics_box)
+        self.keep_bar_box = Switch("Keep the player bar on Now Playing (it folds away there by itself)")
+        self.keep_bar_box.setChecked(self.settings.keep_bar_on_np)
+        self.keep_bar_box.toggled.connect(self._keep_bar_toggled)
+        lay.addWidget(self.keep_bar_box)
         self.tooltips_box = Switch("Show tooltips on hover (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
@@ -5008,7 +5012,19 @@ class MainWindow(QMainWindow):
 
     def _toggle_bar(self):
         "Hide or show the bar; on Now Playing (where it folds by itself) the choice lasts only until the page is left."
-        self._set_bar_hidden(self.bar.isVisible(), save=not self._on_np)
+        self._set_bar_hidden(self.bar.isVisible(), save=not self._bar_folds_here())
+
+    def _bar_folds_here(self):
+        "True while Now Playing is on show and the bar is left to fold by itself (the waveform strip stands in)."
+        return self._on_np and not self.settings.keep_bar_on_np
+
+    def _apply_bar_for_page(self):
+        "Fold the bar or show it as this page and the settings ask: the saved choice, except where it folds by itself."
+        self._set_bar_hidden(True if self._bar_folds_here() else self.settings.player_bar_hidden, save=False)
+
+    def _keep_bar_toggled(self, on):
+        self._set_setting("keep_bar_on_np", on)
+        self._apply_bar_for_page()                              # takes effect at once, without leaving the page
 
     def _set_bar_hidden(self, hidden, save=True):
         "Fold the player bar away (more room for the page; the media keys still work) or bring it back."
@@ -5618,7 +5634,7 @@ class MainWindow(QMainWindow):
         on_np = item is not None and item.text() == "Now Playing"
         if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
             self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
-            self._set_bar_hidden(True if on_np else self.settings.player_bar_hidden, save=False)
+            self._apply_bar_for_page()
             self._apply_layout()                              # and the small art steps aside for the big one
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
@@ -5654,7 +5670,7 @@ class MainWindow(QMainWindow):
                 bar_lay.removeWidget(self.cover)
                 self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
                 self._fit_side_art()
-            self._set_bar_hidden(self._on_np or self.settings.player_bar_hidden, save=False)   # a moved widget hides
+            self._apply_bar_for_page()                            # a moved widget hides
         self.cover.setVisible(self.settings.side_art and not self._on_np)      # Now Playing has the big one
 
     def _fit_side_art(self):

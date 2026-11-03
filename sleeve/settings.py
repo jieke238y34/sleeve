@@ -37,6 +37,7 @@ DEFAULTS = {
     "lyrics_online_ok": False, # the person agreed to ask the online lyrics sites (the song names are sent)
     "sound_role_music": True,  # Sleeve's streams say media.role=music (read at start; see app.pulse_prop)
     "album_lyrics": True,      # the album view shows the line being sung with its neighbours (opt out here)
+    "keep_bar_on_np": False,   # the player bar stays on Now Playing instead of folding away (the waveform strip)
     "title_in_accent": False,  # the song title on Now Playing is drawn in the accent colour
     "use_replaygain": True,    # take the gain from the files' ReplayGain tags; off: only Sleeve's own measurement
     "accent": "Violet",        # a key of ACCENTS, or CUSTOM
@@ -118,10 +119,10 @@ def _valid(key, value):
         return value in ("week", "month")
     if key == "identity_tab":
         return value in ("identity", "listening")
-    if key in ("gapless", "same_volume", "use_replaygain", "album_lyrics", "sound_role_music", "title_in_accent",
+    if key in ("gapless", "same_volume", "use_replaygain", "sound_role_music", "title_in_accent",
                 "lyrics_online_ok", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
-                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "mini_player", "side_art",
+                "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
                 "tooltips", "legacy_layout", "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
