@@ -5764,8 +5764,9 @@ class MainWindow(QMainWindow):
             for btn, kind in ((prev, "prev"), (nxt, "next")):
                 btn.setIcon(QIcon(theme.transport_icon(kind, theme.TEXT, 26)))
                 btn.setIconSize(QSize(26, 26))
-            play.setPlaying(playing)
             play.setAccessibleName("Pause" if playing else "Play")
+            if hasattr(play, "setPlaying"):
+                play.setPlaying(playing)
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
