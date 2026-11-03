@@ -178,6 +178,7 @@ class AlbumGrid(QListWidget):
     enqueueAlbum = Signal(list)       # song paths: add to the end of the queue
     playNextAlbum = Signal(list)      # song paths: play right after the current song
     openAlbum = Signal(object)        # the Album: a single click
+    coverReady = Signal(object)       # the Album: its cover finished decoding, re-show with the real cover
     text_h = TEXT_H                   # room under the cover for the name; a subclass that draws on the cover needs less
 
     def __init__(self, cover_loader=None, parent=None):
@@ -411,25 +412,22 @@ class AlbumGrid(QListWidget):
 
     def _read_detail_source(self, album):
         """The cover decoded right now: the time a worker takes is too slow for a view that opens at once, and the
-        store remembers it when done, so nothing reads these files more than once in the end."""
-        if album.key in self._sources:
-            return
-        self._waiting.pop(album.key, None)
-        store = coverstore.shared()
-        for s in album.songs[:COVER_TRIES]:
-            pix = store.pixmap(s.path, SOURCE_SIDE, wait=True)
-            if pix is not None:
-                self._put_source(album.key, pix)
-                return
-        self._put_source(album.key, None)
+        store remembers it when done, so nothing reads these files more than once in the end.
+
+        The cover is requested on the main thread (a blocking call would freeze the UI for a split second).
+        When the decode lands, the connection in App re-shows the album with the real cover.
+
+        The ask is made async (no wait=True) so the UI thread never blocks on a worker decode."""
 
     def _cover_ready(self, path):
-        "A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."
+        """A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."""
         for key, waited in list(self._waiting.items()):
             if path in waited[1]:
                 del self._waiting[key]
                 self._ensure_source(waited[0])
                 self.viewport().update()
+                if waited[0].key in self._sources:
+                    self.coverReady.emit(waited[0])
 
     def _visible_unloaded(self, limit):
         "Up to `limit` albums on screen (or just below it) whose cover was not asked for yet."

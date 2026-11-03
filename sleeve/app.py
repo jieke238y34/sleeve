@@ -3617,8 +3617,12 @@ class MainWindow(QMainWindow):
         self._set_setting("library_view", "albums" if albums else "songs")
 
     def _open_album(self, album):
+        self.album_grid.coverReady.connect(self._resume_album_with_cover, type=Qt.QueuedConnection)
         self.album_detail.set_album(album, self.album_grid.cover_pixmap(album))
         self.albums_stack.setCurrentIndex(1)
+
+    def _resume_album_with_cover(self, album):
+        self.album_detail.set_album(album, self.album_grid.cover_pixmap(album))
 
     def _album_menu(self, pos):
         album = self.album_grid.album_at(pos)
