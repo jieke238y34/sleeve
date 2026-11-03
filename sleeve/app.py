@@ -7,7 +7,7 @@ import secrets
 import shutil
 import sys
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -133,6 +133,7 @@ from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
+from .mini import MiniWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
@@ -467,6 +468,28 @@ class ClickSlider(QSlider):
         super().mousePressEvent(e)                 # the handle is now under the cursor, so a drag carries on from here
 
 
+class ThumbCache(OrderedDict):
+    "Cover icons keyed by song path. The ones used last are kept: a big library does not grow while it is scrolled."
+
+    LIMIT = 2000
+
+    def __init__(self, limit=LIMIT):
+        super().__init__()
+        self.limit = limit
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)                          # touched again: it is not the oldest any more
+        super().__setitem__(key, value)
+        while len(self) > self.limit:
+            self.popitem(last=False)
+
+    def get(self, key, default=None, touch=True):
+        if touch and key in self:
+            self.move_to_end(key)                          # an icon in use is the last one the cache would drop
+        return OrderedDict.get(self, key, default)
+
+
 class SongModel(QAbstractTableModel):
     COLS = ("Title", "Artist", "Album", "Genre", "Time")
 
@@ -617,7 +640,7 @@ class MainWindow(QMainWindow):
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
-        self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
+        self._thumbs = ThumbCache()                    # path -> cover icon, shared by queue, library and playlists
         self._np_pending = None                  # the song whose cover is still decoding; its words are shown already
         self._np_words = ()                             # what `_cover_arrived` shows again once that cover is in
         self._queue_rows = {}                           # path -> the queue rows showing it (the page fills this in)
@@ -794,6 +817,12 @@ class MainWindow(QMainWindow):
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
         self.runner.finished.connect(self._on_sync_finished)
+        self.mini = MiniWindow(self)
+        self._update_transport_icons()                      # the mini's buttons take their icons in this pass
+        if getattr(self, "_accent_shown", None):
+            self.mini.set_accent(theme.visible_accent(self._accent_shown))
+        if self.settings.mini_player:
+            self._show_mini(save=False)                     # it was left open: it comes back up where it lives
         self._build_shortcuts()
         self._esc_fullscreen = QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)   # not rebindable
         QApplication.instance().focusChanged.connect(self._esc_for_focus)
@@ -1238,6 +1267,11 @@ class MainWindow(QMainWindow):
         self._thumb_timer.setSingleShot(True)
         self._thumb_timer.setInterval(20)
         self._thumb_timer.timeout.connect(self._load_thumbs)
+        self._thumb_replan = QTimer(self)                      # the queue was scrolled: cover the rows now in view
+        self._thumb_replan.setSingleShot(True)
+        self._thumb_replan.setInterval(80)
+        self._thumb_replan.timeout.connect(self._replan_thumbs)
+        self.queue_list.verticalScrollBar().valueChanged.connect(lambda _v: self._thumb_replan.start())
         self._show_cover(None, "", "", "")
         return page
 
@@ -2099,6 +2133,7 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
+        self._update_dev, self._dev_worker = False, None
 
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._align_settings(lay)
@@ -2178,6 +2213,7 @@ class MainWindow(QMainWindow):
         self.update_check_btn.setEnabled(True)
 
     def _update_checked(self, release, error):
+        self._update_dev = False
         self._release = release
         self.update_btn.setVisible(False)
         self.update_page_btn.setVisible(False)
@@ -2186,7 +2222,15 @@ class MainWindow(QMainWindow):
         elif release is None:
             self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
         elif not updater.is_newer(release["version"], release["build"]):
-            self.update_label.setText(updater.status_text(release, build_label()))
+            if updater.relation(release) != "ahead" or updater.install_kind() != "venv":
+                self.update_label.setText(updater.status_text(release, build_label()))
+            else:                       # a development copy: it can bring the newest main build into itself
+                self.update_label.setText(f"You have Sleeve {build_label()}, which is newer than the newest "
+                                          "published release. Updating installs the newest code on the main "
+                                          "branch into Sleeve's own program files; a step that fails changes "
+                                          "nothing.")
+                self._update_dev, self._release = True, release
+                self.update_btn.setVisible(True)
         elif updater.install_kind() == "venv":
             self.update_label.setText(f"Sleeve {updater.label(release)} is available (you have {build_label()}). "
                                       "Updating replaces Sleeve's own program files only.")
@@ -2197,6 +2241,16 @@ class MainWindow(QMainWindow):
             self.update_page_btn.setVisible(True)
 
     def _do_update(self):
+        if self._update_proc is not None or self._dev_worker is not None:
+            return
+        if self._update_dev:
+            self.update_btn.setEnabled(False)
+            self.update_label.setText("Updating to the newest development build… this can take a minute.")
+            worker = self._dev_worker = updater.DevUpdate(parent=self)
+            worker.done.connect(self._dev_update_done)
+            worker.finished.connect(lambda: setattr(self, "_dev_worker", None))
+            worker.start()
+            return
         if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
             return
         cmd = updater.update_command(self._release["tag"], wheel=self._release.get("wheel") or None)
@@ -2205,6 +2259,10 @@ class MainWindow(QMainWindow):
         proc = self._update_proc = QProcess(self)
         proc.finished.connect(self._update_finished)
         proc.start(cmd[0], cmd[1:])
+
+    def _dev_update_done(self, code, message):
+        self.update_btn.setEnabled(True)
+        self.update_label.setText(message or "The development build update did not answer. Try again in a moment.")
 
     def _update_finished(self, code, _status):
         proc, self._update_proc = self._update_proc, None
@@ -2639,6 +2697,8 @@ class MainWindow(QMainWindow):
         self.wave.set_accent(lit)                                           # drawn straight on the dark window
         self.identity_page.set_accent(lit)
         self._vol_bubble.set_accent(lit)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_accent(lit)                       # the mini's bar wears the colour too
         self._apply_title_colour()
         for switch in self.findChildren(Switch):
             switch.update()
@@ -3761,7 +3821,7 @@ class MainWindow(QMainWindow):
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
-    ART_GAP = 1.1                                           # seconds between two cover lookups
+    ART_GAP = 0.3                                       # seconds between two cover lookups (MusicBrainz allows this)
 
     def _want_art(self, album, artist, first=True):
         "Queue a cover lookup. The song playing now goes to the front, the ones coming up behind it."
@@ -3789,7 +3849,7 @@ class MainWindow(QMainWindow):
         if self._was_quiet:
             return                                      # nobody is looking (a game fills the screen): they can wait
         queue, here = self.player.queue, max(self.player.index, 0)
-        for path in queue[here + 1:here + 4]:
+        for path in queue[here + 1:here + 8]:               # the covers of the next few songs are wanted now
             song = self.by_path.get(path)
             if song is not None and song.album and not self._art_cache.get(song.album, song.artist)[0]:
                 self._want_art(song.album, song.artist, first=False)
@@ -4473,6 +4533,7 @@ class MainWindow(QMainWindow):
             "fullscreen": (self, self._toggle_fullscreen, False),
             "quick_search": (self, self._quick_search, False),
             "toggle_bar": (self, self._toggle_bar, False),
+            "mini_player": (self, self._toggle_mini, False),
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
             "queue_play": (self.queue_list, self._queue_play_selected, True),
             "queue_unselect": (self.queue_list, self._queue_unselect, True),
@@ -5058,12 +5119,34 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._lyrics_catch_up)
         QTimer.singleShot(0, self._np_balance)
 
+    THUMB_AHEAD, THUMB_AROUND_PLAYING = 30, 20     # rows beyond the ones in view, and around the song that plays
+
     def _plan_thumbs(self):
-        "Which covers to load next: the ones nearest the playing song first."
-        around = max(self.player.index, 0)
-        wanted = {p: min(rows, key=lambda r: abs(r - around)) for p, rows in self._queue_rows.items()
-                  if p not in self._thumbs}
-        self._thumb_todo = sorted(wanted, key=lambda p: abs(wanted[p] - around), reverse=True)   # popped from the end
+        """Which covers to load next: those of the rows in view, a margin around them and a few around the playing song,
+        nearest the middle first. Not the whole queue: a queue of a whole library would otherwise decode a cover for
+        every row, one after another, for as long as it takes, and keep them all."""
+        view, count = self.queue_list, len(self._queue_shown)
+        playing = max(self.player.index, 0)
+        near = self.THUMB_AROUND_PLAYING
+        rows = set(range(max(0, playing - near), min(count, playing + near + 1)))
+        centre = playing
+        top = view.indexAt(QPoint(4, 4)).row() if view.isVisible() else -1
+        if top >= 0:
+            bottom = view.indexAt(QPoint(4, max(5, view.viewport().height() - 4))).row()
+            bottom = count - 1 if bottom < 0 else bottom
+            rows |= set(range(max(0, top - self.THUMB_AHEAD), min(count, bottom + self.THUMB_AHEAD + 1)))
+            centre = (top + bottom) // 2
+        wanted = {}
+        for r in rows:
+            path = self._queue_shown[r]
+            if path not in self._thumbs and (path not in wanted or abs(r - centre) < wanted[path]):
+                wanted[path] = abs(r - centre)
+        self._thumb_todo = sorted(wanted, key=wanted.get, reverse=True)          # popped from the end
+
+    def _replan_thumbs(self):
+        self._plan_thumbs()
+        if self._thumb_todo and not self._closing:
+            self._thumb_timer.start()
 
     def _load_thumbs(self):
         "Cover thumbnails for the queue, two songs per tick so the window never stalls."
@@ -5081,7 +5164,7 @@ class MainWindow(QMainWindow):
                 item = self.queue_list.item(row)
                 if item is not None:
                     item.setIcon(icon)
-        if self._thumb_todo and not self._closing:
+        if self._thumb_todo and not self._closing:            # the cache drops its own oldest covers: no trim here
             self._thumb_timer.start()
 
     def _make_thumb(self, path):
@@ -5109,9 +5192,6 @@ class MainWindow(QMainWindow):
             self._blank = QIcon(pix)
         return self._blank
 
-    def _trim_thumbs(self, keep=2000):
-        while len(self._thumbs) > keep:
-            self._thumbs.pop(next(iter(self._thumbs)))
 
     @staticmethod
     def _visible_rows(view, count):
@@ -5135,7 +5215,6 @@ class MainWindow(QMainWindow):
             self._thumbs[songs[r].path] = icon
             ix = self.model.index(r, 0)
             self.model.dataChanged.emit(ix, ix, [Qt.DecorationRole])
-        self._trim_thumbs()
         if todo and not self._closing:
             self._lib_thumb_timer.start()
 
@@ -5156,7 +5235,6 @@ class MainWindow(QMainWindow):
             icon = self._thumbs.get(entries[r].path)
             if item is not None and icon is not None:
                 item.setIcon(icon)
-        self._trim_thumbs()
         if todo and not self._closing:
             self._pl_thumb_timer.start()
 
@@ -5186,6 +5264,8 @@ class MainWindow(QMainWindow):
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_song(self._np_pix)
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
         if self._cover_screen is not None:
@@ -5199,6 +5279,8 @@ class MainWindow(QMainWindow):
         self.np_artist.setText(artists.display(artist))
         self._np_album_text = (album or "", detail or "")
         self._show_album_line()
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_words(title, artist)
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
         QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
 
@@ -5645,6 +5727,27 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setChecked(mode != 0)
         self._update_toggle_icons()
 
+    def _toggle_mini(self):
+        "The mini-player: it shows up at the bottom-right of the screen, or goes away; it remembers itself."
+        if self.mini.isVisible():
+            self.mini.hide()
+            self._set_setting("mini_player", False)
+        else:
+            self._show_mini()
+
+    def _show_mini(self, save=True):
+        "Bottom-right of the screen the main window is on, above everything else."
+        screen = QApplication.primaryScreen()
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not None:
+            screen = handle.screen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            self.mini.move(area.right() - self.mini.width() - 16, area.bottom() - self.mini.height() - 16)
+        self.mini.show()
+        if save:
+            self._set_setting("mini_player", True)
+
     def _update_transport_icons(self):
         "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
         if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
@@ -5652,6 +5755,8 @@ class MainWindow(QMainWindow):
         playing = getattr(self, "_is_playing", False)
         on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
+        if getattr(self, "mini", None) is not None:
+            sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
         for prev, play, nxt in sets:
             for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
                                             (play, "pause" if playing else "play", on_play, 38)):
@@ -5951,6 +6056,7 @@ class MainWindow(QMainWindow):
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()
+        self.mini.close()
         self.log_timer.stop()
         for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
                     self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
@@ -6030,7 +6136,9 @@ def main(argv=None):
     ap.add_argument("--preview", action="store_true",
                     help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     mng = ap.add_argument_group("keep Sleeve up to date or remove it (for copies made by install.sh)")
-    mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
+    mng.add_argument("--update", action="store_true",
+                     help="update Sleeve, then exit (a development copy takes the newest code on the main branch, "
+                          "otherwise the newest release)")
     mng.add_argument("--sha256", metavar="HEX",
                      help=argparse.SUPPRESS)                         # for developers: not in --help
     mng.add_argument("--uninstall", action="store_true",

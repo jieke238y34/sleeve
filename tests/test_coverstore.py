@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
 from test_app import qapp  # noqa: F401  (the one QApplication every widget test shares)
 
-from sleeve import coverstore
+from sleeve import art, coverstore
 
 
 def png_bytes(colour="#224488"):
@@ -126,3 +126,36 @@ def test_state_schedules_nothing_and_shared_hands_out_one_store(qapp):  # noqa: 
         assert store.state("/m/a.mp3") == "unknown"
     assert reads == [] and not store._inflight         # state only tells where the file stands, it never starts work
     assert coverstore.shared() is coverstore.shared() and isinstance(coverstore.shared(), coverstore.Store)
+
+
+def test_a_picture_file_beside_the_song_serves_its_album(qapp, tmp_path):  # noqa: F811
+    store = coverstore.Store()
+    store.sync = True                                    # the decode right where asked: what is tested is the sourcing
+    (tmp_path / "cover.jpg").write_bytes(png_bytes(colour="#3366aa"))
+    for name in ("song1.mp3", "song2.mp3"):              # files whose tags carry no art at all
+        (tmp_path / name).write_bytes(b"no audio in here")
+    assert store.pixmap(str(tmp_path / "song1.mp3"), 44).width() == 44   # the folder's artwork was found for it
+    assert store.state(str(tmp_path / "song1.mp3")) == "cover"
+    assert store.pixmap(str(tmp_path / "song2.mp3"), 44).width() == 44   # the same file serves its neighbour
+    assert store.state(str(tmp_path / "song2.mp3")) == "cover"
+
+
+def test_sidecar_rules_names_exts_and_size(qapp, tmp_path, monkeypatch):  # noqa: F811
+    (tmp_path / "folder.png").write_bytes(png_bytes())                       # a ripper name: PNG works too
+    got = art.sidecar_bytes(str(tmp_path / "x.mp3"))
+    assert got is not None and got.startswith(b"\x89PNG")
+    (tmp_path / "COVER.JPEG").write_bytes(png_bytes(colour="#22aa33"))       # case does not matter
+    assert art.sidecar_bytes(str(tmp_path / "x.mp3")).startswith(b"\x89PNG")
+    big = png_bytes("#882244") + png_bytes("#882244")                        # a strictly bigger file is the cover
+    (tmp_path / "front.jpeG").write_bytes(big)
+    assert art.sidecar_bytes(str(tmp_path / "x.mp3")) == big
+    (tmp_path / "tracklist.txt").write_text("1. one")                        # not a picture: ignored
+    (tmp_path / "icon.png").write_bytes(png_bytes(colour="#444444"))         # not a cover name: ignored
+    assert art.sidecar_bytes(str(tmp_path / "y.mp3")) == big
+    monkeypatch.setattr(art, "MAX_BYTES", 4)                                 # a cover plainly too big: none at all
+    assert art.sidecar_bytes(str(tmp_path / "x.mp3")) is None
+
+
+def test_a_song_with_no_folder_and_no_tags_stays_empty(qapp, tmp_path):  # noqa: F811
+    (tmp_path / "a.mp3").write_bytes(b"x")
+    assert art.cover_bytes(str(tmp_path / "a.mp3")) is None and art.sidecar_bytes(str(tmp_path / "a.mp3")) is None

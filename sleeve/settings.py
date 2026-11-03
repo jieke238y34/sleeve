@@ -74,6 +74,7 @@ DEFAULTS = {
     "legacy_layout": False,            # the classic look: the player bar across the whole window, with the art in it
     "folded_sections": ["Advanced", "Startup", "Listening", "Shortcuts", "Updates"],   # sections that start closed
     "player_bar_hidden": True,         # the player bar at the bottom starts folded away (one click brings it back)
+    "mini_player": False,              # the small always-on-top player (Ctrl+M) was left open the last time
     "np_queue_shown": True,            # Now Playing: the playlist panel on the left is open
     "np_lyrics_shown": True,           # Now Playing: the lyrics panel on the right is open
     "lastfm_on": False,                # send what is played to last.fm (needs a connected account, see lastfm.py)
@@ -122,7 +123,7 @@ def _valid(key, value):
                 "lyrics_online_ok", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
                 "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
-                "tooltips", "legacy_layout", "gradient_follow_accent", "album_lyrics", "keep_bar_on_np"):
+                "tooltips", "legacy_layout", "gradient_follow_accent"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM
