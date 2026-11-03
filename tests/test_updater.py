@@ -3,8 +3,10 @@
 import io
 import json
 import shlex
+import sys
 import urllib.error
 import urllib.parse
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -235,7 +237,11 @@ def test_the_update_command_line_with_a_fake_environment(tmp_path, monkeypatch):
     assert ran and "--force-reinstall" in ran[0] and "build 99" in "".join(lines)    # a newer build is an update too
     ran.clear()
     assert updater.cli_update(lines.append, opener=answer(f"{same_version}+build.98"), run=run) == 0 and not ran
+    took = []
+    monkeypatch.setattr(updater, "dev_update", lambda out=print, run=None, env=None, python=None:
+                        (took.append(1), 0)[1])
     assert updater.cli_update(lines.append, opener=answer("v0.0.1"), run=run) == 0 and not ran      # already newest
+    assert took == [1] and "newest code on the main branch" in lines[-1]        # a dev copy rebuilds from main
     assert "newest" in lines[-1]
     assert updater.cli_update(lines.append, run=run, opener=lambda r, timeout: (_ for _ in ()).throw(
         urllib.error.HTTPError(r.full_url, 404, "x", {}, None))) == 0 and "No release" in lines[-1]
@@ -290,3 +296,94 @@ def test_update_with_a_sha256_installs_only_a_wheel_that_matches(monkeypatch):
 def test_the_sha256_must_be_64_hex_digits():
     assert updater.valid_sha256("a" * 64) and updater.valid_sha256(("AB12" * 16) + "\n")
     assert not updater.valid_sha256("a" * 63) and not updater.valid_sha256("g" * 64) and not updater.valid_sha256(None)
+
+
+class Steps:
+    """A subprocess.run that answers the steps dev_update takes: the clone lands as a folder with a stamp in it, the
+    stamp step answers nothing and the pip step answers with `pip`. `clone`/`pip` set one to a failing code."""
+
+    clone, pip = 0, 0
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, cmd, check):
+        self.calls.append(cmd)
+        if cmd[1:2] == ["clone"]:
+            if self.clone != 0:
+                return SimpleNamespace(returncode=self.clone)
+            clone = Path(cmd[-1])
+            (clone / "sleeve").mkdir(parents=True)
+            (clone / "sleeve" / "_build.py").write_text(
+                '"""Written by tools/stamp_build.py; not part of the source."""\n'
+                "REVISION = 456\nCOMMIT = 'abc12345'\nDIRTY = False\n")
+            return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=self.pip)          # the stamp step and the pip step, by code
+
+
+def test_a_development_copy_pulls_the_newest_main_and_installs_itself(monkeypatch):
+    lines = []
+    steps = Steps()
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+    assert updater.dev_update(lines.append, run=steps) == 0
+    clone = next(c for c in steps.calls if c[1:2] == ["clone"])
+    assert clone[0].endswith("git") and "--filter=blob:none" in clone and "main" in clone
+    assert clone[-2] == updater.SOURCE_URL
+    pip = next(c for c in steps.calls if c[:3] == [sys.executable, "-m", "pip"])
+    assert "--force-reinstall" in pip and "--no-deps" in pip and pip[-1] == clone[-1]
+    assert any("build 456" in line for line in lines) and any("Close Sleeve" in line for line in lines)
+
+
+def test_a_development_update_that_cannot_be_fetched_changes_nothing(monkeypatch):
+    lines = []
+    steps = Steps()
+    steps.clone = 128
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+    assert updater.dev_update(lines.append, run=steps) == 1
+    assert any("could not be fetched" in line for line in lines) and len(steps.calls) == 1
+
+
+def test_a_development_update_leaves_the_running_copy_when_pip_fails(monkeypatch):
+    lines = []
+    steps = Steps()
+    steps.pip = 1
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+    assert updater.dev_update(lines.append, run=steps) == 1
+    assert any("unchanged" in line for line in lines) and len(steps.calls) == 3
+
+
+def test_a_development_update_belongs_to_its_own_environment(monkeypatch):
+    lines = []
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "system")
+    assert updater.dev_update(lines.append) == 1 and "package manager" in lines[-1]
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "other")
+    assert updater.dev_update(lines.append) == 1 and "not installed with install.sh" in lines[-1]
+
+
+def test_the_stamp_of_a_clone_is_read_the_way_stamp_build_writes_it(tmp_path):
+    clone = tmp_path / "sleeve"
+    clone.mkdir()
+    (clone / "_build.py").write_text('"""Written by tools/stamp_build.py; not part of the source."""\n'
+                                     "REVISION = 42\nCOMMIT = 'deadbeef01'\nDIRTY = False\n")
+    assert updater._stamp_of(tmp_path) == (42, "deadbeef01")
+    (clone / "_build.py").write_text("still no stamp\n")
+    assert updater._stamp_of(tmp_path) is None
+    assert updater._stamp_of(tmp_path / "nothing") is None
+
+
+def test_the_update_command_line_takes_the_development_path_when_ahead(monkeypatch):
+    lines = []
+    took = []
+    monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
+    monkeypatch.setattr(updater, "local_build", lambda: 0)
+
+    def dev(out=print, run=None, env=None, python=None):
+        took.append(True)
+        return 0
+
+    monkeypatch.setattr(updater, "dev_update", dev)
+    ok = lambda cmd, check: SimpleNamespace(returncode=0)  # noqa: E731
+    assert updater.cli_update(lines.append, opener=answer("v0.1.0"), run=ok) == 0
+    assert took == [True] and "newest code on the main branch" in lines[0]
+    assert updater.cli_update(lines.append, opener=answer(f"v{updater.__version__}"), run=ok) == 0
+    assert took == [True]                                    # the newest release itself is no reason to rebuild

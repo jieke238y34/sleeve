@@ -2129,6 +2129,7 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
+        self._update_dev, self._dev_worker = False, None
 
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._align_settings(lay)
@@ -2208,6 +2209,7 @@ class MainWindow(QMainWindow):
         self.update_check_btn.setEnabled(True)
 
     def _update_checked(self, release, error):
+        self._update_dev = False
         self._release = release
         self.update_btn.setVisible(False)
         self.update_page_btn.setVisible(False)
@@ -2216,7 +2218,15 @@ class MainWindow(QMainWindow):
         elif release is None:
             self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
         elif not updater.is_newer(release["version"], release["build"]):
-            self.update_label.setText(updater.status_text(release, build_label()))
+            if updater.relation(release) != "ahead" or updater.install_kind() != "venv":
+                self.update_label.setText(updater.status_text(release, build_label()))
+            else:                       # a development copy: it can bring the newest main build into itself
+                self.update_label.setText(f"You have Sleeve {build_label()}, which is newer than the newest "
+                                          "published release. Updating installs the newest code on the main "
+                                          "branch into Sleeve's own program files; a step that fails changes "
+                                          "nothing.")
+                self._update_dev, self._release = True, release
+                self.update_btn.setVisible(True)
         elif updater.install_kind() == "venv":
             self.update_label.setText(f"Sleeve {updater.label(release)} is available (you have {build_label()}). "
                                       "Updating replaces Sleeve's own program files only.")
@@ -2227,6 +2237,16 @@ class MainWindow(QMainWindow):
             self.update_page_btn.setVisible(True)
 
     def _do_update(self):
+        if self._update_proc is not None or self._dev_worker is not None:
+            return
+        if self._update_dev:
+            self.update_btn.setEnabled(False)
+            self.update_label.setText("Updating to the newest development build… this can take a minute.")
+            worker = self._dev_worker = updater.DevUpdate(parent=self)
+            worker.done.connect(self._dev_update_done)
+            worker.finished.connect(lambda: setattr(self, "_dev_worker", None))
+            worker.start()
+            return
         if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
             return
         cmd = updater.update_command(self._release["tag"], wheel=self._release.get("wheel") or None)
@@ -2235,6 +2255,10 @@ class MainWindow(QMainWindow):
         proc = self._update_proc = QProcess(self)
         proc.finished.connect(self._update_finished)
         proc.start(cmd[0], cmd[1:])
+
+    def _dev_update_done(self, code, message):
+        self.update_btn.setEnabled(True)
+        self.update_label.setText(message or "The development build update did not answer. Try again in a moment.")
 
     def _update_finished(self, code, _status):
         proc, self._update_proc = self._update_proc, None
@@ -6096,7 +6120,9 @@ def main(argv=None):
     ap.add_argument("--preview", action="store_true",
                     help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     mng = ap.add_argument_group("keep Sleeve up to date or remove it (for copies made by install.sh)")
-    mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
+    mng.add_argument("--update", action="store_true",
+                     help="update Sleeve, then exit (a development copy takes the newest code on the main branch, "
+                          "otherwise the newest release)")
     mng.add_argument("--sha256", metavar="HEX",
                      help=argparse.SUPPRESS)                         # for developers: not in --help
     mng.add_argument("--uninstall", action="store_true",
