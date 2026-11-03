@@ -33,6 +33,7 @@ from .myplaylists import FOLDER_NAME
 REPO = "jieke238y34/sleeve"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
+SOURCE_URL = f"https://github.com/{REPO}.git"
 APP_ID = "io.github.jieke238y34.Sleeve"
 MAX_BYTES = 1_000_000
 MAX_WHEEL = 100_000_000                                            # a wheel is a few MB; more than this is not ours
@@ -95,8 +96,8 @@ def status_text(release, shown):
     "One sentence for 'is there something newer?', where `shown` is how this copy is written (build_label())."
     where = {"same": f"You have the newest release, Sleeve {shown}.",
              "ahead": (f"This copy (Sleeve {shown}) is newer than the newest published release, {label(release)}, so "
-                       "there is no release to update to. It is a development copy: to get newer changes, pull the "
-                       "source and run ./install.sh again in that folder.")}
+                       "there is no release to update to. It is a development copy: `sleeve --update` brings the "
+                       "newest code from the main branch, or run ./install.sh again from a copy of the repository.")}
     return where[relation(release)]
 
 
@@ -144,6 +145,52 @@ def latest_release(opener=urllib.request.urlopen):
             break
     return {"tag": tag, "version": version, "build": parse_build(tag, title),
             "url": f"{RELEASES_PAGE}/tag/{tag}", "wheel": wheel}
+
+
+def dev_update(out=print, run=subprocess.run, env=None, python=None):
+    """Bring the newest code on the main branch into a development copy: a shallow clone with its build number
+    stamped, then a pip install of that copy. The dependencies (Qt above all) stay where they are, and a failed
+    step changes nothing. This is what `sleeve --update` does when this copy is newer than every release."""
+    if install_kind(env) != "venv":
+        out(how_to_update(install_kind(env)))
+        return 1
+    git = shutil.which("git")
+    if git is None:
+        out("git is needed to bring the newest source in. Without it, run ./install.sh --dev from a copy of the "
+            "repository.")
+        return 1
+    out("Updating a development copy to the newest code on the main branch ...")
+    with tempfile.TemporaryDirectory(prefix="sleeve-dev-") as folder:
+        clone = Path(folder) / "sleeve"
+        step = run([git, "clone", "--quiet", "--filter=blob:none", "--single-branch", "--branch", "main",
+                    SOURCE_URL, str(clone)], check=False)
+        if step.returncode != 0 or not clone.is_dir():
+            out("The source could not be fetched from GitHub. Check your internet connection, then try again.")
+            return 1
+        try:
+            run([sys.executable, str(clone / "tools" / "stamp_build.py")], check=False)
+        except OSError:
+            pass
+        step = run([sys.executable, "-m", "pip", "install", "--quiet", "--force-reinstall", "--no-deps", str(clone)],
+                   check=False)
+        stamp = _stamp_of(clone)
+    if step.returncode != 0:
+        out("The update did not succeed. This copy is unchanged; try again in a moment.")
+        return 1
+    rev = f" · build {stamp[0]}" if stamp else ""
+    out(f"Updated to Sleeve {__version__}{rev}. Close Sleeve and open it again to use it.")
+    return 0
+
+
+def _stamp_of(clone):
+    'The (revision, commit) tools/stamp_build.py wrote into the clone, or None when it wrote nothing.'
+    try:
+        text = (clone / "sleeve" / "_build.py").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rev = re.search(r"REVISION = (\d{1,7})", text)
+    commit = re.search(r"COMMIT = '([0-9a-f]{4,40})'", text)
+    return (int(rev.group(1)), commit.group(1)) if rev and commit else None
 
 
 def prefix_dir(env=None):
@@ -410,6 +457,10 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
         out("No release has been published yet, so there is nothing to update to.")
         return 0
     if not is_newer(release["version"], release["build"]):
+        if relation(release, local_build_number=local_build()) == "ahead" and kind == "venv":
+            out("This copy is newer than the newest published release; it takes the newest code on the main branch "
+                "instead.")
+            return dev_update(out, run=run, env=env)
         out(status_text(release, f"{__version__} · build {local_build()}"))
         return 0
     out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
@@ -466,3 +517,14 @@ class UpdateCheck(QThread):
             self.done.emit(latest_release(), "")
         except UpdateError as e:
             self.done.emit(None, str(e))
+
+
+class DevUpdate(QThread):
+    "The development build's update runs away from the window thread. `done(code, message)` tells how it ended."
+
+    done = Signal(int, str)
+
+    def run(self):
+        lines = []
+        code = dev_update(out=lines.append)
+        self.done.emit(code, lines[-1] if lines else "")
