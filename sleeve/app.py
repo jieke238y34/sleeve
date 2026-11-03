@@ -133,6 +133,7 @@ from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
+from .mini import MiniWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
@@ -816,6 +817,12 @@ class MainWindow(QMainWindow):
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
         self.runner.finished.connect(self._on_sync_finished)
+        self.mini = MiniWindow(self)
+        self._update_transport_icons()                      # the mini's buttons take their icons in this pass
+        if getattr(self, "_accent_shown", None):
+            self.mini.set_accent(theme.visible_accent(self._accent_shown))
+        if self.settings.mini_player:
+            self._show_mini(save=False)                     # it was left open: it comes back up where it lives
         self._build_shortcuts()
         self._esc_fullscreen = QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)   # not rebindable
         QApplication.instance().focusChanged.connect(self._esc_for_focus)
@@ -2662,6 +2669,8 @@ class MainWindow(QMainWindow):
         self.wave.set_accent(lit)                                           # drawn straight on the dark window
         self.identity_page.set_accent(lit)
         self._vol_bubble.set_accent(lit)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_accent(lit)                       # the mini's bar wears the colour too
         self._apply_title_colour()
         for switch in self.findChildren(Switch):
             switch.update()
@@ -4496,6 +4505,7 @@ class MainWindow(QMainWindow):
             "fullscreen": (self, self._toggle_fullscreen, False),
             "quick_search": (self, self._quick_search, False),
             "toggle_bar": (self, self._toggle_bar, False),
+            "mini_player": (self, self._toggle_mini, False),
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
             "queue_play": (self.queue_list, self._queue_play_selected, True),
             "queue_unselect": (self.queue_list, self._queue_unselect, True),
@@ -5214,6 +5224,8 @@ class MainWindow(QMainWindow):
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_song(self._np_pix)
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
         if self._cover_screen is not None:
@@ -5227,6 +5239,8 @@ class MainWindow(QMainWindow):
         self.np_artist.setText(artists.display(artist))
         self._np_album_text = (album or "", detail or "")
         self._show_album_line()
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_words(title, artist)
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
         QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
 
@@ -5673,6 +5687,27 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setChecked(mode != 0)
         self._update_toggle_icons()
 
+    def _toggle_mini(self):
+        "The mini-player: it shows up at the bottom-right of the screen, or goes away; it remembers itself."
+        if self.mini.isVisible():
+            self.mini.hide()
+            self._set_setting("mini_player", False)
+        else:
+            self._show_mini()
+
+    def _show_mini(self, save=True):
+        "Bottom-right of the screen the main window is on, above everything else."
+        screen = QApplication.primaryScreen()
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not None:
+            screen = handle.screen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            self.mini.move(area.right() - self.mini.width() - 16, area.bottom() - self.mini.height() - 16)
+        self.mini.show()
+        if save:
+            self._set_setting("mini_player", True)
+
     def _update_transport_icons(self):
         "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
         if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
@@ -5680,6 +5715,8 @@ class MainWindow(QMainWindow):
         playing = getattr(self, "_is_playing", False)
         on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
+        if getattr(self, "mini", None) is not None:
+            sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
         for prev, play, nxt in sets:
             for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
                                             (play, "pause" if playing else "play", on_play, 38)):
@@ -5979,6 +6016,7 @@ class MainWindow(QMainWindow):
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()
+        self.mini.close()
         self.log_timer.stop()
         for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
                     self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
