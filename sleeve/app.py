@@ -5114,8 +5114,7 @@ class MainWindow(QMainWindow):
                 item = self.queue_list.item(row)
                 if item is not None:
                     item.setIcon(icon)
-        self._trim_thumbs()
-        if self._thumb_todo and not self._closing:
+        if self._thumb_todo and not self._closing:            # the cache drops its own oldest covers: no trim here
             self._thumb_timer.start()
 
     def _make_thumb(self, path):
