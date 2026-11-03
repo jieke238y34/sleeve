@@ -412,6 +412,19 @@ class AlbumGrid(QListWidget):
 
     def _read_detail_source(self, album):
         """The cover decoded right now: the time a worker takes is too slow for a view that opens at once, and the
+        if album.key in self._sources:
+            return
+        self._waiting.pop(album.key, None)
+        store = coverstore.shared()
+        for s in album.songs[:COVER_TRIES]:
+            pix = store.pixmap(s.path, SOURCE_SIDE)
+            if pix is not None:
+                self._put_source(album.key, pix)
+                return
+            if store.state(s.path) == "pending":
+                # the cover is decoding: _cover_ready will be called when it lands
+                pass
+        self._put_source(album.key, None)
         store remembers it when done, so nothing reads these files more than once in the end.
 
         The cover is requested on the main thread (a blocking call would freeze the UI for a split second).
