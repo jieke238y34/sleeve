@@ -7,7 +7,7 @@ Everything planned for Sleeve, with where it stands. Items move to the [changelo
 - **Partly**: something shipped; what is left is written next to it.
 - **Not started**: agreed, nothing exists yet.
 
-Current version: **0.3.0** (every build also shows its build number).
+Current version: **0.3.2** (every build also shows its build number).
 
 ## Done
 
@@ -49,12 +49,11 @@ Current version: **0.3.0** (every build also shows its build number).
       new Identity panels (listening over time, time of day, most revisited albums).
 - [ ] **Same-volume levelling**: the engine works (ReplayGain tags or measured with `ffmpeg`, on by default). (The ReplayGain opt-out, the per-song gain
       on Now Playing and the quiet-song boost setting are in.)
-- [ ] **Sleeve must not change the PipeWire setup**: audited 2026-11-02. Done: the boost only sets the volume of
-      streams whose process id is Sleeve's (`boost.py`), never a device, the default sink or a WirePlumber rule; it is
-      off unless the volume ceiling is moved above 100% (default 75%), with a note under the slider, and it puts the
-      streams back to 100% on a clean quit. Left: WirePlumber remembers a stream's volume under its `media.role`
-      (`Music` here), so the slider position, and a boost left behind by a crash, can be restored for other apps that
-      also say `music`. Decide whether Sleeve keeps `media.role=music` (Maid BT matches on it) or drops it.
+- [x] **Sleeve must not change the PipeWire setup**: audited 2026-11-02. The boost only sets the volume of streams
+      whose process id is Sleeve's (`boost.py`), never a device, the default sink or a WirePlumber rule; it is off unless
+      the volume ceiling is moved above 100% (default 75%), with a note under the slider, and it puts the streams back to
+      100% on a clean quit. WirePlumber remembers a stream's volume under its `media.role`, so leaving that label out is
+      a setting now (Settings > Advanced > Sound server; on by default because Maid BT matches it).
 
 ## Not started: bugs
 
@@ -65,8 +64,7 @@ Current version: **0.3.0** (every build also shows its build number).
       listening data stays honest.
 - [ ] **Listening time already recorded** stays at 30 s per play; only new plays are measured properly.
 - [ ] **Thermals on this PC** are higher than usual and Cooler Control does not see the fans (outside Sleeve).
-- [ ] **README video and screenshots** must show the current version (the 0.3.0 look: waveform strip, Classic layout,
-      saved themes).
+- [x] **README video and screenshots** retaken from the real library for 0.3.1 (2026-11-02).
 
 ## Not started: player and lyrics
 
@@ -76,6 +74,8 @@ Current version: **0.3.0** (every build also shows its build number).
       button uses them yet.)
 - [ ] **Now Playing**: title colour follows the accent or text colour (configurable); the label says the playlist or
       genre that is playing, not the word "playlist". (Featured artists already read "SBTRKT with Sampha".)
+- [ ] **Mini-player**: a small always-on-top window with the cover, title, progress, volume and the transport
+      controls; it follows the main window's song and positions, and lives when the library is away.
 - [ ] **Smoother transitions**: the small cover to Now Playing is delayed; ease everything that snaps.
 - [ ] **Crossfade** is in (checked with tests only, not by ear); **play sets of tracks as one unit** in shuffle.
 - [ ] **Equaliser and DSP**: 5 to 15 band or parametric EQ with AutoEQ presets, bass boost, virtualiser, reverb,
@@ -119,9 +119,14 @@ Current version: **0.3.0** (every build also shows its build number).
 Sonic map; smart-playlist rules; artist connections; album booklets and liner notes; headphone calibration and
 per-device EQ; command palette and a global search shortcut; forgotten gems; dynamic backgrounds; metadata history
 and undo; ABX testing; listening timeline; album journeys; playlist folders; duplicate version detection; album
-completeness; audio chain and output format inspector; clipping detection; artwork manager; desktop mini-player;
+completeness; audio chain and output format inspector; clipping detection; artwork manager;
 session restoration. Identity ideas: monthly trends, genre evolution, time of day, years compared, milestones,
 explanations for Discovery, Loyalty and Range, and a drill-down for the "everything else" genre slice.
+
+Queue and collection ideas: local-library radio (artist, album, forgotten, deep cuts and year), Continue Album for
+an album left half-heard, undoing a removed queue song and saving the queue as a playlist, a collection health
+dashboard, album pages with credits, label and editions, collection shelves, musical DNA, a lyrics studio, and
+album anniversaries.
 
 ## References
 

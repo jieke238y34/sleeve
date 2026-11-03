@@ -8,6 +8,53 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
+  line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
+  *Show the line being sung in the album view*, to opt out; it is on by default.
+- **Keep the player bar on Now Playing** (Settings > Look): the bar normally folds away there by itself and the waveform strip
+  stands in; with the switch on, the bar stays. Off by default, so nothing changes unless you turn it on.
+
+### Fixed
+
+- **A queue of a whole library no longer eats memory**: the queue decoded a cover for every row, one after another, and
+  kept them all, so with a big library queued Sleeve kept working and growing for as long as Now Playing was open. It now
+  loads the covers of the rows in view, a margin around them and the playing song, follows the scrolling, and keeps the
+  icon cache to its limit. Queuing 5,000 songs: 41 covers planned instead of 5,011, and memory stays flat instead of
+  growing about 70 MB a minute.
+
+## [0.3.2] - 2026-11-02
+
+### Added
+
+- **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
+  sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
+  Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
+- **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
+  send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
+- **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
+  Shortcuts). Esc still leaves fullscreen everywhere else.
+
+### Changed
+
+- Settings is one centred column, so the page wastes no space, and its status lines are read-only.
+- Each file's cover is decoded once and shared by every list, instead of once per list.
+
+### Fixed
+
+- **The queue follows the selector**: moving the selection with the arrow keys, or carrying a song, scrolls the Now
+  Playing queue so the selected song is never lost off the edge.
+- **The selector is left where you put it**: when the next song starts by itself while you are moving about in the queue,
+  your selection no longer jumps to the song that is playing. Any key that moves the selector (typing a letter to jump,
+  for example) also scrolls the queue to it.
+- **The 5-point gradient stays five points on a black cover**: in the accent-following mode it fell back to three colours
+  after the black-cover fix.
+- **The tooltip switch can be found**: Settings > Look now says *Show tooltips on hover*, so searching for "tooltips"
+  finds it (it said "hover tips"). Switching it off hides every tip.
+
+## [0.3.1] - 2026-11-02
+
+### Added
+
 - **Settings sections fold**: click a heading (Sound, Theme, Look, Advanced...) to close or open it, and Sleeve remembers.
   The rarely used ones (Advanced, Startup, Listening, Updates) start closed, so the page is much shorter. Searching opens
   every section it finds something in, and the jump chips open the section they go to.

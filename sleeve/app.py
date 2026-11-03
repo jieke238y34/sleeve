@@ -7,7 +7,7 @@ import secrets
 import shutil
 import sys
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -86,12 +86,13 @@ from PySide6.QtWidgets import (
 from . import (
     activity,
     apis,
-    art,
+    art,  # noqa: F401 (tests point their cover reader at sleeve.app.art; keep the name reachable for them)
     artists,
     audioinfo,
     backup,
     build_label,
     config,
+    coverstore,
     desktop,
     dlsetup,
     earbuds,
@@ -132,6 +133,7 @@ from .coverview import CoverScreen, CoverView
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
+from .mini import MiniWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
 from .player import REPEAT_ALL, REPEAT_ONE, Player
@@ -224,11 +226,13 @@ class TopButton(QPushButton):
         return False
 
 
-def scrollable(page, top_button=False):
+def scrollable(page, top_button=False, center=False):
     "The page inside a scroll area, so that a small window scrolls it instead of being forced to grow."
     area = QScrollArea()
     if top_button:
         area.top_button = TopButton(area)
+    if center:
+        area.setAlignment(Qt.AlignHCenter)               # a page with a working width: centred on wider windows
     area.setWidget(page)
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.NoFrame)
@@ -464,6 +468,28 @@ class ClickSlider(QSlider):
         super().mousePressEvent(e)                 # the handle is now under the cursor, so a drag carries on from here
 
 
+class ThumbCache(OrderedDict):
+    "Cover icons keyed by song path. The ones used last are kept: a big library does not grow while it is scrolled."
+
+    LIMIT = 2000
+
+    def __init__(self, limit=LIMIT):
+        super().__init__()
+        self.limit = limit
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)                          # touched again: it is not the oldest any more
+        super().__setitem__(key, value)
+        while len(self) > self.limit:
+            self.popitem(last=False)
+
+    def get(self, key, default=None, touch=True):
+        if touch and key in self:
+            self.move_to_end(key)                          # an icon in use is the last one the cache would drop
+        return OrderedDict.get(self, key, default)
+
+
 class SongModel(QAbstractTableModel):
     COLS = ("Title", "Artist", "Album", "Genre", "Time")
 
@@ -614,7 +640,11 @@ class MainWindow(QMainWindow):
         self.history = History()
         self.pl_styles = plstyle.PlaylistStyles()      # each playlist's own cover picture and title colour
         self._pl_cache = {}                            # playlist file -> ((mtime, size, library size), count, songs)
-        self._thumbs = {}                              # path -> cover icon, shared by queue, library and playlists
+        self._thumbs = ThumbCache()                    # path -> cover icon, shared by queue, library and playlists
+        self._np_pending = None                  # the song whose cover is still decoding; its words are shown already
+        self._np_words = ()                             # what `_cover_arrived` shows again once that cover is in
+        self._queue_rows = {}                           # path -> the queue rows showing it (the page fills this in)
+        coverstore.shared().ready.connect(self._cover_arrived)
         self._queue_source = ""                        # what the queue was started from: a playlist, an album, a folder
         self._listened, self._listen_counted, self._is_playing = 0.0, False, False
         self._scrobbled, self._started_at = False, 0           # last.fm: sent for this play yet, and when it began
@@ -718,7 +748,8 @@ class MainWindow(QMainWindow):
                            ("Health", self._health_page()),
                            ("Settings", self._settings_page())):
             self.nav.addItem(name)
-            self.stack.addWidget(scrollable(page, top_button=name == "Settings") if name in SCROLLED_PAGES else page)
+            self.stack.addWidget(scrollable(page, top_button=name == "Settings", center=name == "Settings")
+                                 if name in SCROLLED_PAGES else page)
         self.nav.currentRowChanged.connect(self._nav_changed)
         self.splitter = QSplitter(Qt.Horizontal)               # drag the line between them to resize the sidebar
         self.splitter.setChildrenCollapsible(False)
@@ -786,8 +817,15 @@ class MainWindow(QMainWindow):
         self.runner.progress.connect(self._on_sync_progress)
         self.runner.runningChanged.connect(self._on_sync_running)
         self.runner.finished.connect(self._on_sync_finished)
+        self.mini = MiniWindow(self)
+        self._update_transport_icons()                      # the mini's buttons take their icons in this pass
+        if getattr(self, "_accent_shown", None):
+            self.mini.set_accent(theme.visible_accent(self._accent_shown))
+        if self.settings.mini_player:
+            self._show_mini(save=False)                     # it was left open: it comes back up where it lives
         self._build_shortcuts()
-        QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)     # leaving fullscreen is not rebound
+        self._esc_fullscreen = QShortcut(QKeySequence(Qt.Key_Escape), self, self._leave_fullscreen)   # not rebindable
+        QApplication.instance().focusChanged.connect(self._esc_for_focus)
         QApplication.instance().installEventFilter(self)  # lets focused views, sliders and buttons keep their keys
         self.player.resolver = self._nd_stream               # lets the player stream `navidrome:<id>` tracks
         self.scrobbler.changed.connect(self._refresh_apis)
@@ -1223,11 +1261,17 @@ class MainWindow(QMainWindow):
         self._queue_shown, self._queue_rows, self._thumb_todo = [], {}, []
         self._lyrics_worker = None
         self._queue_moving = False                        # a song is being moved in the list: do not rebuild it
+        self._queue_grabbed = None                        # the queue row picked up with the grab key: arrows move it
         self._queue_playing, self._queue_pending, self._queue_settled = -1, True, False
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)
         self._thumb_timer.setInterval(20)
         self._thumb_timer.timeout.connect(self._load_thumbs)
+        self._thumb_replan = QTimer(self)                      # the queue was scrolled: cover the rows now in view
+        self._thumb_replan.setSingleShot(True)
+        self._thumb_replan.setInterval(80)
+        self._thumb_replan.timeout.connect(self._replan_thumbs)
+        self.queue_list.verticalScrollBar().valueChanged.connect(lambda _v: self._thumb_replan.start())
         self._show_cover(None, "", "", "")
         return page
 
@@ -1515,6 +1559,7 @@ class MainWindow(QMainWindow):
     def _settings_page(self):
         "Preferences. Each change is applied at once and saved."
         page = QWidget()
+        page.setMaximumWidth(1040)                       # the form reads best at this width; wider windows centre it
         lay = QVBoxLayout(page)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
@@ -1556,6 +1601,7 @@ class MainWindow(QMainWindow):
             lab.setObjectName("muted")
             lab.setWordWrap(True)
             lab.setTextFormat(Qt.PlainText)
+            lab.setCursor(Qt.ArrowCursor)             # a status line reads; it is not selectable text
             return lab
 
         section("Sound")
@@ -1707,7 +1753,15 @@ class MainWindow(QMainWindow):
         self.title_accent_box.setChecked(self.settings.title_in_accent)
         self.title_accent_box.toggled.connect(self._title_accent_toggled)
         lay.addWidget(self.title_accent_box)
-        self.tooltips_box = Switch("Show hover tips (the small labels on buttons, like Previous and Stash)")
+        self.album_lyrics_box = Switch("Show the line being sung in the album view")
+        self.album_lyrics_box.setChecked(self.settings.album_lyrics)
+        self.album_lyrics_box.toggled.connect(self._album_lyrics_toggled)
+        lay.addWidget(self.album_lyrics_box)
+        self.keep_bar_box = Switch("Keep the player bar on Now Playing (it folds away there by itself)")
+        self.keep_bar_box.setChecked(self.settings.keep_bar_on_np)
+        self.keep_bar_box.toggled.connect(self._keep_bar_toggled)
+        lay.addWidget(self.keep_bar_box)
+        self.tooltips_box = Switch("Show tooltips on hover (the small labels on buttons, like Previous and Stash)")
         self.tooltips_box.setChecked(self.settings.tooltips)
         self.tooltips_box.toggled.connect(self._tooltips_toggled)
         lay.addWidget(self.tooltips_box)
@@ -1853,6 +1907,15 @@ class MainWindow(QMainWindow):
         self._show_shortcuts()
 
         section("Advanced")
+        subsection("Sound server")
+        self.role_box = Switch("Label Sleeve's sound as \u201cmusic\u201d for the sound server")
+        self.role_box.setChecked(self.settings.sound_role_music)
+        self.role_box.toggled.connect(self._role_toggled)
+        lay.addWidget(self.role_box)
+        lay.addWidget(hint("Tools that look for music streams (Maid BT, your own WirePlumber rules) match this label. "
+                           "WirePlumber also remembers a stream's volume per label, so with it on, other apps that "
+                           "say \u201cmusic\u201d can come up at Sleeve's volume. Takes effect the next time Sleeve "
+                           "starts."))
         subsection("APIs")
         lay.addWidget(hint("Every outside service Sleeve can talk to, what it is for, what is sent and where. Nothing "
                            "here runs until you switch it on. Below the list, each service has its own switch and its "
@@ -2070,8 +2133,8 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
         lay.addLayout(row)
         self._release, self._update_proc, self._update_worker = None, None, None
+        self._update_dev, self._dev_worker = False, None
 
-        lay.addStretch(1)
         lay.addWidget(hint(f"Sleeve {build_label()}"))
         self._align_settings(lay)
         self._settings_jump_row(page, lay)
@@ -2150,6 +2213,7 @@ class MainWindow(QMainWindow):
         self.update_check_btn.setEnabled(True)
 
     def _update_checked(self, release, error):
+        self._update_dev = False
         self._release = release
         self.update_btn.setVisible(False)
         self.update_page_btn.setVisible(False)
@@ -2158,7 +2222,15 @@ class MainWindow(QMainWindow):
         elif release is None:
             self.update_label.setText(f"You have Sleeve {build_label()}. No release has been published yet.")
         elif not updater.is_newer(release["version"], release["build"]):
-            self.update_label.setText(updater.status_text(release, build_label()))
+            if updater.relation(release) != "ahead" or updater.install_kind() != "venv":
+                self.update_label.setText(updater.status_text(release, build_label()))
+            else:                       # a development copy: it can bring the newest main build into itself
+                self.update_label.setText(f"You have Sleeve {build_label()}, which is newer than the newest "
+                                          "published release. Updating installs the newest code on the main "
+                                          "branch into Sleeve's own program files; a step that fails changes "
+                                          "nothing.")
+                self._update_dev, self._release = True, release
+                self.update_btn.setVisible(True)
         elif updater.install_kind() == "venv":
             self.update_label.setText(f"Sleeve {updater.label(release)} is available (you have {build_label()}). "
                                       "Updating replaces Sleeve's own program files only.")
@@ -2169,6 +2241,16 @@ class MainWindow(QMainWindow):
             self.update_page_btn.setVisible(True)
 
     def _do_update(self):
+        if self._update_proc is not None or self._dev_worker is not None:
+            return
+        if self._update_dev:
+            self.update_btn.setEnabled(False)
+            self.update_label.setText("Updating to the newest development build… this can take a minute.")
+            worker = self._dev_worker = updater.DevUpdate(parent=self)
+            worker.done.connect(self._dev_update_done)
+            worker.finished.connect(lambda: setattr(self, "_dev_worker", None))
+            worker.start()
+            return
         if self._release is None or self._update_proc is not None or updater.install_kind() != "venv":
             return
         cmd = updater.update_command(self._release["tag"], wheel=self._release.get("wheel") or None)
@@ -2177,6 +2259,10 @@ class MainWindow(QMainWindow):
         proc = self._update_proc = QProcess(self)
         proc.finished.connect(self._update_finished)
         proc.start(cmd[0], cmd[1:])
+
+    def _dev_update_done(self, code, message):
+        self.update_btn.setEnabled(True)
+        self.update_label.setText(message or "The development build update did not answer. Try again in a moment.")
 
     def _update_finished(self, code, _status):
         proc, self._update_proc = self._update_proc, None
@@ -2446,6 +2532,14 @@ class MainWindow(QMainWindow):
         self._set_setting("library_order", self.order_box.currentData())
         self._apply_library_order(fresh=True)
 
+    def _role_toggled(self, on):
+        self._set_setting("sound_role_music", on)
+        self.status.showMessage("The sound label changes the next time Sleeve starts.", 6000)
+
+    def _album_lyrics_toggled(self, on):
+        self._set_setting("album_lyrics", on)
+        self._album_lyric_refresh()                              # the strip shows or goes at once
+
     def _title_accent_toggled(self, on):
         self._set_setting("title_in_accent", on)
         self._apply_title_colour()
@@ -2456,6 +2550,8 @@ class MainWindow(QMainWindow):
         sheet = f"color: {lit};" if self.settings.title_in_accent else ""
         if self.np_title.styleSheet() != sheet:                  # a repaint per change only
             self.np_title.setStyleSheet(sheet)
+        if hasattr(self, "album_detail"):
+            self.album_detail.set_lyric_line_colour(lit if self.settings.title_in_accent else "")
 
     def _tooltips_toggled(self, on):
         self._set_setting("tooltips", on)
@@ -2601,6 +2697,8 @@ class MainWindow(QMainWindow):
         self.wave.set_accent(lit)                                           # drawn straight on the dark window
         self.identity_page.set_accent(lit)
         self._vol_bubble.set_accent(lit)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_accent(lit)                       # the mini's bar wears the colour too
         self._apply_title_colour()
         for switch in self.findChildren(Switch):
             switch.update()
@@ -3348,6 +3446,11 @@ class MainWindow(QMainWindow):
             return True                                           # hover labels are switched off in Settings > Look
         if ev.type() == QEvent.MouseButtonPress and self._deselect_on_click(obj, ev):
             return True
+        if (ev.type() == QEvent.KeyPress and obj is self.queue_list and self._queue_grabbed is not None
+                and not ev.modifiers() and self._queue_grab_key(ev.key())):
+            return True                                           # the held song moved: the selector does not
+        if ev.type() == QEvent.KeyPress and obj is self.queue_list:
+            QTimer.singleShot(0, self._queue_follow)               # whatever moved the selector (arrows, type-ahead)
         if ev.type() in (QEvent.Resize, QEvent.Show) and obj is getattr(self, "np_page", None):
             QTimer.singleShot(0, self._np_apply_panels)          # the page has its real width now (it starts hidden)
         if ev.type() == QEvent.Resize and obj is self.table.viewport():
@@ -3718,7 +3821,7 @@ class MainWindow(QMainWindow):
         self.presence.update(listening_activity(title, artist, self._pos, self._dur, self._is_playing,
                                                 art_url=cover, album=song.album if song else ""))
 
-    ART_GAP = 1.1                                           # seconds between two cover lookups
+    ART_GAP = 0.3                                       # seconds between two cover lookups (MusicBrainz allows this)
 
     def _want_art(self, album, artist, first=True):
         "Queue a cover lookup. The song playing now goes to the front, the ones coming up behind it."
@@ -3746,7 +3849,7 @@ class MainWindow(QMainWindow):
         if self._was_quiet:
             return                                      # nobody is looking (a game fills the screen): they can wait
         queue, here = self.player.queue, max(self.player.index, 0)
-        for path in queue[here + 1:here + 4]:
+        for path in queue[here + 1:here + 8]:               # the covers of the next few songs are wanted now
             song = self.by_path.get(path)
             if song is not None and song.album and not self._art_cache.get(song.album, song.artist)[0]:
                 self._want_art(song.album, song.artist, first=False)
@@ -4391,7 +4494,7 @@ class MainWindow(QMainWindow):
         self.queue_list.setCurrentRow(dst)
         self._queue_apply_move(src, dst)
         self.queue_list.setCurrentRow(dst)                     # the player's refresh may have selected the playing one
-        self.queue_list.scrollToItem(self.queue_list.item(dst))
+        self._queue_follow()
 
     def _show_shortcuts(self):
         "Put the keys now in force into the boxes, without it counting as the person typing."
@@ -4430,7 +4533,11 @@ class MainWindow(QMainWindow):
             "fullscreen": (self, self._toggle_fullscreen, False),
             "quick_search": (self, self._quick_search, False),
             "toggle_bar": (self, self._toggle_bar, False),
+            "mini_player": (self, self._toggle_mini, False),
             "library_queue": (self.table, self._queue_selected, True),     # only while that list has the focus
+            "queue_play": (self.queue_list, self._queue_play_selected, True),
+            "queue_unselect": (self.queue_list, self._queue_unselect, True),
+            "queue_grab": (self.queue_list, self._queue_grab_toggle, True),
             "queue_remove": (self.queue_list, self._queue_remove_selected, True),
             "queue_up": (self.queue_list, lambda: self._queue_nudge(-1), True),
             "queue_down": (self.queue_list, lambda: self._queue_nudge(1), True),
@@ -4447,7 +4554,75 @@ class MainWindow(QMainWindow):
     def _apply_shortcuts(self):
         mine = shortcuts.clean(self.settings.shortcuts)
         for action_id, sc in self._shortcuts.items():
-            sc.setKey(QKeySequence(shortcuts.key_for(mine, action_id)))
+            key = shortcuts.key_for(mine, action_id)
+            keys = [QKeySequence(key)]
+            if key == "Return":
+                keys.append(QKeySequence("Enter"))               # the keypad's Enter does the same
+            sc.setKeys(keys)
+
+    def _queue_grab_toggle(self):
+        "Pick up the selected song (the arrows then move the song, not the selector); the same key puts it down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()
+            return
+        item = self.queue_list.currentItem()
+        if item is None or not item.isSelected():
+            return
+        self._queue_grabbed = item
+        item.setForeground(QColor(theme.visible_accent(self._accent_shown)))
+        title = item.text().splitlines()[0] if item.text() else ""
+        self.status.showMessage(f"Moving \u201c{title}\u201d: Up and Down move it, Home and End send it to the ends, "
+                                "Enter puts it down.", 0)
+
+    def _queue_drop(self):
+        item, self._queue_grabbed = self._queue_grabbed, None
+        if item is not None and self.queue_list.row(item) >= 0:
+            item.setData(Qt.ForegroundRole, None)
+        self.status.clearMessage()
+
+    def _queue_grab_forget(self):
+        "The list was rebuilt or left: whatever was picked up is not held any more."
+        if self._queue_grabbed is not None:
+            self._queue_grabbed = None
+            self.status.clearMessage()
+
+    def _queue_grab_key(self, key):
+        "A key pressed in the queue while a song is held: True when it was used to move or put down that song."
+        item = self._queue_grabbed
+        row = self.queue_list.row(item) if item is not None else -1
+        if row < 0:
+            self._queue_grab_forget()
+            return False
+        last = self.queue_list.count() - 1
+        target = {Qt.Key_Up: row - 1, Qt.Key_Down: row + 1, Qt.Key_Home: 0, Qt.Key_End: last}.get(key)
+        if target is None:
+            return False
+        self._queue_move(row, max(0, min(last, target)))
+        return True
+
+    def _esc_for_focus(self, old, new):
+        """Esc in the queue unselects (a key of its own); two shortcuts on one key cancel each other, so the window's
+        waits. A song that is held is put down when the focus leaves the queue."""
+        self._esc_fullscreen.setEnabled(new is not self.queue_list)
+        if old is self.queue_list and new is not self.queue_list and self._queue_grabbed is not None:
+            self._queue_drop()
+
+    def _queue_play_selected(self):
+        "Start the song that is selected in the queue (what a double-click does)."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Enter puts a held song down; it does not start it
+            return
+        row = self.queue_list.currentRow()
+        if self.queue_list.item(row) is not None and 0 <= row < len(self.player.queue):
+            self.player.play_index(row)
+
+    def _queue_unselect(self):
+        "Nothing is selected in the queue afterwards (the song that is playing stays in bold); a held song is put down."
+        if self._queue_grabbed is not None:
+            self._queue_drop()                                   # Esc puts a held song down and nothing else
+            return
+        self.queue_list.clearSelection()
+        self.queue_list.setCurrentItem(None)
 
     def _queue_remove_selected(self):
         "Take the selected song off the queue (the file stays); the next one is selected so the key can be repeated."
@@ -4458,6 +4633,13 @@ class MainWindow(QMainWindow):
         count = self.queue_list.count()
         if count:
             self.queue_list.setCurrentRow(min(row, count - 1))
+            self._queue_follow()
+
+    def _queue_follow(self):
+        "Keep the selector in view, so it is never lost off the edge of the queue."
+        row = self.queue_list.currentRow()
+        if row >= 0 and self.queue_list.isVisible():
+            self.queue_list._smooth.ensure_visible(row)
 
     def _queue_nudge(self, step):
         row = self.queue_list.currentRow()
@@ -4672,6 +4854,7 @@ class MainWindow(QMainWindow):
                 self._queue_rows.setdefault(path, []).append(i)
             self._queue_playing = -1
         elif queue != self._queue_shown:                     # a different queue: build the rows again
+            self._queue_grab_forget()                        # the row that was picked up is gone with the old rows
             self._queue_shown, self._queue_rows, self._queue_playing = queue, {}, -1
             self._queue_settled = False                      # and put the playing song in place without gliding
             self.queue_list.setUpdatesEnabled(False)
@@ -4711,7 +4894,8 @@ class MainWindow(QMainWindow):
             font = self.queue_list.font()
             font.setBold(True)
             item.setFont(font)
-            self.queue_list.setCurrentRow(row)
+            if not self.queue_list.hasFocus():                    # a person moving about the queue keeps their selector
+                self.queue_list.setCurrentRow(row)
         self._queue_playing = row
 
     def _queue_catch_up(self):
@@ -4828,7 +5012,19 @@ class MainWindow(QMainWindow):
 
     def _toggle_bar(self):
         "Hide or show the bar; on Now Playing (where it folds by itself) the choice lasts only until the page is left."
-        self._set_bar_hidden(self.bar.isVisible(), save=not self._on_np)
+        self._set_bar_hidden(self.bar.isVisible(), save=not self._bar_folds_here())
+
+    def _bar_folds_here(self):
+        "True while Now Playing is on show and the bar is left to fold by itself (the waveform strip stands in)."
+        return self._on_np and not self.settings.keep_bar_on_np
+
+    def _apply_bar_for_page(self):
+        "Fold the bar or show it as this page and the settings ask: the saved choice, except where it folds by itself."
+        self._set_bar_hidden(True if self._bar_folds_here() else self.settings.player_bar_hidden, save=False)
+
+    def _keep_bar_toggled(self, on):
+        self._set_setting("keep_bar_on_np", on)
+        self._apply_bar_for_page()                              # takes effect at once, without leaving the page
 
     def _set_bar_hidden(self, hidden, save=True):
         "Fold the player bar away (more room for the page; the media keys still work) or bring it back."
@@ -4923,12 +5119,34 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._lyrics_catch_up)
         QTimer.singleShot(0, self._np_balance)
 
+    THUMB_AHEAD, THUMB_AROUND_PLAYING = 30, 20     # rows beyond the ones in view, and around the song that plays
+
     def _plan_thumbs(self):
-        "Which covers to load next: the ones nearest the playing song first."
-        around = max(self.player.index, 0)
-        wanted = {p: min(rows, key=lambda r: abs(r - around)) for p, rows in self._queue_rows.items()
-                  if p not in self._thumbs}
-        self._thumb_todo = sorted(wanted, key=lambda p: abs(wanted[p] - around), reverse=True)   # popped from the end
+        """Which covers to load next: those of the rows in view, a margin around them and a few around the playing song,
+        nearest the middle first. Not the whole queue: a queue of a whole library would otherwise decode a cover for
+        every row, one after another, for as long as it takes, and keep them all."""
+        view, count = self.queue_list, len(self._queue_shown)
+        playing = max(self.player.index, 0)
+        near = self.THUMB_AROUND_PLAYING
+        rows = set(range(max(0, playing - near), min(count, playing + near + 1)))
+        centre = playing
+        top = view.indexAt(QPoint(4, 4)).row() if view.isVisible() else -1
+        if top >= 0:
+            bottom = view.indexAt(QPoint(4, max(5, view.viewport().height() - 4))).row()
+            bottom = count - 1 if bottom < 0 else bottom
+            rows |= set(range(max(0, top - self.THUMB_AHEAD), min(count, bottom + self.THUMB_AHEAD + 1)))
+            centre = (top + bottom) // 2
+        wanted = {}
+        for r in rows:
+            path = self._queue_shown[r]
+            if path not in self._thumbs and (path not in wanted or abs(r - centre) < wanted[path]):
+                wanted[path] = abs(r - centre)
+        self._thumb_todo = sorted(wanted, key=wanted.get, reverse=True)          # popped from the end
+
+    def _replan_thumbs(self):
+        self._plan_thumbs()
+        if self._thumb_todo and not self._closing:
+            self._thumb_timer.start()
 
     def _load_thumbs(self):
         "Cover thumbnails for the queue, two songs per tick so the window never stalls."
@@ -4938,23 +5156,26 @@ class MainWindow(QMainWindow):
             if not self._thumb_todo:
                 break
             path = self._thumb_todo.pop()
-            self._thumbs[path] = self._make_thumb(path)
+            icon = self._make_thumb(path)
+            if icon is None:                       # decoding in a worker: `_cover_arrived` puts it in the row
+                continue
+            self._thumbs[path] = icon
             for row in self._queue_rows.get(path, ()):
                 item = self.queue_list.item(row)
                 if item is not None:
-                    item.setIcon(self._thumbs[path])
-        if self._thumb_todo and not self._closing:
+                    item.setIcon(icon)
+        if self._thumb_todo and not self._closing:            # the cache drops its own oldest covers: no trim here
             self._thumb_timer.start()
 
     def _make_thumb(self, path):
-        "The 44 pixel cover icon of a song, or the Sleeve mark when it has none."
-        try:
-            data = art.cover_bytes(path)
-        except Exception:
-            data = None
-        pix = QPixmap()
-        if data and pix.loadFromData(data):
+        """The 44 pixel cover icon of a song, or the Sleeve mark when the store knows the file has none. None means
+        the decode is still on its way: `_cover_arrived` comes back to the rows with the icon then."""
+        store = coverstore.shared()
+        pix = store.pixmap(path, 44)              # one decode serves this and every other list in the window
+        if pix is not None:
             return QIcon(theme.rounded_pixmap(pix, 44, 8))
+        if store.state(path) == "pending":
+            return None
         return QIcon(self._placeholder_thumb())
 
     def _blank_icon(self):
@@ -4971,9 +5192,6 @@ class MainWindow(QMainWindow):
             self._blank = QIcon(pix)
         return self._blank
 
-    def _trim_thumbs(self, keep=2000):
-        while len(self._thumbs) > keep:
-            self._thumbs.pop(next(iter(self._thumbs)))
 
     @staticmethod
     def _visible_rows(view, count):
@@ -4985,53 +5203,96 @@ class MainWindow(QMainWindow):
         return range(top, min(count, (count - 1 if bottom < 0 else bottom) + 3))
 
     def _load_library_thumbs(self):
-        "Covers for the rows of the song table that are on screen, three a tick, so the window never stalls."
+        "Covers for the rows of the song table that are on screen, five a tick, so the window never stalls."
         songs = self.model.songs
-        todo = [r for r in self._visible_rows(self.table, len(songs)) if songs[r].path not in self._thumbs][:5]
+        store = coverstore.shared()
+        todo = [r for r in self._visible_rows(self.table, len(songs))
+                if songs[r].path not in self._thumbs and store.state(songs[r].path) != "pending"][:5]
         for r in todo:
-            self._thumbs[songs[r].path] = self._make_thumb(songs[r].path)
+            icon = self._make_thumb(songs[r].path)
+            if icon is None:                       # its decode got under way just now: `_cover_arrived` brings it in
+                continue
+            self._thumbs[songs[r].path] = icon
             ix = self.model.index(r, 0)
             self.model.dataChanged.emit(ix, ix, [Qt.DecorationRole])
-        self._trim_thumbs()
         if todo and not self._closing:
             self._lib_thumb_timer.start()
 
     def _load_playlist_thumbs(self):
         "The same for the playlist on show."
         entries = self._playlist_entries
+        store = coverstore.shared()
         rows = self._visible_rows(self.pl_table, len(entries))
-        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists][:5]
+        todo = [r for r in rows if entries[r].path not in self._thumbs and entries[r].exists
+                and store.state(entries[r].path) != "pending"][:5]
         for r in todo:
-            self._thumbs[entries[r].path] = self._make_thumb(entries[r].path)
+            icon = self._make_thumb(entries[r].path)
+            if icon is None:                       # its decode is under way: `_cover_arrived` brings the rows in
+                continue
+            self._thumbs[entries[r].path] = icon
         for r in rows:
             item = self.pl_table.item(r, 0)
             icon = self._thumbs.get(entries[r].path)
             if item is not None and icon is not None:
                 item.setIcon(icon)
-        self._trim_thumbs()
         if todo and not self._closing:
             self._pl_thumb_timer.start()
+
+    def _cover_arrived(self, path):
+        "The store finished a file: the queue rows that asked for it paint it, and a starting song shows it."
+        rows = self._queue_rows.get(path)
+        if rows:
+            icon = self._make_thumb(path)
+            if icon is None:                       # the file changed while it decoded and is going again
+                return
+            self._thumbs[path] = icon
+            for row in rows:
+                item = self.queue_list.item(row)
+                if item is not None:
+                    item.setIcon(icon)
+        if self._np_pending == path:
+            self._show_song_art(path)
+        self._lib_thumb_timer.start()              # the table rows take it the next tick they are on screen for
+        self._pl_thumb_timer.start()
 
     def _placeholder_thumb(self):
         logo = QIcon(str(Path(__file__).parent / "data" / "sleeve.svg")).pixmap(44, 44)
         return theme.rounded_pixmap(logo, 44, 8) if not logo.isNull() else logo
 
     def _show_cover(self, pix, title, artist, album, detail=""):
-        "The Now Playing page, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
+        "The Now Playing art, the fullscreen view and the window backdrop for one song (pix None: nothing playing)."
         self._np_pix = pix if pix is not None and not pix.isNull() else None
         self.np_cover.set_pixmap(self._np_pix)
         self.backdrop.set_cover(self._np_pix)
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_song(self._np_pix)
         if self.settings.accent_from_cover or self._accent_synced():
             self._apply_accent(force=False)                 # a new song may bring a new colour
+        if self._cover_screen is not None:
+            self._cover_screen.set_song(self._np_pix, title, artist)
+        self._show_words(title, artist, album, detail)
+
+    def _show_words(self, title, artist, album, detail=""):
+        "The words of the Now Playing page for one song; set on their own while its cover is still being decoded."
         self.np_title.setText(title or "Nothing playing")
         self._np_who = (artist or "", album or "")
         self.np_artist.setText(artists.display(artist))
         self._np_album_text = (album or "", detail or "")
         self._show_album_line()
+        if getattr(self, "mini", None) is not None:
+            self.mini.set_words(title, artist)
         self.np_cover.refresh()                              # the words may be longer or shorter: art and words re-fit
         QTimer.singleShot(0, self.np_cover.refresh)          # and once more when the styled fonts have settled
-        if self._cover_screen is not None:
-            self._cover_screen.set_song(self._np_pix, title, artist)
+
+    def _show_song_art(self, path):
+        "The song that started gets its cover when the store has it: side art, Now Playing page and backdrop together."
+        store = coverstore.shared()
+        pix = store.pixmap(path)
+        if pix is None and store.state(path) == "pending":
+            return                                # the file changed mid-decode and goes again: its next round ends this
+        self._np_pending = None
+        self._set_side_art(pix)
+        self._show_cover(pix, *self._np_words)
 
     def _show_album_line(self):
         "The album and, under it, what the file is and how much levelling adds to it."
@@ -5373,7 +5634,7 @@ class MainWindow(QMainWindow):
         on_np = item is not None and item.text() == "Now Playing"
         if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
             self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
-            self._set_bar_hidden(True if on_np else self.settings.player_bar_hidden, save=False)
+            self._apply_bar_for_page()
             self._apply_layout()                              # and the small art steps aside for the big one
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
@@ -5409,7 +5670,7 @@ class MainWindow(QMainWindow):
                 bar_lay.removeWidget(self.cover)
                 self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
                 self._fit_side_art()
-            self._set_bar_hidden(self._on_np or self.settings.player_bar_hidden, save=False)   # a moved widget hides
+            self._apply_bar_for_page()                            # a moved widget hides
         self.cover.setVisible(self.settings.side_art and not self._on_np)      # Now Playing has the big one
 
     def _fit_side_art(self):
@@ -5466,6 +5727,27 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setChecked(mode != 0)
         self._update_toggle_icons()
 
+    def _toggle_mini(self):
+        "The mini-player: it shows up at the bottom-right of the screen, or goes away; it remembers itself."
+        if self.mini.isVisible():
+            self.mini.hide()
+            self._set_setting("mini_player", False)
+        else:
+            self._show_mini()
+
+    def _show_mini(self, save=True):
+        "Bottom-right of the screen the main window is on, above everything else."
+        screen = QApplication.primaryScreen()
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not None:
+            screen = handle.screen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            self.mini.move(area.right() - self.mini.width() - 16, area.bottom() - self.mini.height() - 16)
+        self.mini.show()
+        if save:
+            self._set_setting("mini_player", True)
+
     def _update_transport_icons(self):
         "Previous, play/pause and next are painted: light on the round buttons, dark on the accent-coloured play."
         if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
@@ -5473,6 +5755,8 @@ class MainWindow(QMainWindow):
         playing = getattr(self, "_is_playing", False)
         on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
+        if getattr(self, "mini", None) is not None:
+            sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
         for prev, play, nxt in sets:
             for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
                                             (play, "pause" if playing else "play", on_play, 38)):
@@ -5582,6 +5866,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status.showMessage(f"Could not read {Path(path).name}: {e}", 8000)
             self._current_path = ""                       # the song did not load: nothing is being listened to
+            self._album_lyric_refresh()
             self._listened, self._listen_counted, self._scrobbled = 0.0, False, False
             return
         self.now.setText(f"{s.name}\n{artists.display(s.artist)}")
@@ -5589,17 +5874,16 @@ class MainWindow(QMainWindow):
         if getattr(self.player, "playing", False):          # a song brought back paused is not being played
             self.scrobbler.now_playing(s)
         self.setWindowTitle(f"{artists.display(s.artist)} - {s.name} · Sleeve" if s.artist else f"{s.name} · Sleeve")
-        try:
-            data = art.cover_bytes(path)
-        except Exception:
-            data = None
-        pix = QPixmap()
-        if data and pix.loadFromData(data):
-            self._set_side_art(pix)
-            self._show_cover(pix, s.name, s.artist, s.album, audioinfo.describe(s))
+        store = coverstore.shared()
+        desc = audioinfo.describe(s)
+        pix = store.pixmap(path)                  # the file's one decode, shared with every list that shows it
+        if pix is None and store.state(path) == "pending":
+            self._np_pending = path               # the last song keeps the frame each moment until its cover is in
+            self._np_words = (s.name, s.artist, s.album, desc)
+            self._show_words(s.name, s.artist, s.album, desc)
         else:
-            self._set_side_art(None)
-            self._show_cover(None, s.name, s.artist, s.album, audioinfo.describe(s))
+            self._set_side_art(pix)
+            self._show_cover(pix, s.name, s.artist, s.album, desc)       # pix None: the Sleeve mark shows
         self._load_lyrics(s)
 
     def _read_lyrics_file(self, path):
@@ -5628,6 +5912,12 @@ class MainWindow(QMainWindow):
             self.lyrics.addItem(item)
         self._set_lyrics_state()
         self._update_cover_lyrics()
+        self._album_lyric_refresh()
+
+    def _album_lyric_refresh(self):
+        "The album view's lyric strip: the line being sung with its neighbours, for the song playing now."
+        lines = [line for _, line in self._lyrics] if self._lyric_synced and self.settings.album_lyrics else []
+        self.album_detail.set_lyric_strip(self._current_path, lines, self._lyric_row)
 
     def _set_lyrics_state(self):
         "The lyrics list when there are lyrics, otherwise a plain message."
@@ -5656,6 +5946,7 @@ class MainWindow(QMainWindow):
             item.setFont(font)
         self.lyrics.setCurrentRow(row)
         self._update_cover_lyrics()
+        self._album_lyric_refresh()
 
     def _lyrics_can_look(self):
         "A song from a file here, with an artist and a title to ask about."
@@ -5765,6 +6056,7 @@ class MainWindow(QMainWindow):
         self._remember_window()
         if self._cover_screen is not None:
             self._cover_screen.close()
+        self.mini.close()
         self.log_timer.stop()
         for sig in (self.player.positionChanged, self.player.durationChanged, self.player.playingChanged,
                     self.player.trackChanged, self.player.queueChanged, self.player.volumeChanged,
@@ -5830,6 +6122,13 @@ def attach_media_keys(win, app, suffix="sleeve"):
     return mpris
 
 
+def pulse_prop(role_music=True):
+    """The labels Sleeve's sound streams carry (the PULSE_PROP text). `media.role=music` is what Maid BT and WirePlumber
+    rules match on, but WirePlumber also remembers a stream's volume per role, so it can be left off in Settings."""
+    props = ["application.id=io.github.jieke238y34.Sleeve", "application.icon_name=io.github.jieke238y34.Sleeve"]
+    return " ".join((["media.role=music"] if role_music else []) + props)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sleeve", description="Sleeve: music library, player and sync dashboard")
     ap.add_argument("--dl", help="path to dl.py (default: found automatically)")
@@ -5837,7 +6136,9 @@ def main(argv=None):
     ap.add_argument("--preview", action="store_true",
                     help="run as a second, separate copy (own window, own media-key name) next to one that is playing")
     mng = ap.add_argument_group("keep Sleeve up to date or remove it (for copies made by install.sh)")
-    mng.add_argument("--update", action="store_true", help="update to the newest release, then exit")
+    mng.add_argument("--update", action="store_true",
+                     help="update Sleeve, then exit (a development copy takes the newest code on the main branch, "
+                          "otherwise the newest release)")
     mng.add_argument("--sha256", metavar="HEX",
                      help=argparse.SUPPRESS)                         # for developers: not in --help
     mng.add_argument("--uninstall", action="store_true",
@@ -5878,8 +6179,7 @@ def main(argv=None):
         return updater.cli_uninstall(full=args.full, playlist_dir=playlist_dir)
     command = next((c for c in singleton.COMMANDS if getattr(args, c)), "raise")
     # the sound server groups and labels streams by these; WirePlumber rules and Maid BT can match "music"
-    os.environ.setdefault("PULSE_PROP", "media.role=music application.id=io.github.jieke238y34.Sleeve "
-                                        "application.icon_name=io.github.jieke238y34.Sleeve")
+    os.environ.setdefault("PULSE_PROP", pulse_prop(settings.Settings().sound_role_music))
     app = QApplication(sys.argv[:1])
     instance_name = singleton.NAME + ("-preview" if args.preview else "")
     if singleton.already_running(instance_name, command=command):   # Sleeve is open already, given the command

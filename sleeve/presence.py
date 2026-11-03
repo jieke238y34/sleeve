@@ -182,8 +182,7 @@ class Presence(QObject):
                 return
             elif opcode == FRAME and payload.get("evt") == "READY" and not self.ready:
                 self.ready, self.state = True, "ready"
-                if self._pending is not None:
-                    self._send(set_activity(self._pending))
+                self._send(set_activity(self._pending))   # even None: a tile a dead session left behind gets its clear
 
     def _lost(self):
         if self._sock is None:
