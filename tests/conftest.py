@@ -99,10 +99,21 @@ def close_windows_after_each_test():
     """Close what a test opened, and nothing more. Deleting the windows from here (deleteLater) crashed Python 3.10 when
     the process shut down, and leaving them open crashed 3.14, so they are only closed and the events handled."""
     yield
+    import gc
+
     from PySide6.QtCore import QCoreApplication
     from PySide6.QtWidgets import QApplication
 
-    for w in QApplication.topLevelWidgets():
+    # A widget that a test left in a reference cycle is freed whenever the collector happens to run. If that is while
+    # topLevelWidgets() is building its list, Qt hands back a widget that was just deleted and Python 3.10 segfaults. So
+    # the garbage goes first, and the collector stays off while the list is taken.
+    gc.collect()
+    gc.disable()
+    try:
+        windows = list(QApplication.topLevelWidgets())
+    finally:
+        gc.enable()
+    for w in windows:
         if w.isVisible():                            # one a test already closed is left alone
             w.close()
     QCoreApplication.processEvents()

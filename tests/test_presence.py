@@ -238,3 +238,37 @@ def test_flatpak_clients_such_as_vesktop_are_found_by_their_own_folders(tmp_path
     assert str(run / "app" / "some.other.Client" / "discord-ipc-1") in paths        # and one nobody listed
     assert paths[0] == str(run / "discord-ipc-0")                                   # the plain runtime folder stays first
     assert len(paths) == len(set(paths))
+
+
+def test_a_late_ready_clears_a_tile_a_dead_session_left_behind(tmp_path):
+    app()
+    p = presence.Presence(paths=[str(tmp_path / "discord-ipc-0")], retry_seconds=0.1)
+    p.configure(True, CLIENT_ID)                     # Sleeve showed a song; Discord went away; nothing plays now
+    p.update(None)
+    try:
+        fake = FakeDiscord(str(tmp_path))            # Discord comes back later
+        assert pump(3, lambda: p.ready)
+        assert pump(1, lambda: any(m[1].get("cmd") == "SET_ACTIVITY"
+                                   and m[1]["args"].get("activity") is None for m in fake.messages))
+    finally:
+        p.configure(False, "")
+        fake.close()
+
+
+def test_a_stopped_song_leaves_a_clear_activity(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    monkeypatch.setattr(win, "_confirm_online", lambda: False)
+    monkeypatch.setattr(win, "_want_art", lambda *a, **k: None)      # no cover lookups: the stop is what is tested
+    try:
+        p = win.presence
+        p.enabled = True                          # the tile logic itself: no socket is opened in this test
+        song = win.songs[0]
+        win._current_path = song.path
+        win._on_playing(True)
+        assert p._pending is not None and p._pending["details"] == song.name
+        win._on_track(-1, "")                     # what the player emits when the queue empties: a full stop
+        assert p._pending is None                 # stopped: the clear was stored, with no song left behind
+        win._update_presence()                    # and nothing can bring a tile back until a song plays
+        assert p._pending is None
+    finally:
+        win.close()

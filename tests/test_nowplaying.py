@@ -531,6 +531,7 @@ def test_the_backdrop_is_drawn_once_and_then_copied(qapp):  # noqa: F811
     for _ in range(10):
         back.grab()
     assert len(drawn) == count                           # and it settles
+    del back._render                                     # the lambda and `real` hold the widget: no cycle is left behind
 
 
 def test_the_seek_bar_is_not_redrawn_on_every_tick(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811

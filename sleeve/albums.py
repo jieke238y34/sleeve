@@ -511,6 +511,24 @@ class AlbumDetail(QWidget):
         buttons.addWidget(self.queue_btn)
         buttons.addStretch(1)
         right.addLayout(buttons)
+        self.lyric_bar = QWidget()
+        lyric_lay = QVBoxLayout(self.lyric_bar)
+        lyric_lay.setContentsMargins(0, 8, 0, 2)
+        lyric_lay.setSpacing(1)
+        self.lyric_prev, self.lyric_now, self.lyric_next = QLabel(), QLabel(), QLabel()
+        for lab in (self.lyric_prev, self.lyric_now, self.lyric_next):
+            lab.setTextFormat(Qt.PlainText)                  # tags are data, never markup
+            lab.setAlignment(Qt.AlignCenter)
+            lab.setWordWrap(True)
+        for lab in (self.lyric_prev, self.lyric_next):
+            lab.setStyleSheet(f"font-size: 10.5pt; color: {theme.MUTED};")
+        self.lyric_now.setStyleSheet("font-size: 12pt; font-weight: 600;")
+        lyric_lay.addWidget(self.lyric_prev)
+        lyric_lay.addWidget(self.lyric_now)
+        lyric_lay.addWidget(self.lyric_next)
+        right.addWidget(self.lyric_bar)
+        self._lyric = ("", [], -1)          # what the last lyric push said: reread when another album is shown
+        self.lyric_bar.hide()
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["#", "Title", "Time"])
         self.table.verticalHeader().hide()
@@ -570,7 +588,30 @@ class AlbumDetail(QWidget):
                     it.setForeground(QColor(theme.MUTED))
                 self.table.setItem(i, c, it)
             self.table.setRowHeight(i, 34)
+        self._refresh_lyric_strip()                          # the lyrics may belong to this album now, or not
 
     def _row_activated(self, row, _col=0):
         if self.album is not None:
             self.playAlbum.emit(self.album.paths[row:])
+
+    def set_lyric_strip(self, song_path, lines, row):
+        "The three lines around the one being sung, for the song playing; shown only while the album on show plays it."
+        self._lyric = (song_path or "", list(lines), int(row))
+        self._refresh_lyric_strip()
+
+    def set_lyric_line_colour(self, colour):
+        "The line being sung wears the accent colour when the window says so, and the plain text colour otherwise."
+        sheet = "font-size: 12pt; font-weight: 600;" + (f" color: {colour};" if colour else "")
+        if self.lyric_now.styleSheet() != sheet:             # a repaint per change only
+            self.lyric_now.setStyleSheet(sheet)
+
+    def _refresh_lyric_strip(self):
+        song_path, lines, row = self._lyric
+        mine = song_path in self.album.paths if self.album else False
+        if not mine or not lines:
+            self.lyric_bar.setVisible(False)
+            return
+        self.lyric_prev.setText(lines[row - 1] if row > 0 else "")
+        self.lyric_now.setText(lines[row] if 0 <= row < len(lines) else "")
+        self.lyric_next.setText(lines[row + 1] if row >= 0 and row + 1 < len(lines) else (lines[0] if row < 0 else ""))
+        self.lyric_bar.setVisible(True)

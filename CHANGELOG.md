@@ -8,18 +8,34 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
-  sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
-  Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
+- **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
+  line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
+  *Show the line being sung in the album view*, to opt out; it is on by default.
+
+### Fixed
+
+- **A queue of a whole library no longer eats memory**: the queue decoded a cover for every row, one after another, and
+  kept them all, so with a big library queued Sleeve kept working and growing for as long as Now Playing was open. It now
+  loads the covers of the rows in view, a margin around them and the playing song, follows the scrolling, and keeps the
+  icon cache to its limit. Queuing 5,000 songs: 41 covers planned instead of 5,011, and memory stays flat instead of
+  growing about 70 MB a minute.
 
 ## [0.3.2] - 2026-11-02
 
 ### Added
 
+- **Sound label setting** (Settings > Advanced > Sound server): leave out the `media.role=music` label Sleeve puts on its
+  sound streams. WirePlumber remembers a stream's volume per label, so other apps that say "music" could come up at
+  Sleeve's volume. On by default (Maid BT and WirePlumber rules match it); takes effect the next time Sleeve starts.
 - **Pick up a song** (Ctrl+G, in the queue): the arrow keys then carry the song instead of moving the selector, Home and End
   send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
 - **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
   Shortcuts). Esc still leaves fullscreen everywhere else.
+
+### Changed
+
+- Settings is one centred column, so the page wastes no space, and its status lines are read-only.
+- Each file's cover is decoded once and shared by every list, instead of once per list.
 
 ### Fixed
 

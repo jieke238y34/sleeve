@@ -1,6 +1,11 @@
-"""Cover art embedded in audio files (ID3 APIC, FLAC pictures, MP4 covr)."""
+"""Cover art embedded in audio files (ID3 APIC, FLAC pictures, MP4 covr), or in a file next to them."""
+
+from pathlib import Path
 
 MAX_BYTES = 32_000_000            # covers are decoded once and cached; a big plain lossless cover is allowed
+
+SIDE_NAMES = ("cover", "folder", "front", "album", "artwork", "albumart")   # what ripper UIs write by hand
+SIDE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 
 
 def _pick(entries):
@@ -37,3 +42,20 @@ def cover_bytes(path, mutagen_file=None):
         return data or None
     except Exception:                                                  # a broken tag block must not stop playback
         return None
+
+
+def sidecar_bytes(path):
+    "Picture bytes of an artwork file in the song's own folder (cover.jpg and the other common names), or None."
+    folder = Path(path).parent
+    try:
+        found = [f for f in folder.iterdir()
+                 if f.is_file() and f.stem.lower() in SIDE_NAMES and f.suffix.lower() in SIDE_EXTS]
+    except OSError:
+        return None
+    if not found:
+        return None
+    try:                                               # the biggest file is the artwork; thumbnails and icons lose
+        data = max(found, key=lambda f: f.stat().st_size).read_bytes()
+    except OSError:
+        return None
+    return data if len(data) <= MAX_BYTES else None
