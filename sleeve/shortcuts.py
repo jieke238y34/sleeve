@@ -26,6 +26,7 @@ ACTIONS = (
     Action("fullscreen", "Album art fullscreen", "F11"),
     Action("quick_search", "Quick search", "Ctrl+K"),
     Action("toggle_bar", "Hide or show the player bar", "Ctrl+B"),
+    Action("mini_player", "The mini-player", "Ctrl+M"),
     Action("library_queue", "Add the selected songs to the queue", "Shift+Return", LIBRARY),
     Action("queue_play", "Play the selected song", "Return", QUEUE),
     Action("queue_unselect", "Unselect the song", "Escape", QUEUE),
