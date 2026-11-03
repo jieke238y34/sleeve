@@ -108,9 +108,12 @@ kde_env_line() {
     echo "KDE: Plasma ${KDE_PLASMA:-?} | Frameworks ${KDE_FRAMEWORKS:-?} | Qt ${KDE_QT:-?}"
   fi
 }
+<<<<<<< HEAD
 
 kde_env
 say "$(kde_env_line)"
+=======
+>>>>>>> 08a1384 (Update install script)
 
 # --- where to install from: this checkout if there is one, else GitHub ---------------------------------------------------
 # Run straight from the web (`curl ... | sh`), `$0` is the shell itself, not this script, so no checkout in the
