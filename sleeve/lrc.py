@@ -13,6 +13,35 @@ _JUNK = re.compile(
 EDGE = 4                                  # junk is only looked for this many lines in from the start and the end
 _TIME = re.compile(r"\[(\d{1,4}):(\d{1,3}(?:\.\d{1,4})?)\]")
 
+# Words censored in displayed lyrics. Each is matched case-insensitively; any
+# token that contains a profane word is masked (first and last letters kept,
+# middle masked) so compound words such as "motherfucking" are cleaned too.
+_CENSOR_WORDS = frozenset(
+    {
+        "fuck", "shit", "damn", "bitch", "cunt", "cock", "piss",
+        "bastard", "retard", "dick", "whore", "prick", "slut",
+    }
+)
+
+
+def _censor_word(word):
+    """Mask a profane word, keeping the first and last letters."""
+    if len(word) <= 3:
+        return "*" * len(word)
+    return word[0] + "*" * (len(word) - 2) + word[-1]
+
+
+def _censor(text):
+    """Return `text` with profanity replaced by asterisks."""
+
+    def _mask_token(token):
+        low = token.lower()
+        if any(prof in low for prof in _CENSOR_WORDS):
+            return _censor_word(token)
+        return token
+
+    return " ".join(_mask_token(t) for t in text.split())
+
 
 def _letters(text):
     return [c for c in text if unicodedata.category(c).startswith("L") and ord(c) > 127]
@@ -61,6 +90,7 @@ def parse_lrc(text):
         if not stamps:
             continue
         line = _TIME.sub("", raw).strip()
+        line = _censor(line)
         for m, s in stamps:
             out.append((int(m) * 60 + float(s), line))
     out.sort(key=lambda x: x[0])
