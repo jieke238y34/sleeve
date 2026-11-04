@@ -242,10 +242,10 @@ QPushButton#barfold {{ border-radius: 10px; min-height: 18px; max-height: 20px; 
 QPushButton#barfold:hover {{ background: rgba(255, 255, 255, 22); }}
 QPushButton#play {{ border-radius: 28px; min-width: 56px; max-width: 56px; min-height: 56px; max-height: 56px;
                     padding: 0; font-size: 18pt; background: {accent}; color: {bg}; }}
-QPushButton#play:hover {{ background: {CREAM}; }}
+QPushButton#play:hover {{ background: {hover}; }}
 QPushButton#playbig {{ border-radius: 38px; min-width: 76px; max-width: 76px; min-height: 76px; max-height: 76px;
                        padding: 0; background: {accent}; color: {bg}; }}
-QPushButton#playbig:hover {{ background: {CREAM}; }}
+QPushButton#playbig:hover {{ background: {hover}; }}
 QPushButton#playbig:focus {{ padding: 0; }}
 
 QPushButton#primary {{ background: {accent}; color: {ink}; font-size: 12pt; font-weight: 700; padding: 12px 30px;
