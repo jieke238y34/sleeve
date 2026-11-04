@@ -159,3 +159,59 @@ def test_sidecar_rules_names_exts_and_size(qapp, tmp_path, monkeypatch):  # noqa
 def test_a_song_with_no_folder_and_no_tags_stays_empty(qapp, tmp_path):  # noqa: F811
     (tmp_path / "a.mp3").write_bytes(b"x")
     assert art.cover_bytes(str(tmp_path / "a.mp3")) is None and art.sidecar_bytes(str(tmp_path / "a.mp3")) is None
+
+
+def test_asks_while_a_decode_is_on_the_road_never_start_it_twice(qapp):  # noqa: F811
+    store = coverstore.Store()
+    reads = reader(store, {"/m/a.mp3": png_bytes()})
+    for _ in range(4):
+        assert store.pixmap("/m/a.mp3", 44) is None and store.state("/m/a.mp3") == "pending"
+    wait_until(lambda: store.state("/m/a.mp3") == "cover")
+    assert reads == ["/m/a.mp3"]                        # one worker, one read, whatever was asked meanwhile
+    assert store.pixmap("/m/a.mp3", 44).width() == 44
+
+
+def test_an_answer_in_the_box_still_counts_as_pending(qapp):  # noqa: F811
+    """Between a worker putting its answer in the box and the window thread taking it out, `state` says "pending":
+    over just that window the grid used to conclude "no cover", cut a placeholder in and ask the same decode
+    again."""
+    store = coverstore.Store()
+    reads = reader(store, {"/m/a.mp3": png_bytes()})
+    img = coverstore._image_of(png_bytes())
+    store._mailbox["/m/a.mp3"] = [(img, coverstore._mtime("/m/a.mp3"))]   # what a worker leaves behind it
+    assert store.state("/m/a.mp3") == "pending"
+    assert store.pixmap("/m/a.mp3", 44) is None and store.state("/m/a.mp3") == "pending"
+    assert reads == []
+    store._arrived("/m/a.mp3")                          # the window thread takes the answer out
+    assert store.state("/m/a.mp3") == "cover"
+    assert store.pixmap("/m/a.mp3", 44).width() == 44 and reads == []    # the answer predates every ask: no read
+
+
+def test_the_caches_keep_to_their_byte_budgets(qapp):  # noqa: F811
+    """Beside the entry counts the caches keep to a memory budget: the oldest picture that claims memory goes,
+    while a verdict that claims nothing (a file looked at and found coverless) survives it."""
+    big = png_bytes()                                   # one 96×96 picture: 36864 bytes once decoded
+    store = coverstore.Store(keep_images=99, keep_pix=99, image_budget=40_000, pix_budget=99_000)
+    reads = reader(store, {"/m/a.mp3": big, "/m/b.mp3": big, "/m/c.mp3": b""})
+    store.pixmap("/m/a.mp3", 44, wait=True)
+    store.pixmap("/m/b.mp3", 44, wait=True)
+    assert list(store._images) == ["/m/b.mp3"]          # a's big picture went out over the budget
+    assert list(store._pix) == [("/m/a.mp3", 44), ("/m/b.mp3", 44)]   # the results the views paint are still here
+    assert store.pixmap("/m/c.mp3", 44) is None
+    wait_until(lambda: store.state("/m/c.mp3") == "empty")
+    store.pixmap("/m/c.mp3", 44)
+    assert list(store._images) == ["/m/b.mp3", "/m/c.mp3"]       # the coverless verdict claims nothing: it stays
+    assert reads == ["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"] and store.state("/m/c.mp3") == "empty"
+    assert store._pix.get(("/m/c.mp3", 44)) is None     # a verdict of none keeps no picture of its own
+
+
+def test_a_coverless_verdict_outlives_the_budget_it_claims_nothing(qapp):  # noqa: F811
+    big = png_bytes()
+    store = coverstore.Store(image_budget=40_000)
+    reads = reader(store, {"/m/a.mp3": b"", "/m/b.mp3": big})
+    assert store.pixmap("/m/a.mp3", 44) is None
+    wait_until(lambda: store.state("/m/a.mp3") == "empty")
+    store.pixmap("/m/b.mp3", 44, wait=True)             # a real picture lands behind it
+    assert list(store._images) == ["/m/a.mp3", "/m/b.mp3"]   # the older empty verdict is not trimmed for its sake
+    store.pixmap("/m/a.mp3", 44)
+    assert reads == ["/m/a.mp3", "/m/b.mp3"]            # it is not read again before the file itself changes

@@ -7,7 +7,7 @@ import pytest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from sleeve import app as sleeve_app  # noqa: E402
-from sleeve import config, library  # noqa: E402
+from sleeve import config, coverstore, library  # noqa: E402
 
 
 class FakeAudio:
@@ -141,3 +141,29 @@ def test_main_window_screenshot_renders(qapp, cfg, monkeypatch, tmp_path):
 
 def test_fmt_time():
     assert sleeve_app.fmt_time(0) == "0:00" and sleeve_app.fmt_time(215.7) == "3:35" and sleeve_app.fmt_time(-3) == "0:00"
+
+
+def test_the_detail_view_resumes_an_album_once_per_decode(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    "Opening an album must not stack another resume connection on the grid: each landing re-shows the album once."
+    monkeypatch.setattr(sleeve_app, "CACHE_FILE", tmp_path / "cache.json")
+    import mutagen
+    monkeypatch.setattr(mutagen, "File", lambda path, easy=False: FakeAudio("T", "B", "Rock"))
+    store = coverstore.Store()
+    store.load_bytes = lambda p: b""                    # nothing has a cover, so nothing lands on its own
+    monkeypatch.setattr(sleeve_app.coverstore, "shared", lambda: store)
+    win = sleeve_app.MainWindow(cfg, StubPlayer())
+    try:
+        assert wait(qapp, lambda: len(win.songs) == 3), "scan did not finish"
+        win._fill_albums()
+        album = win.album_grid.albums()[0]
+        shows = []
+        monkeypatch.setattr(win.album_detail, "set_album", lambda *a: shows.append(a))
+        win._open_album(album)
+        win._open_album(album)
+        assert len(shows) == 2                          # twice opened, twice shown, nothing else yet
+        win.album_grid.coverReady.emit(album)           # a decode that landed after the open (queued connection)
+        win.album_grid.coverReady.emit(album)           # and a second one, with both opens are behind it
+        qapp.processEvents()                            # queued: it answers on the event loop
+        assert len(shows) == 4                          # once per arrival: a per-open connect would repeat the re-show
+    finally:
+        win.close()

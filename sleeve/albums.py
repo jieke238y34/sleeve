@@ -400,12 +400,16 @@ class AlbumGrid(QListWidget):
             self._put_source(album.key, load_cover(album, self.cover_loader))
             return
         store = coverstore.shared()
+        songs = album.songs[:COVER_TRIES]         # a fresh ask tries the album's first few songs only
         asked = self._tries.get(album.key, 0)
-        if asked >= COVER_TRIES:                  # every song was asked before, and `_cover_ready` brought the album
-            self._tries.pop(album.key, None)      # back: their answers are in the store now, so walk all of the
-            asked = 0                             # songs again — the cache answers at once, nothing decodes twice
+        if asked >= COVER_TRIES or asked >= len(album.songs):
+            # the window was walked out — by the limit or because the album is small — and its answers are in the
+            # store by now: walk ALL songs again. The settled ones answer at once, the rest are asked the first
+            # time (a cover living beyond the old window is found this way, and the walk concludes nothing).
+            self._tries.pop(album.key, None)
+            songs = list(album.songs)
         pending = []
-        for i, s in enumerate(album.songs[asked:COVER_TRIES], asked):
+        for i, s in enumerate(songs, 0):
             self._tries[album.key] = i + 1
             pix = store.pixmap(s.path, SOURCE_SIDE)
             if pix is not None:
@@ -419,16 +423,16 @@ class AlbumGrid(QListWidget):
             self._put_source(album.key, None)     # none of these files has a cover: the placeholder shows
 
     def _read_detail_source(self, album):
-        """The cover of an album the detail view has just opened: ask the store for every song's tag at once, for
-        a view that opens at once cannot pace its asks like the grid. What is still on the road is kept:
-        `_cover_ready` re-asks when a decode lands, and the ask answered 'no cover anywhere' becomes the
-        durable placeholder, like in `_ensure_source`."""
+        """The cover of an album the detail view has just opened: ask every song's tag at once, for a view that
+        opens at once cannot pace its asks like the grid, and the first six songs may all be coverless while a
+        later one carries the art. What is still on the road is kept: `_cover_ready` re-asks when a decode lands,
+        and the ask answered 'no cover anywhere' becomes the durable placeholder, like in `_ensure_source`."""
         if album.key in self._sources:
             return
         self._waiting.pop(album.key, None)
         store = coverstore.shared()
         pending = []
-        for s in album.songs[:COVER_TRIES]:
+        for s in album.songs:
             pix = store.pixmap(s.path, SOURCE_SIDE)
             if pix is not None:
                 self._put_source(album.key, pix)
@@ -438,15 +442,16 @@ class AlbumGrid(QListWidget):
         if pending:
             self._waiting[album.key] = (album, pending)
         else:
-            self._put_source(album.key, None)     # none of these files has a cover: the placeholder shows
+            self._put_source(album.key, None)     # all of the album's files are settled: the placeholder shows
 
     def _cover_ready(self, path):
-        "A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."
+        """A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real
+        cover. The ask progress is left standing: a window that was walked out before re-walks the whole album
+        in `_ensure_source`."""
         for key, waited in list(self._waiting.items()):
             if path in waited[1]:
                 del self._waiting[key]
-                self._tries.pop(key, None)   # its answers live in the store by now: walk the album's songs again
-                self._ensure_source(waited[0])
+                self._ensure_source(waited[0])          # the ask progress stands: what was walked out before walks
                 self.viewport().update()
                 if waited[0].key in self._sources:
                     self.coverReady.emit(waited[0])

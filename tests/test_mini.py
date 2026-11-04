@@ -79,3 +79,21 @@ def test_a_left_open_mini_comes_back_when_the_app_starts(qapp, cfg, monkeypatch,
         assert win.mini.isVisible() and win.settings.mini_player is True
     finally:
         win.close()
+
+
+def test_nothing_the_mini_builds_leaves_a_broken_stylesheet(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    """The mini's stylesheet is split across an f-string and a plain string; the plain one closed with a doubled
+    brace and Qt logged 'Could not parse stylesheet of object MiniWindow'. It must parse."""
+    from PySide6 import QtCore
+
+    seen = []
+    old = QtCore.qInstallMessageHandler(lambda mode, ctx, msg: seen.append(str(msg)))
+    try:
+        win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    finally:
+        QtCore.qInstallMessageHandler(old)
+    try:
+        assert not any("Could not parse stylesheet" in m for m in seen), [m for m in seen if "stylesheet" in m]
+        win.mini.setStyleSheet(win.mini.styleSheet())   # re-apply what it decided on: it still parses the same
+    finally:
+        win.close()

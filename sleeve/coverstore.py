@@ -128,7 +128,7 @@ class Store(QObject):
                 break                         # nothing here claims memory: the budget leaves them all be
             used[0] -= cache.pop(drop)[2]
         while len(cache) > limit:
-            used[0] -= cache.popitem(last=False)[2]
+            used[0] -= cache.popitem(last=False)[1][2]
 
     def _decode_here(self, path, mtime):
         try:
