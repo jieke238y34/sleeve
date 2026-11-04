@@ -5912,7 +5912,7 @@ class MainWindow(QMainWindow):
         self._lyric_synced = bool(self._lyrics)
         if not lines:
             text = self._read_lyrics_file(Path(song.path).with_suffix(".txt"))
-            lines = [ln.strip() for ln in text.splitlines()]
+            lines = [lrc._censor(ln.strip()) for ln in text.splitlines()]
             while lines and not lines[0]:
                 lines.pop(0)
         for line in lines:
