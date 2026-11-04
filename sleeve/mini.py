@@ -61,7 +61,7 @@ class MiniWindow(QWidget):
         self._is_playing = False
 
         self.setStyleSheet(f"QWidget#mini_window {{ background: {theme.BG};"
-                           "border: 1px solid rgba(246, 243, 238, 30); }}")
+                           "border: 1px solid rgba(246, 243, 238, 30); }")
         row = QHBoxLayout(self)
         row.setContentsMargins(12, 10, 12, 10)
         row.setSpacing(12)

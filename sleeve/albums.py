@@ -35,8 +35,8 @@ GAP = 14                                          # space around a tile
 TEXT_H = 40                                       # two lines of text under the cover
 SOURCE_SIDE = TILE_MAX * 2                        # covers are kept at this size (sharp on a 2x screen)
 COVER_TRIES = 6                                   # songs of one album whose tag is tried before giving up
-KEEP_SOURCES, KEEP_TILES = 160, 320                # covers and tiles kept in memory at once (the oldest go first)
-PER_TICK = 2                                      # covers loaded per 20 ms tick, like the queue thumbnails
+KEEP_SOURCES, KEEP_TILES = 320, 320                 # covers and tiles kept in memory at once (the oldest go first)
+PER_TICK = 4                                        # covers loaded per 20 ms tick, like the queue thumbnails
 
 
 def fmt_time(seconds):
@@ -297,10 +297,15 @@ class AlbumGrid(QListWidget):
         return pix
 
     def _trim(self):
-        "Forget the oldest covers and asks beyond the limit; one that is still wanted is loaded again when drawn."
-        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES), (self._tries, KEEP_SOURCES)):
+        """Forget the oldest covers beyond the limit; one whose decode is still on the road keeps its place, and
+        the song asks (`_tries`) are never forgotten at all: starting them over would only ask for the same
+        decodes again."""
+        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES)):
             while len(cache) > limit:
-                cache.pop(next(iter(cache)))
+                oldest = next((k for k in cache if k not in self._waiting), None)
+                if oldest is None:
+                    break                          # everything kept here is waiting for its decode: keep the slots
+                cache.pop(oldest)
 
     def _put_source(self, key, src):
         self._sources[key] = src
@@ -396,6 +401,9 @@ class AlbumGrid(QListWidget):
             return
         store = coverstore.shared()
         asked = self._tries.get(album.key, 0)
+        if asked >= COVER_TRIES:                  # every song was asked before, and `_cover_ready` brought the album
+            self._tries.pop(album.key, None)      # back: their answers are in the store now, so walk all of the
+            asked = 0                             # songs again — the cache answers at once, nothing decodes twice
         pending = []
         for i, s in enumerate(album.songs[asked:COVER_TRIES], asked):
             self._tries[album.key] = i + 1
@@ -411,32 +419,33 @@ class AlbumGrid(QListWidget):
             self._put_source(album.key, None)     # none of these files has a cover: the placeholder shows
 
     def _read_detail_source(self, album):
-        """The cover decoded right now: the time a worker takes is too slow for a view that opens at once, and the
+        """The cover of an album the detail view has just opened: ask the store for every song's tag at once, for
+        a view that opens at once cannot pace its asks like the grid. What is still on the road is kept:
+        `_cover_ready` re-asks when a decode lands, and the ask answered 'no cover anywhere' becomes the
+        durable placeholder, like in `_ensure_source`."""
         if album.key in self._sources:
             return
         self._waiting.pop(album.key, None)
         store = coverstore.shared()
+        pending = []
         for s in album.songs[:COVER_TRIES]:
             pix = store.pixmap(s.path, SOURCE_SIDE)
             if pix is not None:
                 self._put_source(album.key, pix)
                 return
             if store.state(s.path) == "pending":
-                # the cover is decoding: _cover_ready will be called when it lands
-                pass
-        self._put_source(album.key, None)
-        store remembers it when done, so nothing reads these files more than once in the end.
-
-        The cover is requested on the main thread (a blocking call would freeze the UI for a split second).
-        When the decode lands, the connection in App re-shows the album with the real cover.
-
-        The ask is made async (no wait=True) so the UI thread never blocks on a worker decode."""
+                pending.append(s.path)            # its decode is on the road: `_cover_ready` brings this album back
+        if pending:
+            self._waiting[album.key] = (album, pending)
+        else:
+            self._put_source(album.key, None)     # none of these files has a cover: the placeholder shows
 
     def _cover_ready(self, path):
-        """A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."""
+        "A file finished decoding: the albums that were waiting on it ask again, and their tiles get the real cover."
         for key, waited in list(self._waiting.items()):
             if path in waited[1]:
                 del self._waiting[key]
+                self._tries.pop(key, None)   # its answers live in the store by now: walk the album's songs again
                 self._ensure_source(waited[0])
                 self.viewport().update()
                 if waited[0].key in self._sources:

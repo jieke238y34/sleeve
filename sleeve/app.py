@@ -935,6 +935,8 @@ class MainWindow(QMainWindow):
         self.album_grid.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         self.album_detail.playNextAlbum.connect(lambda paths: self.player.enqueue(paths, next_up=True))
         self.album_grid.openAlbum.connect(self._open_album)
+        self.album_grid.coverReady.connect(self._resume_album_with_cover, type=Qt.QueuedConnection)   # once: a
+        # per-open connect would stack a fresh connection on every click and re-show the album that many times
         self.album_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.album_grid.customContextMenuRequested.connect(self._album_menu)
         self._albums_timer = QTimer(self)                       # regroup the albums a moment after typing stops
@@ -3617,7 +3619,6 @@ class MainWindow(QMainWindow):
         self._set_setting("library_view", "albums" if albums else "songs")
 
     def _open_album(self, album):
-        self.album_grid.coverReady.connect(self._resume_album_with_cover, type=Qt.QueuedConnection)
         self.album_detail.set_album(album, self.album_grid.cover_pixmap(album))
         self.albums_stack.setCurrentIndex(1)
 
@@ -5760,7 +5761,6 @@ class MainWindow(QMainWindow):
     def _update_transport_icons(self):
         "The skips are painted chevrons; the play button is a record player that spins while music plays."
         playing = getattr(self, "_is_playing", False)
-        on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
         if getattr(self, "mini", None) is not None:
             sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
@@ -6052,6 +6052,8 @@ class MainWindow(QMainWindow):
             return
         self._closing = True                         # no new scans from here on
         self.hide()                                  # gone at once; the tidying up below is not waited for
+        coverstore.shared().quiesce()                # the cover decoders end before the store is torn down: a
+                                                     # QThread destroyed while still running aborts at the exit
         for runner in (self.runner, self.lyrics_win.runner):
             runner.request_stop()                    # both downloaders are asked together, so their waits overlap
         if self._wave_worker is not None:             # a waveform being worked out: it is short, let it end

@@ -15,8 +15,10 @@ from PySide6.QtGui import QImage, QPixmap
 from . import art
 
 IMAGE_MAX = 2048      # a picture bigger than this is scaled down once on decode: past every viewable square
-KEEP_IMAGES = 16      # full pictures kept, one per file; a new size for an evicted file just decodes again
-KEEP_PIX = 320        # resized pixmaps kept (per file and size): the scaled results are what paint
+KEEP_IMAGES = 256     # decoded pictures kept when the byte budget allows more; the budget is the real limit
+KEEP_PIX = 512        # resized pixmaps kept (per file and size): the scaled results are what paint
+IMAGE_BUDGET = 96 * 1024 * 1024    # decoded pictures may claim this much memory, then the oldest give way
+PIX_BUDGET = 128 * 1024 * 1024     # the same room for the results the views paint
 
 
 def _mtime(path):
@@ -84,24 +86,49 @@ class Store(QObject):
     arrived = Signal(str)     # a worker put its picture in the box; only the store's own `_arrived` listens for this
     ready = Signal(str)       # a decode was put away: whatever showed a placeholder asks again
 
-    def __init__(self, keep_images=KEEP_IMAGES, keep_pix=KEEP_PIX):
+    def __init__(self, keep_images=KEEP_IMAGES, keep_pix=KEEP_PIX,
+                 image_budget=IMAGE_BUDGET, pix_budget=PIX_BUDGET):
         super().__init__()
         self.load_bytes = _folder_bytes       # tags first, then a picture file in the folder; tests hand their own in
         self.sync = False                     # decode right where asked, no worker (tests)
         self.keep_images, self.keep_pix = keep_images, keep_pix
-        self._images = OrderedDict()          # path -> (mtime, QImage); a null image means "looked, has none"
-        self._pix = OrderedDict()             # (path, px) -> (mtime, QPixmap)
+        self.image_budget, self.pix_budget = image_budget, pix_budget
+        self._images = OrderedDict()          # path -> (mtime, img, bytes); a null image means "looked, has none"
+        self._pix = OrderedDict()             # (path, px) -> (mtime, px, bytes)
+        self._image_use, self._pix_use = [0], [0]   # the bytes those two caches claim right now
         self._inflight = set()
-        self._mailbox = {}                    # path -> [(QImage, mtime)]: what the workers hand to the window thread
+        self._mailbox = {}                    # path -> [(img, mtime)]: what the workers hand to the window thread
         self._pool = QThreadPool(self)        # its own pool: covers never starve the threads the rest of Qt uses
         self._pool.setMaxThreadCount(min(4, max(1, QThread.idealThreadCount() - 1)))
         self.arrived.connect(self._arrived)
 
-    def _remember(self, cache, limit, key, value, mtime):
-        cache[key] = (mtime, value)
+    @staticmethod
+    def _weight(picture):
+        "The memory a picture claims, from its size and ratio; an empty verdict claims nothing."
+        try:
+            return int(picture.width() * picture.height() * 4 * max(1.0, picture.devicePixelRatio() ** 2))
+        except (AttributeError, RuntimeError):
+            return 0
+
+    def _remember(self, cache, limit, budget, used, key, value, mtime):
+        """One entry into a cache that keeps `limit` entries and at most `budget` bytes of them (`used` is the
+        running count, a one-entry list). The oldest picture that claims memory goes first: a verdict that carries
+        no picture — a file looked at and found coverless — claims nothing, so it long outlives the budget and is
+        never read again until the file itself changes."""
+        old = cache.get(key)
+        if old is not None:
+            used[0] -= old[2]
+        entry = (mtime, value, self._weight(value))
+        cache[key] = entry
         cache.move_to_end(key)
+        used[0] += entry[2]
+        while used[0] > budget:
+            drop = next((k for k, (_, _, w) in cache.items() if w), None)
+            if drop is None:
+                break                         # nothing here claims memory: the budget leaves them all be
+            used[0] -= cache.pop(drop)[2]
         while len(cache) > limit:
-            cache.popitem(last=False)
+            used[0] -= cache.popitem(last=False)[2]
 
     def _decode_here(self, path, mtime):
         try:
@@ -109,13 +136,14 @@ class Store(QObject):
         except Exception:
             data = None                          # a reader that misbehaves stops no one else
         img = _image_of(data)
-        self._remember(self._images, self.keep_images, path, img, mtime)
+        self._remember(self._images, self.keep_images, self.image_budget, self._image_use, path, img, mtime)
         self._inflight.discard(path)
         return img
 
     def _ask(self, path, wait=False):
         """(state, image, mtime) for one file, making sure its decode gets on its way. "cover" and "empty" are set
-        for this mtime; "pending" waits in a worker and ends when `ready` is emitted."""
+        for this mtime; "pending" waits in a worker and ends when `ready` is emitted. An answer that landed in the
+        mailbox still counts as pending: its decode is done but the window thread has not taken it out yet."""
         mtime = _mtime(path)
         entry = self._images.get(path)
         if entry is not None and entry[0] == mtime:
@@ -126,9 +154,10 @@ class Store(QObject):
         if wait or self.sync:
             img = self._decode_here(path, mtime)
             return ("cover" if not img.isNull() else "empty"), img, mtime
-        if path not in self._inflight:
-            self._inflight.add(path)
-            self._pool.start(_Job(self, path))
+        if path in self._mailbox or path in self._inflight:
+            return "pending", None, mtime     # its answer is made or on its way: never decode it again meanwhile
+        self._inflight.add(path)
+        self._pool.start(_Job(self, path))
         return "pending", None, mtime
 
     def _arrived(self, path):
@@ -139,13 +168,14 @@ class Store(QObject):
         if not box:
             del self._mailbox[path]
         self._inflight.discard(path)
-        self._remember(self._images, self.keep_images, path, img, mtime)
+        self._remember(self._images, self.keep_images, self.image_budget, self._image_use, path, img, mtime)
         self.ready.emit(path)
 
     def state(self, path):
-        """Where a file stands: "pending" (a decode is running), "cover" (its picture is here), "empty" (it has
-        none for now) or "unknown" (not asked for at all). It schedules nothing."""
-        if path in self._inflight:
+        """Where a file stands: "pending" (its decode runs, or its answer sits in the mailbox still to be taken in
+        on the window thread), "cover" (its picture is in), "empty" (it has none for now) or "unknown" (not asked
+        for at all). It schedules nothing."""
+        if path in self._inflight or path in self._mailbox:
             return "pending"
         entry = self._images.get(path)
         if entry is None or entry[0] != _mtime(path):
@@ -167,8 +197,13 @@ class Store(QObject):
         if kind != "cover":
             return None
         pix = _pixmap_of(img, px)
-        self._remember(self._pix, self.keep_pix, key, pix, mtime)
+        self._remember(self._pix, self.keep_pix, self.pix_budget, self._pix_use, key, pix, mtime)
         return pix
+
+    def quiesce(self, ms=3000):
+        "Wait for the decoders to finish, so quitting does not destroy a thread that is still running."
+        self._pool.clear()
+        self._pool.waitForDone(ms)
 
 
 _store = None
