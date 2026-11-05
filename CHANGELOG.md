@@ -6,22 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-
-- **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
-  line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
-  *Show the line being sung in the album view*, to opt out; it is on by default.
-- **Keep the player bar on Now Playing** (Settings > Look): the bar normally folds away there by itself and the waveform strip
-  stands in; with the switch on, the bar stays. Off by default, so nothing changes unless you turn it on.
-
-### Fixed
-
-- **A queue of a whole library no longer eats memory**: the queue decoded a cover for every row, one after another, and
-  kept them all, so with a big library queued Sleeve kept working and growing for as long as Now Playing was open. It now
-  loads the covers of the rows in view, a margin around them and the playing song, follows the scrolling, and keeps the
-  icon cache to its limit. Queuing 5,000 songs: 41 covers planned instead of 5,011, and memory stays flat instead of
-  growing about 70 MB a minute.
-
 ## [0.3.2] - 2026-11-02
 
 ### Added
@@ -33,6 +17,11 @@ All notable changes to this project are documented here. The format follows
   send it to the ends, and Enter, Esc or Ctrl+G puts it down. The row wears the accent colour while it is held.
 - **Queue keys**: **Enter** plays the selected song in the queue, and **Esc** unselects it (both can be changed in Settings >
   Shortcuts). Esc still leaves fullscreen everywhere else.
+- **Lyrics in the album view**: while a song of the open album plays, the line being sung shows under the buttons with the
+  line before and the one after it (in the accent colour when *Colour the song title* is on). Settings > Look has a switch,
+  *Show the line being sung in the album view*, to opt out; it is on by default.
+- **Keep the player bar on Now Playing** (Settings > Look): the bar normally folds away there by itself and the waveform strip
+  stands in; with the switch on, the bar stays. Off by default, so nothing changes unless you turn it on.
 
 ### Changed
 
@@ -50,6 +39,18 @@ All notable changes to this project are documented here. The format follows
   after the black-cover fix.
 - **The tooltip switch can be found**: Settings > Look now says *Show tooltips on hover*, so searching for "tooltips"
   finds it (it said "hover tips"). Switching it off hides every tip.
+- **A queue of a whole library no longer eats memory**: the queue decoded a cover for every row, one after another, and
+  kept them all, so with a big library queued Sleeve kept working and growing for as long as Now Playing was open. It now
+  loads the covers of the rows in view, a margin around them and the playing song, follows the scrolling, and keeps the
+  icon cache to its limit. Queuing 5,000 songs: 41 covers planned instead of 5,011, and memory stays flat instead of
+  growing about 70 MB a minute.
+- **The transport buttons paint in the accent ink again**: a merge had left the play button with no icon at all and a name
+  that flipped between Play and Pause. The icons are painted again (white ink on a black accent), the play button hovers
+  in the accent instead of a fixed creme, and the name is the stable "Play / pause".
+- **Settings the overnight merges dropped persist again**: `mini_player`, `album_lyrics` and `keep_bar_on_np` had fallen
+  out of the setting allow-list, so their toggles never survived a restart.
+- **`sleeve --update` ends with the same sentence the Updates page shows**, and a development copy that is newer than
+  every published release still takes the newest code on the main branch.
 
 ## [0.3.1] - 2026-11-02
 

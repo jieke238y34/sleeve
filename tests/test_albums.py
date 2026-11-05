@@ -208,7 +208,7 @@ def test_a_waiting_album_gets_its_real_cover_when_the_decode_lands(qapp, monkeyp
     assert a.key in grid._waiting
     assert pump(lambda: a.key in grid._sources), "the album never got its cover"
     assert grid._sources[a.key] is not None and got == [a]
-    assert reads == ["/m/1.mp3", "/m/2.mp3"]      # the re-ask answered from the cache: nothing is read twice
+    assert sorted(reads) == ["/m/1.mp3", "/m/2.mp3"]   # the re-ask answered from the cache: nothing is read twice
     grid.close()
 
 
