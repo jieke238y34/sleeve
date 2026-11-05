@@ -52,8 +52,8 @@ def test_both_play_buttons_follow_the_player(qapp, cfg, monkeypatch, tmp_path): 
         win.show()
         win._on_playing(True)
         assert win.play_btn.playing() and win.np_play.playing()
-        assert win.play_btn.accessibleName() == "Pause" and win.np_play.accessibleName() == "Pause"
+        assert win.play_btn.accessibleName() == "Play / pause" and win.np_play.accessibleName() == "Play / pause"
         win._on_playing(False)
-        assert not win.play_btn.playing() and win.play_btn.accessibleName() == "Play"
+        assert not win.play_btn.playing() and not win.np_play.playing()
     finally:
         win.close()

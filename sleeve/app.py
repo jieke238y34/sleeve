@@ -5760,15 +5760,19 @@ class MainWindow(QMainWindow):
 
     def _update_transport_icons(self):
         "The skips are painted chevrons; the play button is a record player that spins while music plays."
+        if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
+            return                                                          # the accent is first set while building
         playing = getattr(self, "_is_playing", False)
+        on_play = theme.on_accent(getattr(self, "_accent_shown", theme.LAVENDER), theme.BG)   # white on a black accent
         sets = ((self.prev_btn, self.play_btn, self.next_btn), (self.np_prev, self.np_play, self.np_next))
         if getattr(self, "mini", None) is not None:
             sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
         for prev, play, nxt in sets:
-            for btn, kind in ((prev, "prev"), (nxt, "next")):
-                btn.setIcon(QIcon(theme.transport_icon(kind, theme.TEXT, 26)))
-                btn.setIconSize(QSize(26, 26))
-            play.setAccessibleName("Pause" if playing else "Play")
+            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
+                                            (play, "pause" if playing else "play", on_play, 38)):
+                btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
+                btn.setIconSize(QSize(side, side))
+            play.setAccessibleName("Play / pause")
             if hasattr(play, "setPlaying"):
                 play.setPlaying(playing)
 

@@ -123,7 +123,8 @@ def _valid(key, value):
                 "lyrics_online_ok", "show_spotify_playlists", "accent_from_cover", "track_listening",
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
                 "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
-                "tooltips", "legacy_layout", "gradient_follow_accent", "mini_player"):
+                "tooltips", "legacy_layout", "gradient_follow_accent", "mini_player", "album_lyrics",
+                "keep_bar_on_np"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM

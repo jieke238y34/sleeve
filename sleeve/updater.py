@@ -457,12 +457,11 @@ def cli_update(out=print, opener=urllib.request.urlopen, run=subprocess.run, env
         out("No release has been published yet, so there is nothing to update to.")
         return 0
     if not is_newer(release["version"], release["build"]):
+        code = 0
         if relation(release, local_build_number=local_build()) == "ahead" and kind == "venv":
-            out("This copy is newer than the newest published release; it takes the newest code on the main branch "
-                "instead.")
-            return dev_update(out, run=run, env=env)
-        out(status_text(release, f"{__version__} · build {local_build()}"))
-        return 0
+            code = dev_update(out, run=run, env=env)    # a newer-than-every-release copy takes the newest main build
+        out(status_text(release, f"{__version__} · build {local_build()}"))  # the CLI says the same as the page does
+        return code
     out(f"Updating Sleeve {__version__} (build {local_build()}) to {label(release)} ...")
     if sha256 is None:
         done = run(update_command(release["tag"], wheel=release.get("wheel") or None),
