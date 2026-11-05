@@ -97,7 +97,7 @@ def status_text(release, shown):
     where = {"same": f"You have the newest release, Sleeve {shown}.",
              "ahead": (f"This copy (Sleeve {shown}) is newer than the newest published release, {label(release)}, so "
                        "there is no release to update to. It is a development copy: `sleeve --update` brings the "
-                       "newest code from the main branch, or run ./install.sh again from a copy of the repository.")}
+                       "newest code on the main branch, or run ./install.sh again from a copy of the repository.")}
     return where[relation(release)]
 
 
