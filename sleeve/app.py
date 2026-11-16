@@ -1684,7 +1684,7 @@ class MainWindow(QMainWindow):
 
         row = QHBoxLayout()
         self.output_box = QuietCombo()
-        self.output_box.setMinimumContentsLength(24)
+        self.output_box.setMinimumContentsLength(20)
         self._devices = QMediaDevices(self)                 # outputs come and go (earbuds, HDMI): keep the list current
         self._devices.audioOutputsChanged.connect(self._fill_outputs)
         self._fill_outputs()

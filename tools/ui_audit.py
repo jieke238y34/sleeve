@@ -57,6 +57,8 @@ def describe(w, root):
     "A readable address for a widget: Class#objectName 'text', and where it sits."
     text = getattr(w, "text", None)
     text = text() if callable(text) else ""
+    if not text and isinstance(w, QComboBox):
+        text = w.currentText()                            # a drop-down has no text(); its choice says which one it is
     name = type(w).__name__ + (f"#{w.objectName()}" if w.objectName() else "")
     label = f" '{text[:32]}'" if text else ""
     chain, p = [], w.parentWidget()
