@@ -10,15 +10,15 @@ The list on the left takes you around the app.
 | Page | What it is for |
 |---|---|
 | Now Playing | The big cover, the queue and the song that is playing |
-| Library | Browse by genre folder, search, play, stash, edit tags |
-| Playlists | Playlists of your own, plus the ones made from Spotify |
+| Playlists | Your playlists, plus lists that fill themselves: Stashed Songs, All songs, Recently played and more |
+| Library | Browse by genre folder, search, play, stash, edit tags (hidden until you turn it on in Settings) |
 | Downloads | Get new music and tidy the library |
 | Health | Songs that need attention |
 | Settings | Volume ceiling, gapless, same volume, theme, accent colour, updates |
 
 ## Your first minute
 
-1. Open [Library](02-library) and pick a folder on the left, or type in the search box.
+1. Open [Playlists](03-playlists) and click **All songs** (or any cover). Press Ctrl+K to search for a song.
 2. Double-click a song to play it. Space pauses and resumes.
 3. Click the diamond to stash a song you love. See [Stashed songs and Health](05-liked-and-health).
 4. Right-click songs and choose Add to playlist to start a playlist. See [Playlists](03-playlists).

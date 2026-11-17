@@ -51,7 +51,8 @@ DEFAULTS = {
     "holiday_choice": "auto",  # "auto", "christmas", "halloween" or "newyear": pin a holiday by hand
     "show_spotify_playlists": False,   # list the playlist files dl.py made from Spotify (off: only your own)
     "window_size": [1180, 760],        # width and height the window had when it was closed
-    "last_page": "Library",            # the page that was open
+    "last_page": "Playlists",          # the page that was open
+    "show_library": False,             # the Library page (folders, genres, albums) in the sidebar; off: Playlists only
     "nav_width": 190,                  # width of the sidebar, which can be dragged
     "library_view": "songs",           # "songs" (the table) or "albums" (the grid of covers)
     "scroll_speed": 150,               # percent: how far one wheel notch scrolls (100 is the old speed)
@@ -124,7 +125,7 @@ def _valid(key, value):
                 "online_lookup_ok", "update_check_ok", "discord_presence", "discord_art", "lastfm_on",
                 "np_queue_shown", "np_lyrics_shown", "remember_session", "player_bar_hidden", "side_art",
                 "tooltips", "legacy_layout", "gradient_follow_accent", "mini_player", "album_lyrics",
-                "keep_bar_on_np"):
+                "keep_bar_on_np", "show_library"):
         return isinstance(value, bool)
     if key == "accent":
         return value in ACCENTS or value == CUSTOM

@@ -263,7 +263,12 @@ HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe 
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
 LIKED = f"{labels.MARK} {labels.SONGS}"
 RECENT = "Recently played"
-SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists whose order is their point (kept until a header)
+# The lists that fill themselves are playlists (Playlists page), in this order. Their "file" is a key with this prefix.
+SMART_PLAYLISTS = (LIKED, ALL, RECENT, smart.ADDED, smart.MOST, smart.NEVER)
+SMART_PREFIX = "smart:"
+SMART_ABOUT = {LIKED: "The songs you stashed.", ALL: "Every song in your library.",
+               RECENT: "What you played last, newest first.", smart.ADDED: "Songs that appeared in the last 30 days.",
+               smart.MOST: "Your most played songs, the top 100.", smart.NEVER: "Songs you have not played yet."}
 
 
 def breakable(text, limit=100, run=14):
@@ -718,6 +723,7 @@ class MainWindow(QMainWindow):
         self._closing = self._rescan_again = False
         self.songs, self.by_path = [], {}
         self.folder = ALL
+        self._library_borrowed = False                        # the Library is hidden, but an artist link may borrow it
         self._mtimes = {}                                     # song path -> file time, for Recently added
         self._dragging = False
         self._seeking = False                               # a player seek is not listening time
@@ -810,7 +816,11 @@ class MainWindow(QMainWindow):
             self.view_albums_btn.setChecked(True)
         names = [self.nav.item(i).text() for i in range(self.nav.count())]
         last = self.settings.last_page
-        self.nav.setCurrentRow(names.index(last) if last in names else names.index("Library"))
+        if last == "Library" and not self.settings.show_library:
+            last = "Playlists"                                 # the Library is off: start where its lists went
+        self._library_borrowed = False
+        self._apply_library_visibility()
+        self.nav.setCurrentRow(names.index(last) if last in names else names.index("Playlists"))
 
         for view in self.findChildren(QAbstractItemView):         # one scroll feel everywhere
             SmoothScroll.attach(view)
@@ -1103,6 +1113,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(right, 1)
         self._playlist_entries = []
         self._playlist_files = []
+        self._smart_dirty = False                         # the self-filling lists changed while away from their page
         self._pl_current = None                           # (name, path, is one of mine)
         page = QWidget()                                  # covers first; one click opens a playlist's songs
         page.setObjectName("playlistspage")
@@ -1774,6 +1785,13 @@ class MainWindow(QMainWindow):
         self.album_lyrics_box.setChecked(self.settings.album_lyrics)
         self.album_lyrics_box.toggled.connect(self._album_lyrics_toggled)
         lay.addWidget(self.album_lyrics_box)
+        self.library_box = Switch("Show the Library page (folders, genres and albums) in the sidebar")
+        self.library_box.setChecked(self.settings.show_library)
+        self.library_box.toggled.connect(self._library_toggled)
+        lay.addWidget(self.library_box)
+        lay.addWidget(hint("Off by default: your songs are in Playlists, which has All songs, Stashed Songs, Recently "
+                           "played, Recently added, Most played and Never played. The Library page is the folder and "
+                           "genre browser with the albums view."))
         self.keep_bar_box = Switch("Keep the player bar on Now Playing (it folds away there by itself)")
         self.keep_bar_box.setChecked(self.settings.keep_bar_on_np)
         self.keep_bar_box.toggled.connect(self._keep_bar_toggled)
@@ -3359,15 +3377,11 @@ class MainWindow(QMainWindow):
         self.folders.blockSignals(True)
         self.folders.clear()
         self.folders.addItem(ALL)
-        self.folders.addItem(LIKED)
-        self.folders.addItem(RECENT)
-        for name in smart.NAMES:                            # lists that fill themselves
-            self.folders.addItem(name)
         for name in groups:
             self.folders.addItem(name)
         self.folders.blockSignals(False)
         self._fill_folder_counts()
-        names = [ALL, LIKED, RECENT, *smart.NAMES, *groups]
+        names = [ALL, *groups]
         self.folder = keep_folder if keep_folder in names else ALL      # stay where the user was
         self.folders.setCurrentRow(names.index(self.folder))
         self._apply_filter()
@@ -3496,17 +3510,10 @@ class MainWindow(QMainWindow):
     def _apply_filter(self, *_):
         if self.folder == ALL:
             songs = self.songs
-        elif self.folder == LIKED:
-            songs = [s for s in self.songs if s.path in self.stash]
-        elif self.folder == RECENT:                          # newest first, until a column header is clicked
-            songs = [self.by_path[p] for p in self.history.recent() if p in self.by_path]
-        elif self.folder in smart.NAMES:
-            songs = smart.pick(self.folder, self.songs, self.history.counts(), self._mtime)
         else:
             songs = [s for s in self.songs if s.folder == self.folder]
         if self._scope:
             songs = [s for s in songs if self._in_scope(s)]
-        self.model.keep_order = self.folder in SMART_ORDERED
         self.model.set_songs(library.search(songs, self.search.text()))
         if self.model.placeholder is None:
             self.model.placeholder = self._blank_icon()
@@ -3752,7 +3759,7 @@ class MainWindow(QMainWindow):
             self.history.record(self._current_path, self._listened)
             if navidrome.is_remote(self._current_path):
                 self._nd_scrobble(self._current_path)        # the server counts the play too
-            self._fill_folder_counts()                       # Recently played has one more song, maybe
+            self._smart_changed()                            # Recently played has one more song, maybe
             self._listen_event, self._listen_saved = self.history.events[-1], self._listened
             self._save_history()
             self._refresh_listening()
@@ -4026,31 +4033,19 @@ class MainWindow(QMainWindow):
         return cache[path]
 
     def _fill_folder_counts(self):
-        "The number of songs beside each folder in the list: all, stashed, recently played, and each genre folder."
+        "The number of songs beside each folder in the list: all of them, and each genre folder."
         per_folder = Counter(s.folder for s in self.songs)
-        counts = self.history.counts()
         for i in range(self.folders.count()):
             item = self.folders.item(i)
             name = item.text()
-            if name == ALL:
-                count = len(self.songs)
-            elif name == LIKED:
-                count = sum(1 for s in self.songs if s.path in self.stash)
-            elif name == RECENT:
-                count = sum(1 for p in self.history.recent() if p in self.by_path)
-            elif name in smart.NAMES:
-                count = len(smart.pick(name, self.songs, counts, self._mtime))
-            else:
-                count = per_folder.get(name, 0)
-            item.setData(COUNT_ROLE, count)
+            item.setData(COUNT_ROLE, len(self.songs) if name == ALL else per_folder.get(name, 0))
         self.folders.viewport().update()
 
     def _stash_changed(self):
         self._fill_folder_counts()
         self._refresh_identity()
-        if self.folder == LIKED:
-            self._apply_filter()                    # an unstashed song leaves this list
-        elif self.model.songs:
+        self._smart_changed()                       # Stashed Songs gained or lost one
+        if self.model.songs:
             self.model.dataChanged.emit(self.model.index(0, 0), self.model.index(len(self.model.songs) - 1, 0))
         self._update_stash_button()
 
@@ -4139,8 +4134,9 @@ class MainWindow(QMainWindow):
         self.pl_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_grid.customContextMenuRequested.connect(self._playlist_tile_menu)
         lay.addWidget(self.pl_grid, 1)
-        self.pl_grid_hint = QLabel("You have no playlists yet. Press the ＋ tile to make one, drag playlist files "
-                                   "(.m3u8) onto this page, or right-click songs and choose Add to playlist.")
+        self.pl_grid_hint = QLabel("You have no playlists of your own yet. Press the ＋ tile to make one, drag "
+                                   "playlist files (.m3u8) onto this page, or right-click songs and choose Add to "
+                                   "playlist.")
         self.pl_grid_hint.setObjectName("muted")
         self.pl_grid_hint.setWordWrap(True)
         lay.addWidget(self.pl_grid_hint)
@@ -4153,13 +4149,17 @@ class MainWindow(QMainWindow):
             key = str(path)
             count, songs, stamp = self._playlist_songs(path)
             tiles.append(plgrid.PlaylistTile(name, key, count, songs, self.pl_styles.colour(key),
-                                             self.pl_styles.image(key), mine=mine, stamp=stamp))
+                                             self.pl_styles.image(key), mine=mine, stamp=stamp,
+                                             smart=self._is_smart(path)))
         self.pl_grid.set_playlists(tiles)
-        self.pl_grid_hint.setVisible(not self._playlist_files)
+        self.pl_grid_hint.setVisible(not any(not self._is_smart(f[1]) for f in self._playlist_files))
 
     def _playlist_songs(self, path):
         """(songs in the file, those that are in the library, when the file changed). Read again only when the file or
         the library changed: with hundreds of playlists, reading them all on every refresh took seconds."""
+        if self._is_smart(path):
+            songs = self._smart_songs(self._smart_name(path))
+            return len(songs), songs, hash((len(songs), *(s.path for s in songs[:12]))) & 0x7FFFFFFF
         try:
             st = Path(path).stat()
         except OSError:
@@ -4273,11 +4273,12 @@ class MainWindow(QMainWindow):
         self._set_playlist_look(tile, colour=chosen.name())
 
     def _load_playlists(self, select=None):
-        "Fill the list: the playlists made in Sleeve first (marked with ◈), then the ones dl.py wrote."
-        keep = select or (self._pl_current[0] if self._pl_current else None)
+        "Fill the list: the lists that fill themselves, then the playlists made in Sleeve (marked ◈), then dl.py's."
+        keep = None if select else (str(self._pl_current[1]) if self._pl_current else None)   # a playlist is its file
         spotify = playlists.list_playlists(self.cfg.playlist_dir)
         show = self.settings.show_spotify_playlists
-        self._playlist_files = ([(n, p, True) for n, p in self.my_playlists.names()]
+        self._playlist_files = ([(n, SMART_PREFIX + n, False) for n in SMART_PLAYLISTS]       # the self-filling lists
+                                + [(n, p, True) for n, p in self.my_playlists.names()]
                                 + ([(n, p, False) for n, p in spotify] if show else []))
         self.pl_spotify_btn.blockSignals(True)
         self.pl_spotify_btn.setChecked(show)
@@ -4293,7 +4294,8 @@ class MainWindow(QMainWindow):
             self.pl_list.addItem(f"{labels.MINE_MARK}  {name}" if mine else name)
         self.pl_list.blockSignals(False)
         if self._playlist_files:
-            row = next((i for i, f in enumerate(self._playlist_files) if f[0] == keep), 0)
+            row = next((i for i, f in enumerate(self._playlist_files)
+                        if (f[2] and f[0] == select) or (not select and str(f[1]) == keep)), 0)   # a name can be shared
             self.pl_list.setCurrentRow(row)
             self._playlist_selected(row)
         else:
@@ -4304,17 +4306,58 @@ class MainWindow(QMainWindow):
             self._set_edit_buttons(False, anything=False)
         self._refresh_playlist_grid()
 
-    def _set_edit_buttons(self, on, anything=True):
+    def _set_edit_buttons(self, on, anything=True, smart_list=False):
         "Enable the edit buttons for one of your playlists; with no playlist at all, show the empty state instead."
         self.pl_empty.setVisible(not anything)
         self.pl_table.setVisible(anything)
-        self.pl_stash_all.setVisible(anything)
+        self.pl_stash_all.setVisible(anything and not (smart_list and self._smart_name(self._pl_current[1]) == LIKED))
         for b in self.pl_edit_buttons:
             b.setEnabled(on)
             b.setVisible(anything)
         self.pl_copy_btn.setVisible(anything and not on)
-        self.pl_edit_note.setText("" if on or not anything else "This one came from Spotify and cannot be changed. "
-                                  "Copy it to make one you can.")
+        if on or not anything:
+            self.pl_edit_note.setText("")
+        elif smart_list:
+            self.pl_edit_note.setText(f"{SMART_ABOUT[self._smart_name(self._pl_current[1])]} It fills itself and "
+                                      "cannot be changed. Copy it to make a playlist you can.")
+        else:
+            self.pl_edit_note.setText("This one came from Spotify and cannot be changed. Copy it to make one you can.")
+
+    @staticmethod
+    def _is_smart(path):
+        "Whether this playlist 'file' is one of the lists that fill themselves."
+        return str(path).startswith(SMART_PREFIX)
+
+    @staticmethod
+    def _smart_name(path):
+        return str(path)[len(SMART_PREFIX):]
+
+    def _smart_songs(self, name):
+        "The songs of one of the lists that fill themselves, in the order that list is about."
+        if name == ALL:
+            return list(self.songs)
+        if name == LIKED:
+            return [s for s in self.songs if s.path in self.stash]
+        if name == RECENT:                                   # newest first
+            return [self.by_path[p] for p in self.history.recent() if p in self.by_path]
+        return smart.pick(name, self.songs, self.history.counts(), self._mtime)
+
+    def _smart_changed(self):
+        "Stashing, listening or a rescan changed what these lists hold: redraw them now if they are on show."
+        self._smart_dirty = True
+        item = self.nav.currentItem()
+        if item is not None and item.text() == "Playlists":
+            self._refresh_smart_now()
+
+    def _refresh_smart_now(self):
+        if not self._smart_dirty:
+            return
+        self._smart_dirty = False
+        self._refresh_playlist_grid()
+        if self._pl_current and self._is_smart(self._pl_current[1]):
+            row = next((i for i, f in enumerate(self._playlist_files) if f[0] == self._pl_current[0]), -1)
+            if row >= 0:
+                self._playlist_selected(row)
 
     def _spotify_toggled(self, on):
         self._set_setting("show_spotify_playlists", on)
@@ -4339,12 +4382,17 @@ class MainWindow(QMainWindow):
             return
         name, path, mine = self._playlist_files[row]
         self._pl_current = (name, path, mine)
-        self._set_edit_buttons(mine)
-        try:
-            entries = playlists.read_m3u8(path, self.cfg.music_dir)
-        except OSError as e:
-            self.pl_info.setText(f"Could not read the playlist: {e}")
-            return
+        smart_list = self._is_smart(path)
+        self._set_edit_buttons(mine, smart_list=smart_list)
+        if smart_list:
+            entries = [playlists.KnownEntry(s.path, s.name, int(s.length or 0))
+                       for s in self._smart_songs(self._smart_name(path))]
+        else:
+            try:
+                entries = playlists.read_m3u8(path, self.cfg.music_dir)
+            except OSError as e:
+                self.pl_info.setText(f"Could not read the playlist: {e}")
+                return
         self._playlist_entries = entries
         have = sum(1 for e in entries if e.exists)
         self.pl_title.setText(name)
@@ -4458,7 +4506,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as e:
             self._playlist_error(e)
             return
-        if self._pl_current and self._pl_current[0] == name:
+        if self._pl_current and self._pl_current[0] == name and self._pl_current[2]:
             self._load_playlists(select=name)
         self.status.showMessage(f"Added {added} songs to “{name}”" + (f" ({len(songs) - added} were already in it)"
                                 if added < len(songs) else ""), 6000)
@@ -4787,7 +4835,7 @@ class MainWindow(QMainWindow):
             self._folder_changed(item.text())
         paths = [s.path for s in self.model.songs]
         source = item.text()
-        if paths and item.text() in (ALL, LIKED):            # a fresh random order each time, never the same first song
+        if paths and item.text() == ALL:                     # a fresh random order each time, never the same first song
             random.shuffle(paths)
             source = f"{source} (shuffled)"
         if paths:
@@ -4802,9 +4850,19 @@ class MainWindow(QMainWindow):
             self.pl_list.setCurrentRow(row)
         paths = [e.path for e in self._playlist_entries if e.exists]
         if paths:
-            self._play_queue(paths, 0, self._playlist_source())
+            paths, source = self._quick_order(self._pl_current[1], paths, self._playlist_source())
+            self._play_queue(paths, 0, source)
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
+
+    def _quick_order(self, key, paths, source):
+        """The order for a quick play (a double-click, or the play button on a cover): All songs and Stashed Songs
+        start in a fresh random order each time, never with the same first song."""
+        if self._is_smart(key) and self._smart_name(key) in (ALL, LIKED):
+            paths = list(paths)
+            random.shuffle(paths)
+            return paths, f"{source} (shuffled)"
+        return paths, source
 
     def _current_playlist_paths(self):
         return [e.path for e in self._playlist_entries if e.exists]
@@ -4855,14 +4913,17 @@ class MainWindow(QMainWindow):
     def _play_tile(self, tile):
         "The play button on a playlist cover: one click and it plays."
         if tile.songs:
-            self._play_queue(tile.paths, 0, tile.name)
+            paths, source = self._quick_order(tile.path, tile.paths, tile.name)
+            self._play_queue(paths, 0, source)
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
     def _play_tile_paths(self, paths):
         tile = self.pl_grid.current_album()
         if paths:
-            self._play_queue(paths, 0, tile.name if tile is not None else "")
+            paths, source = self._quick_order(tile.path if tile is not None else "", paths,
+                                              tile.name if tile is not None else "")
+            self._play_queue(paths, 0, source)
 
     def _refresh_queue(self):
         queue = list(self.player.queue)
@@ -5653,15 +5714,36 @@ class MainWindow(QMainWindow):
         self._play_queue([it.path if isinstance(it, library.Song) else it], 0, "Health")
 
     # --- player bar ---------------------------------------------------------
+    def _apply_library_visibility(self):
+        "The Library row shows when the setting is on, or while something (an artist link) has borrowed the page."
+        for row in range(self.nav.count()):
+            item = self.nav.item(row)
+            if item.text() == "Library":
+                item.setHidden(not (self.settings.show_library or self._library_borrowed))
+
+    def _library_toggled(self, on):
+        self._set_setting("show_library", on)
+        if not on:
+            item = self.nav.currentItem()
+            if item is not None and item.text() == "Library":
+                self.show_page("Playlists")                   # do not leave the person on a page that just vanished
+        self._library_borrowed = False
+        self._apply_library_visibility()
+
     def _nav_changed(self, row):
         self.stack.setCurrentIndex(row)
         item = self.nav.item(row)
+        if self._library_borrowed and item is not None and item.text() != "Library":
+            self._library_borrowed = False                    # the borrowed Library goes back to being hidden
+            self._apply_library_visibility()
         self._on_settings = item is not None and item.text() == "Settings"
         on_np = item is not None and item.text() == "Now Playing"
         if on_np != self._on_np and hasattr(self, "bar_fold_btn"):
             self._on_np = on_np      # the waveform strip stands in for the bar here; leaving restores the saved choice
             self._apply_bar_for_page()
             self._apply_layout()                              # and the small art steps aside for the big one
+        if item is not None and item.text() == "Playlists":
+            self._refresh_smart_now()                         # listening or stashing may have changed the smart lists
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
@@ -5672,6 +5754,9 @@ class MainWindow(QMainWindow):
         "Open a page by its name in the sidebar. Returns False if there is no such page."
         for row in range(self.nav.count()):
             if self.nav.item(row).text() == name:
+                if name == "Library" and not self.settings.show_library:
+                    self._library_borrowed = True             # an artist or album link needs it: show it while in use
+                    self._apply_library_visibility()
                 self.nav.setCurrentRow(row)
                 return True
         return False

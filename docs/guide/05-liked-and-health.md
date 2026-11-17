@@ -5,8 +5,8 @@
 Stash is Sleeve's name for keeping a song you love. Click the diamond on the Now Playing page (it is filled when the
 song is stashed), or right-click songs and choose Stash. Click the diamond again, or choose Unstash, to take it back.
 
-Every stashed song appears in the Stashed Songs folder at the top of the Library, marked with a diamond. Double-click
-that folder to play them.
+Every stashed song appears in the Stashed Songs playlist, the first cover on the Playlists page. Double-click it to
+play them (in a fresh random order). In song lists they are marked with a diamond.
 
 Stashed songs are kept in Sleeve's own file (`~/.config/sleeve/liked.json`; the file kept its old name). They are not
 written into your music files or your playlists, so another player will not see them. On the Playlists page, Stash all

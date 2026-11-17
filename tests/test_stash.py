@@ -46,22 +46,27 @@ def make_window(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     return win
 
 
-def test_liked_folder_heart_and_button(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def stashed_row(win):
+    return next(i for i, f in enumerate(win._playlist_files) if f[0] == sleeve_app.LIKED)
+
+
+def test_stashed_playlist_heart_and_button(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        win.folders.setCurrentRow(1)
-        assert win.folder == sleeve_app.LIKED and win.model.rowCount() == 0
+        win.pl_list.setCurrentRow(stashed_row(win))
+        assert win._pl_current[0] == sleeve_app.LIKED and win.pl_table.rowCount() == 0
         win.folders.setCurrentRow(0)
         first = win.model.songs[0]
         win._toggle_stash([first.path])
-        assert win.model.data(win.model.index(0, 0)).startswith("◆ ")
-        win.folders.setCurrentRow(1)
-        assert [s.path for s in win.model.songs] == [first.path]
+        assert win.model.data(win.model.index(0, 0)).startswith("◆ ")           # the library marks it
+        win._refresh_smart_now()
+        assert [e.path for e in win._playlist_entries] == [first.path]       # and the playlist holds it
         win._on_track(0, first.path)                       # the diamond in the player bar follows the song
         assert win.stash_btn.toolTip() == "Unstash this song" and win.stash_btn.isEnabled()
         assert not win.stash_btn.icon().isNull()
-        win.stash_btn.click()                               # unstash from the bar: leaves the Stashed list
-        assert win.stash_btn.toolTip() == "Stash this song" and win.model.rowCount() == 0
+        win.stash_btn.click()                               # unstash from the bar: leaves the Stashed playlist
+        win._refresh_smart_now()
+        assert win.stash_btn.toolTip() == "Stash this song" and win.pl_table.rowCount() == 0
         assert not stash.Stash(tmp_path / "liked.json").paths
         win._on_track(-1, "")
         assert not win.stash_btn.isEnabled()
@@ -73,6 +78,7 @@ def test_like_all_in_playlist_and_save_failure(qapp, cfg, monkeypatch, tmp_path)
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.pl_spotify_btn.click()                         # the Spotify-made playlists are hidden by default
+        win.pl_list.setCurrentRow(len(sleeve_app.SMART_PLAYLISTS))
         present = [e.path for e in win._playlist_entries if e.exists]
         assert present
         win._stash_playlist()
@@ -102,21 +108,23 @@ def test_every_existing_song_of_a_playlist_file_gets_liked(tmp_path):
 def test_double_click_on_a_folder_or_playlist_starts_playing_it(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        win.folders.setCurrentRow(1)                       # Liked Songs, still empty
+        row = stashed_row(win)
+        win.pl_list.setCurrentRow(row)                     # Stashed Songs, still empty
         win.player.calls.clear()
-        win.folders.itemDoubleClicked.emit(win.folders.item(1))
+        win.pl_list.itemDoubleClicked.emit(win.pl_list.item(row))
         assert not [c for c in win.player.calls if c[0] == "set_queue"]
         assert "Nothing in" in win.status.currentMessage()
-        win.folders.setCurrentRow(0)
-        win._toggle_stash([win.model.songs[0].path])
-        win.folders.setCurrentRow(1)
-        win.folders.itemDoubleClicked.emit(win.folders.item(1))
+        first = win.songs[0]
+        win._toggle_stash([first.path])
+        win._refresh_smart_now()
+        win.pl_list.itemDoubleClicked.emit(win.pl_list.item(row))
         name, args = win.player.calls[-1]
-        assert name == "set_queue" and args[0] == [win.model.songs[0].path]
-        win.folders.itemDoubleClicked.emit(win.folders.item(0))   # a folder that was not selected yet
+        assert name == "set_queue" and args[0] == [first.path]
+        win.folders.itemDoubleClicked.emit(win.folders.item(0))   # the Library's All songs
         assert win.folder == sleeve_app.ALL and len(win.player.calls[-1][1][0]) == 3
         win.pl_spotify_btn.click()
-        win.pl_list.itemDoubleClicked.emit(win.pl_list.item(0))
+        spotify = len(sleeve_app.SMART_PLAYLISTS)
+        win.pl_list.itemDoubleClicked.emit(win.pl_list.item(spotify))
         assert win.player.calls[-1][0] == "set_queue" and len(win.player.calls[-1][1][0]) == 1
     finally:
         win.close()

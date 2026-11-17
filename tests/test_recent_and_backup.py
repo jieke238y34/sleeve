@@ -82,16 +82,16 @@ def test_a_huge_file_in_a_backup_is_refused(tmp_path):
     assert backup.restore(big, target) == [] and not (target / "history.json").exists()
 
 
-def test_the_recently_played_folder_shows_what_was_played_newest_first(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_recently_played_playlist_shows_what_was_played_newest_first(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
-        names = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert names[:3] == ["All songs", sleeve_app.LIKED, sleeve_app.RECENT]
+        names = [f[0] for f in win._playlist_files]
+        assert names[:3] == [sleeve_app.LIKED, "All songs", sleeve_app.RECENT]
         a, b, c = sorted(win.songs, key=lambda s: s.path)
         for n, song in enumerate((a, b, a, c)):
             win.history.record(song.path, 60, when=1_000_000 + n)
-        win.folders.setCurrentRow(2)
-        assert [s.path for s in win.model.songs] == [c.path, a.path, b.path]
+        win.pl_list.setCurrentRow(names.index(sleeve_app.RECENT))
+        assert [e.path for e in win._playlist_entries] == [c.path, a.path, b.path]
     finally:
         win.close()
 

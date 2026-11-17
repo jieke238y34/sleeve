@@ -1,4 +1,4 @@
-"""Smart folders in the Library: Recently added, Never played and Most played fill themselves."""
+"""The smart lists: Recently added, Never played and Most played fill themselves (they are playlists)."""
 
 import os
 import time
@@ -7,6 +7,7 @@ from collections import Counter
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
+from sleeve import app as sleeve_app
 from sleeve import smart
 from sleeve.library import Song
 
@@ -37,13 +38,15 @@ def test_never_played_and_most_played_use_the_play_counts():
     assert smart.pick("not a smart folder", items, counts, lambda p: NOW) == []
 
 
-def test_the_library_lists_the_smart_folders_with_counts_and_shows_their_songs(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_playlists_hold_the_smart_lists_with_counts_and_show_their_songs(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.resize(1100, 700)
         win.show()
-        names = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert all(n in names for n in smart.NAMES)
+        names = [f[0] for f in win._playlist_files]
+        assert all(n in names for n in smart.NAMES)                              # they are playlists, not Library folders
+        library_names = [win.folders.item(i).text() for i in range(win.folders.count())]
+        assert not any(n in library_names for n in smart.NAMES)
         a, b, c = sorted(win.songs, key=lambda s: s.path)
         now = time.time()
         os.utime(a.path, (now - 90 * DAY, now - 90 * DAY))                    # only a is old
@@ -51,15 +54,16 @@ def test_the_library_lists_the_smart_folders_with_counts_and_shows_their_songs(q
         win.history.record(b.path, 40)
         win.history.record(b.path, 40)
         win.history.record(c.path, 40)
-        win._fill_folder_counts()
-        count = {win.folders.item(i).text(): win.folders.item(i).data(0x0101) for i in range(win.folders.count())}
+        count = {n: win._playlist_songs(sleeve_app.SMART_PREFIX + n)[0] for n in smart.NAMES}
         assert count[smart.NEVER] == 1 and count[smart.MOST] == 2 and count[smart.ADDED] == 2
         for name, expect in ((smart.NEVER, [a.name]), (smart.MOST, [b.name, c.name]), (smart.ADDED, None)):
-            win.folders.setCurrentRow(names.index(name))
-            got = [win.model.songs[r].name for r in range(win.model.rowCount())]
+            win.pl_list.setCurrentRow(names.index(name))
+            got = [win.by_path[e.path].name for e in win._playlist_entries]
             if expect is not None:
                 assert got == expect, name
             else:
                 assert a.name not in got and len(got) == 2
+        assert win.pl_table.rowCount() == 2 and not any(b.isEnabled() for b in win.pl_edit_buttons)   # they fill themselves
+        assert not win.pl_copy_btn.isHidden() and "fills itself" in win.pl_edit_note.text()
     finally:
         win.close()
