@@ -208,7 +208,7 @@ def test_a_waiting_album_gets_its_real_cover_when_the_decode_lands(qapp, monkeyp
     assert a.key in grid._waiting
     assert pump(lambda: a.key in grid._sources), "the album never got its cover"
     assert grid._sources[a.key] is not None and got == [a]
-    assert sorted(reads) == ["/m/1.mp3", "/m/2.mp3"]   # the re-ask answered from the cache: nothing is read twice
+    assert pump(lambda: sorted(reads) == ["/m/1.mp3", "/m/2.mp3"])   # the re-ask came from the cache: read once each
     grid.close()
 
 
@@ -235,7 +235,7 @@ def test_the_detail_view_asks_all_the_songs_at_once_and_shows_the_cover_when_it_
     assert grid._waiting[a.key][1] == ["/m/1.mp3", "/m/2.mp3"]      # every song's decode is waited for
     assert pump(lambda: a.key in grid._sources), "the album never got its cover"
     assert grid._sources[a.key] is not None and got == [a]
-    assert sorted(reads) == ["/m/1.mp3", "/m/2.mp3"]     # each file read once (workers fill `reads` in any order)
+    assert pump(lambda: sorted(reads) == ["/m/1.mp3", "/m/2.mp3"])   # each file read once, workers log in any order
     grid.close()
 
 

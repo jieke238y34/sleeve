@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSl
 
 from . import theme
 from .coverview import SeekBar
+from .moonbutton import MoonButton
 
 
 class _Word(QLabel):
@@ -98,13 +99,14 @@ class MiniWindow(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(2)
         self.prev = QPushButton()
-        self.play = QPushButton()
+        self.play = MoonButton()
         self.next = QPushButton()
         for btn, tip in ((self.prev, "Previous"), (self.play, "Play / pause"), (self.next, "Next")):
             btn.setToolTip(tip)
             btn.setCursor(Qt.PointingHandCursor)
             controls.addWidget(btn)
         self.play.setObjectName("play")                     # the same round accent button the player bar has
+        self.play.setFixedSize(30, 30)                      # this window has its own style sheet: the face is set below
         controls.addStretch(1)
         self.volume = QSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
@@ -143,6 +145,8 @@ class MiniWindow(QWidget):
 
     def set_accent(self, colour):
         self.seek.set_accent(colour)
+        self.play.setStyleSheet(f"QPushButton {{ background: {colour}; border: none; border-radius: 15px; }}")
+        self.play.setInk(theme.on_accent(colour, theme.BG))   # dark on a bright face, white on a dark one
 
     def set_playing(self, on):
         self._is_playing = bool(on)                         # the icons come from the main window's repaint

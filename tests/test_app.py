@@ -107,14 +107,15 @@ def test_window_scans_library_and_filters(qapp, cfg, monkeypatch, tmp_path):
         assert win.model.rowCount() == 2
         win.search.setText("")
         items = [win.folders.item(i).text() for i in range(win.folders.count())]
-        assert items == ["All songs", "◆ Stashed Songs", "Recently played", "Recently added", "Never played", "Most played",
-                         "Pop", "Rock"]
+        assert items == ["All songs", "Pop", "Rock"]                  # the lists that fill themselves are playlists now
         win.folders.setCurrentRow(items.index("Rock"))
         assert win.model.rowCount() == 2
         # playlists page: the Spotify-made file is hidden until asked for
-        assert win.pl_list.count() == 0 and win.pl_spotify_btn.text() == "Show Spotify playlists (1)"
+        smart = len(sleeve_app.SMART_PLAYLISTS)                       # the self-filling lists come first
+        assert win.pl_list.count() == smart and win.pl_spotify_btn.text() == "Show Spotify playlists (1)"
         win.pl_spotify_btn.click()
-        assert win.pl_list.count() == 1 and win.pl_spotify_btn.text() == "Hide Spotify playlists"
+        assert win.pl_list.count() == smart + 1 and win.pl_spotify_btn.text() == "Hide Spotify playlists"
+        win.pl_list.setCurrentRow(smart)
         assert win.pl_table.rowCount() == 2
         assert "1 missing" in win.pl_info.text()
         # health page has all categories

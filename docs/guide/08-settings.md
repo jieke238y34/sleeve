@@ -11,6 +11,7 @@ The search box at the top shows only the sections that mention what you type (tr
 | Play songs at the same volume | Even out loud and quiet songs |
 | Play through | Which sound output to use. System default follows your desktop, including earbuds switching on and off |
 | Earbuds | Use earbuds, Hand to phone and Turn off buttons. Only shown when [Maid BT](https://github.com/Maidware-Project/Maid-BT) is installed |
+| Show the Library page | Off by default: Sleeve starts on Playlists, which holds All songs, Stashed Songs and the other lists. Turn it on to get the Library (folders, genres and the albums view) back in the sidebar |
 | Album art size | How big the cover gets on the Now Playing page, 240 to 900 pixels |
 | Theme | Sleeve (your own colours and the seasons) or Dusk: peach on warm brown and slate, with a background that stays put whatever is playing. A theme replaces your accent colour and the seasonal looks until you go back to Sleeve |
 | Seasons and holidays | Off, Seasons, Holidays or Both. Season: follow the calendar, or Spring, Summer, Autumn, Winter. Holiday: follow the calendar, or Christmas, Halloween, New Year |

@@ -36,6 +36,7 @@ class PlaylistTile:
     image: str = ""                                 # the picture the user chose, '' = none
     new: bool = False                               # the "make a playlist" tile
     mine: bool = False                              # made in Sleeve (can be changed)
+    smart: bool = False                             # one of the lists that fill themselves (Recently played...)
     stamp: int = 0                                  # when the playlist file last changed: a new mosaic when it does
 
     @property
@@ -257,6 +258,7 @@ class PlaylistGrid(AlbumGrid):
         super().__init__(cover_loader, parent)
         self.setItemDelegate(GlassDelegate(self))
         self._signs = {}                            # tile key -> what its picture was drawn with (name, colour, ...)
+        self._retry = {}                            # tile key -> files whose decode it waits for (_ensure_source)
 
     def mousePressEvent(self, e):
         "A press on a tile's Edit pill asks for the edit menu instead of opening the playlist."
@@ -284,6 +286,7 @@ class PlaylistGrid(AlbumGrid):
         self._waiting = {k: w for k, w in self._waiting.items() if k in live}
         self._parts = {k: v for k, v in self._parts.items() if k in live}
         self._tries = {k: v for k, v in self._tries.items() if k in live}
+        self._retry = {k: v for k, v in self._retry.items() if k in live}
         self.setUpdatesEnabled(False)
         self.clear()
         size = self.gridSize()
@@ -317,6 +320,12 @@ class PlaylistGrid(AlbumGrid):
         store = coverstore.shared()               # the mosaic: every piece is the store's copy of one file
         covers = self._parts.pop(tile.key, [])
         pending, seen = [], set()
+        for path in self._retry.pop(tile.key, []):    # what was pending when this tile last waited has landed by now:
+            pix = store.pixmap(path, SOURCE_SIDE)     # the walk below starts after those files, so take them here
+            if pix is not None:
+                covers.append(pix)
+            elif store.state(path) == "pending":
+                pending.append(path)
         asked = self._tries.get(tile.key, 0)
         for i, s in enumerate(tile.songs[asked:MOSAIC_LOOK], asked):
             album = (s.album or s.path).casefold()
@@ -334,9 +343,10 @@ class PlaylistGrid(AlbumGrid):
                 pending.append(s.path)            # its decode is on the road: `_cover_ready` brings this tile back
         if pending and len(covers) < 4:
             self._waiting[tile.key] = (tile, pending)
+            self._retry[tile.key] = list(pending)
             self._parts[tile.key] = covers        # the pieces already in are kept while the rest decode
         elif covers:
-            self._put_source(tile.key, mosaic(covers, SOURCE_SIDE))
+            self._put_source(tile.key, mosaic(covers[:4], SOURCE_SIDE))
         else:
             self._put_source(tile.key, None)      # none of these files has a cover: the generated one shows
 

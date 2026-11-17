@@ -13,9 +13,28 @@ To make one:
 
 A name that is already taken gets a number, like "Road trip (2)".
 
+## Lists that fill themselves
+
+The first six covers on the Playlists page are not files: Sleeve fills them from your library and your listening.
+
+| List | What it holds |
+|---|---|
+| Stashed Songs | The songs you stashed |
+| All songs | Every song in your library |
+| Recently played | What you played last, newest first |
+| Recently added | Songs whose files appeared in the last 30 days, newest first |
+| Most played | Your 100 most played songs |
+| Never played | Songs you have not played yet |
+
+Recently played, Most played and Never played come from your listening history, which Sleeve only keeps while
+Remember what I listen to is on. These lists cannot be changed (the edit buttons are greyed out), but they update
+themselves, and **Copy to my playlists** makes a playlist of your own from one. You can give them a cover picture and a title
+colour like any other playlist. Playing All songs or Stashed Songs from a cover, or by double-clicking its name,
+starts in a fresh random order; the Play button plays any list from the top.
+
 ## The cover grid
 
-The Playlists tab shows a grid of cover tiles, with a New playlist tile first. A playlist's cover is, in this order: the picture
+The Playlists tab shows a grid of cover tiles, with a New playlist tile first, then the lists that fill themselves. A playlist's cover is, in this order: the picture
 you chose, a mosaic of the album covers of its songs, or a generated cover with the first letter of its name. Point at a tile and press its **Edit** pill, or right-click it, for Open, Play, Add to queue, Choose a cover picture, Use the generated cover, Title colour, Normal title colour,
 Rename and Delete. A picture you choose is copied into Sleeve's own folder, so it keeps working if the original moves.
 Covers and colours are kept in `~/.config/sleeve`, not in the playlist file. In the list of playlists, the ones you made

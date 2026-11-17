@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QPushButton
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
+from sleeve import app as sleeve_app
 from sleeve import plgrid, plstyle
 from sleeve.library import Song
 
@@ -140,8 +141,12 @@ def test_the_playlists_tab_opens_on_the_covers_and_one_click_opens_a_playlist(qa
         win._load_playlists(select=used)
         assert win.pl_stack.currentIndex() == 0                                    # covers first
         tiles = win.pl_grid.albums()
-        assert tiles[0].new and [t.name for t in tiles[1:]] == ["Road trip"] and tiles[1].count == 2 and tiles[1].mine
-        win._open_playlist_tile(tiles[1])
+        assert tiles[0].new
+        smart = tiles[1:1 + len(sleeve_app.SMART_PLAYLISTS)]                       # the self-filling lists, then ours
+        assert [t.name for t in smart] == list(sleeve_app.SMART_PLAYLISTS) and all(t.smart and not t.mine for t in smart)
+        mine = tiles[1 + len(smart):]
+        assert [t.name for t in mine] == ["Road trip"] and mine[0].count == 2 and mine[0].mine and not mine[0].smart
+        win._open_playlist_tile(mine[0])
         assert win.pl_stack.currentIndex() == 1 and win._pl_current[0] == "Road trip"
         assert win.pl_table.rowCount() == 2
         back = next(b for b in win.findChildren(QPushButton) if b.text().strip().endswith("All playlists"))
@@ -203,3 +208,25 @@ def test_a_playlist_with_no_songs_in_the_library_still_gets_a_cover(qapp, cfg, m
         assert isinstance(pix, QPixmap) and not pix.isNull()
     finally:
         win.close()
+
+
+def test_a_tile_whose_first_cover_lands_after_the_first_ask_still_gets_its_mosaic(qapp, monkeypatch):  # noqa: F811
+    """The songs of one album: only the first is asked, and its decode is on the road. When it lands the tile must take
+    that cover (the walk resumes after the songs already asked) instead of deciding there is none."""
+    from test_albums import png, pump
+
+    from sleeve import coverstore
+    store = coverstore.Store()
+    store.load_bytes = lambda path: png()
+    monkeypatch.setattr(coverstore, "shared", lambda: store)
+    songs = [Song(f"/m/{i}.mp3", title=str(i), artist="A", album="One album", length=60.0) for i in range(5)]
+    grid = plgrid.PlaylistGrid()
+    grid.resize(600, 400)
+    grid.show()
+    tile = plgrid.PlaylistTile("Everything", "smart:Everything", 5, songs)
+    grid.set_playlists([tile])
+    grid._ensure_source(tile)
+    assert tile.key in grid._waiting and tile.key not in grid._sources          # its decode is on the road
+    assert pump(lambda: tile.key in grid._sources), "the tile never settled"
+    assert grid._sources[tile.key] is not None                                   # a cover, not the generated letter
+    grid.close()

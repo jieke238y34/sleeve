@@ -19,6 +19,15 @@ class Entry:
         return Path(self.path).is_file()
 
 
+@dataclass
+class KnownEntry(Entry):
+    "An entry for a song the library already knows is there (a list that fills itself): no file check per row."
+
+    @property
+    def exists(self):
+        return True
+
+
 def _inside(path, root):
     try:
         return Path(path).is_relative_to(root)

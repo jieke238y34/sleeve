@@ -99,7 +99,7 @@ def test_with_no_playlists_the_page_says_what_to_do_and_with_some_it_does_not(qa
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win._load_playlists()
-        assert not win.pl_grid_hint.isHidden() and "no playlists yet" in win.pl_grid_hint.text()
+        assert not win.pl_grid_hint.isHidden() and "no playlists of your own yet" in win.pl_grid_hint.text()
         win._load_playlists(select=win.my_playlists.create("Gym", win.songs[:1]))
         assert win.pl_grid_hint.isHidden()
     finally:
@@ -119,6 +119,6 @@ def test_playlist_files_are_read_again_only_when_they_changed(qapp, cfg, monkeyp
         assert reads == []                                                   # nothing changed: nothing was read
         win.my_playlists.create("Road", win.songs[:1])
         win._load_playlists()
-        assert len(reads) >= 1 and sorted(t.name for t in win.pl_grid.albums()[1:]) == ["Gym", "Road"]
+        assert len(reads) >= 1 and sorted(t.name for t in win.pl_grid.albums() if t.mine) == ["Gym", "Road"]
     finally:
         win.close()

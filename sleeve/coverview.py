@@ -47,8 +47,9 @@ class CoverView(QWidget):
         self._rows = list(labels)
         self._btns = list(buttons)
         for w in (*self._rows, *self._btns):
+            hidden = w.isHidden() and w.parent() is self         # a row the page hid (no file line) stays hidden
             w.setParent(self)
-            w.show()
+            w.setVisible(not hidden)
         self._place_info()
 
     def set_transport(self, buttons):
@@ -91,7 +92,8 @@ class CoverView(QWidget):
             return 0
         total = 26                                          # the gap between the art and the words
         for w in self._rows:
-            total += w.heightForWidth(span - 12) or w.sizeHint().height()
+            if not w.isHidden():
+                total += w.heightForWidth(span - 12) or w.sizeHint().height()
         self._tr_on = self._transport_fits(total)
         if self._tr_on:
             total += 8 + max(b.minimumSizeHint().height() for b in self._transport)
@@ -108,10 +110,15 @@ class CoverView(QWidget):
         cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
         # beside a panel the art starts level with the top of its list; with no panel it is centered in the page
         self._art_y = self.top_inset if self.top_inset > 0 else max(0, (room - side - info) // 2)
+        spill = self._art_y + side + info - hei             # taller than what is left below the line: slide up into
+        if spill > 0:                                       # the room above it rather than off the page
+            self._art_y = max(0, self._art_y - spill)
         y = self._art_y + side + 26
         shown = self._tr_on
         span -= 12                                          # the words keep the same edge room as before
         for w in self._rows:
+            if w.isHidden():
+                continue
             h = w.heightForWidth(max(10, span)) or w.sizeHint().height()
             w.setGeometry(cx - span // 2, y, span, h)
             y += h

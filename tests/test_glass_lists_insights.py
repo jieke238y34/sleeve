@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QListWidget
 from test_app import cfg, qapp  # noqa: F401  (fixtures)
 from test_stash import make_window
 
+from sleeve import app as sleeve_app
 from sleeve import plgrid, settings
 from sleeve.albums import GAP, AlbumGrid
 from sleeve.history import DAY, History
@@ -166,18 +167,21 @@ def test_all_songs_and_stashed_songs_start_in_a_fresh_random_order(qapp, cfg, mo
         monkeypatch.setattr(win.player, "set_queue", lambda paths, start=0: setattr(win.player, "queue", list(paths)))
         win.stash.add([s.path for s in win.songs])
         win._stash_changed()
-        order = [s.path for s in win.songs]
+        win._load_playlists()
         monkeypatch.setattr("sleeve.app.random.shuffle", lambda items: items.reverse())
-        for name in ("All songs", win.folders.item(1).text()):                                # All songs, then Stashed Songs
-            item = next(win.folders.item(i) for i in range(win.folders.count()) if win.folders.item(i).text() == name)
-            win._play_folder(item)
-            assert win.player.queue == list(reversed([s.path for s in win.model.songs]))
+        for name in (sleeve_app.ALL, sleeve_app.LIKED):
+            tile = win.pl_grid.tile_for(sleeve_app.SMART_PREFIX + name)
+            win._play_tile(tile)                                                     # the play button on the cover
+            assert win.player.queue == list(reversed(tile.paths))
             assert win.queue_heading.text().endswith("(shuffled)")
-        genre = next(win.folders.item(i) for i in range(win.folders.count())
-                     if win.folders.item(i).text() not in ("All songs", win.folders.item(1).text(), "Recently played"))
-        win._play_folder(genre)
+        win.history.record(win.songs[0].path, 60, when=1_000_000)
+        row = next(i for i, f in enumerate(win._playlist_files) if f[0] == sleeve_app.RECENT)
+        win.pl_list.setCurrentRow(row)                                              # other lists play in their own order
+        win._play_playlist(win.pl_list.item(row))
+        assert "(shuffled)" not in win.queue_heading.text()
+        genre = next(win.folders.item(i) for i in range(win.folders.count()) if win.folders.item(i).text() != "All songs")
+        win._play_folder(genre)                                                     # and so do the Library's folders
         assert win.player.queue == [s.path for s in win.model.songs] and "(shuffled)" not in win.queue_heading.text()
-        assert order
     finally:
         win.close()
 

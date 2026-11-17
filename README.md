@@ -105,8 +105,13 @@ Sakura, Ocean, Ember, Graphite and Sunset) and a made-up theme of your own:
 
 **Playlists**
 
-- Stash: keep the songs you love. The diamond button marks a song, and the **Stashed Songs** folder at the top of the
-  Library lists them. Playing All songs or Stashed Songs starts in a fresh random order. They are kept in Sleeve's own file, not in your music files.
+- Stash: keep the songs you love. The diamond button marks a song, and the **Stashed Songs** playlist at the start of the
+  Playlists page lists them. Playing All songs or Stashed Songs from its cover or by double-click starts in a fresh
+  random order. They are kept in Sleeve's own file, not in your music files.
+- Playlists come first: **Stashed Songs, All songs, Recently played, Recently added, Most played and Never played** are
+  playlists that fill themselves, at the start of the Playlists page. They cannot be changed, but **Copy to my playlists**
+  turns any of them into one you can. The **Library** page (folders, genres, albums) is hidden until you turn it on in
+  Settings > Look; Sleeve starts on Playlists.
 - The Playlists tab is a grid of frosted-glass tiles. Each playlist can have its own cover picture and title colour (the
   **Edit** pill that appears on a tile, or right-click); otherwise it gets a mosaic of its album covers. Playlists you
   made are marked with ◈. Inside a playlist, and in the Library, songs are a clean list with cover, title and artist.

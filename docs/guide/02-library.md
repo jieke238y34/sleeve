@@ -2,11 +2,16 @@
 
 The Library page has your folders on the left and a song table on the right.
 
+The Library is hidden at first, because most of what it offered now lives in [Playlists](03-playlists): All songs,
+Stashed Songs, Recently played, Recently added, Most played and Never played are playlists. To get the Library page
+in the sidebar, turn on **Show the Library page** in Settings > Look. Even with it off, an artist or album link (on Now
+Playing, or "All songs by …" in a menu) opens the Library for as long as you are using it.
+
 ## Folders
 
-The first two entries are special: All songs, and Stashed Songs. Under them come your genre folders, one for each
-folder in your music folder. Click one to see its songs. Double-click a folder to play everything it shows, from
-the top.
+The first entry is All songs. Under it come your genre folders, one for each folder in your music folder. Click one to
+see its songs. Double-click a folder to play everything it shows, from the top (All songs starts in a fresh random
+order).
 
 ## Search
 

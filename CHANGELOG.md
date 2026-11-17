@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-17
+
+### Changed
+
+- **Playlists first.** Stashed Songs, All songs, Recently played, Recently added, Most played and Never played are now
+  **playlists** that fill themselves, the first covers on the Playlists page. They cannot be changed, can be given a cover
+  and title colour, and **Copy to my playlists** turns any of them into a playlist of your own. Playing All songs or
+  Stashed Songs from a cover or by double-click still starts in a fresh random order.
+- The **Library page is hidden by default** and Sleeve starts on Playlists. Settings > Look has **Show the Library page**
+  to bring it back; with it off, an artist or album link still opens the Library while you use it. The Library keeps All
+  songs and the genre folders.
+- The **play button is a moon, not a record player**: a dark disc with the lit part in cream that waxes from new to full
+  as the song goes, so it also shows how far along you are. It is at full strength while playing and dimmed when paused
+  (no play triangle or pause bars), and it follows the seek bar as you drag it. On the player bar, Now Playing and the
+  mini player. It only animates the change between playing and paused.
+
+### Fixed
+
+- Playlist covers: a playlist whose first songs share an album could end up with the generated letter instead of its
+  cover when the decode landed after the first look. The cover is now picked up when it arrives.
+- Now Playing: with the player bar under the pages, the album art sat left of the bar's buttons whenever only one side
+  panel was open; it is now centered over them.
+- Settings: the *Play through* drop-down is no longer squeezed in the smallest window.
+- Now Playing: a very long title, artist or album with no spaces (a URL, `snake_case_words`) now wraps instead of running
+  past its label, silly lengths are cut with an … (the full text stays in the tooltip), and on a small window the words
+  can no longer push the round buttons off the page.
+- Now Playing: the album and the file details (format, sample rate, levelling) are two separate lines. Only the album
+  underlines and opens the album; the details are plain text with their own hover label.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added
