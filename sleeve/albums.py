@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -199,6 +199,7 @@ class AlbumGrid(QListWidget):
             coverstore.shared().ready.connect(self._cover_ready)
         self.tile = TILE_WANT
         self.source_side = source_side_for(self.devicePixelRatioF())    # covers are kept at this many pixels
+        self._screen_watch = None     # the window whose screen changes this grid follows
         self._albums = []
         self._sources = {}            # album key -> QPixmap of the real cover, or None (use the placeholder)
         self._tiles = {}              # album key -> rounded pixmap at the current tile size
@@ -409,13 +410,15 @@ class AlbumGrid(QListWidget):
 
     def showEvent(self, ev):
         super().showEvent(ev)
-        self._fit_source_side()
+        handle = self.window().windowHandle()
+        if handle is not None and handle is not self._screen_watch:
+            self._screen_watch = handle                       # moved to a sharper screen (a TV at 1.7x): bigger covers.
+            handle.screenChanged.connect(self._screen_changed)   # A signal, not an event() override: that put Python
+        self._fit_source_side()                               # on every event, deleting the widget included
         self._kick()
 
-    def event(self, ev):
-        if ev.type() == QEvent.DevicePixelRatioChange:
-            self._fit_source_side()                   # moved to a sharper screen (a TV at 1.7x): bigger covers
-        return super().event(ev)
+    def _screen_changed(self, _screen):
+        self._fit_source_side()
 
     def _fit_source_side(self):
         "Keep covers at the size this screen needs; only ever grow, and then ask every cover again at the new size."
