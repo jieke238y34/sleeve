@@ -19,7 +19,8 @@ minutes. The timer is for this session only.
 ## The queue
 
 The Now Playing page shows what is coming. Use Play next or Add to queue from the Library menu to shape it.
-Clear empties it but keeps the song that is playing, and Save turns it into a playlist (see [Playlists](03-playlists)).
+Clear empties it but keeps the song that is playing; for ten seconds an Undo button at the bottom right puts it back.
+Save turns the queue into a playlist (see [Playlists](03-playlists)).
 
 ## Album art
 

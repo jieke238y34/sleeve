@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows
   this song. A timed sleep fades out over its last half minute, the end of a song over its last ten seconds, then the
   music pauses and the level is put back for the next play (the volume slider is not touched). A countdown sits at the
   bottom right; click it to cancel or add 15 minutes.
+- **Undo for Clear** in the queue: for ten seconds an Undo button at the bottom right puts the queue back, around the
+  song that is playing (nothing stops or restarts).
 
 ### Changed
 

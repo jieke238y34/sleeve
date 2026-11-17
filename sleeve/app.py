@@ -823,6 +823,13 @@ class MainWindow(QMainWindow):
             button.setContextMenuPolicy(Qt.CustomContextMenu)
             button.customContextMenuRequested.connect(lambda _pos, b=button: self._sleep_menu(b))
         self.sleep.slept.connect(lambda: self.status.showMessage("The sleep timer paused the music. Goodnight.", 10000))
+        self.undo_btn = QPushButton("Undo")                   # puts a cleared queue back, for a few seconds
+        self.undo_btn.setObjectName("barfold")
+        self.undo_btn.setToolTip("Put the queue back the way it was")
+        self.undo_btn.clicked.connect(self._undo_clear)
+        self.undo_btn.hide()
+        self.status.addPermanentWidget(self.undo_btn)
+        self._queue_undo = None                               # (paths, index, what it was called), while Undo shows
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
         self.bar_fold_btn.setObjectName("barfold")
         self.bar_fold_btn.clicked.connect(self._toggle_bar)
@@ -1165,8 +1172,8 @@ class MainWindow(QMainWindow):
         save_pl.setToolTip("Save this queue as a playlist")
         save_pl.clicked.connect(self._save_queue_as_playlist)
         clear = QPushButton("Clear")
-        clear.setToolTip("Empty the queue; the song that is playing keeps playing")
-        clear.clicked.connect(self.player.clear_queue)
+        clear.setToolTip("Empty the queue; the song that is playing keeps playing (Undo brings it back)")
+        clear.clicked.connect(self._clear_queue)
         hide_queue = QPushButton("Hide")
         hide_queue.setToolTip("Hide the playlist (the ☰ button under the cover brings it back)")
         hide_queue.clicked.connect(lambda: self.tab_queue.setChecked(False))
@@ -4552,6 +4559,39 @@ class MainWindow(QMainWindow):
         menu = theme.Menu(self)
         self._playlist_choices(menu, [song])
         self._popup_menu(menu, self.add_pl_btn)
+
+    UNDO_MS = 10000                                          # how long Undo stays after Clear
+
+    def _clear_queue(self):
+        "Empty the queue (the song playing carries on), and offer to put it back for a few seconds."
+        before = (list(self.player.queue), self.player.index, self._queue_source)
+        self.player.clear_queue()
+        gone = len(before[0]) - len(self.player.queue)
+        if gone <= 0:
+            return
+        self._queue_undo = before
+        self.status.showMessage(f"Cleared {gone} song{'' if gone == 1 else 's'} from the queue", self.UNDO_MS)
+        self.undo_btn.show()
+        token = self._queue_undo
+        QTimer.singleShot(self.UNDO_MS, lambda: self._undo_expired(token))
+
+    def _undo_expired(self, token):
+        if self._queue_undo is token:                         # a later Clear has its own few seconds
+            self._queue_undo = None
+            self.undo_btn.hide()
+
+    def _undo_clear(self):
+        if self._queue_undo is None:
+            return
+        paths, index, source = self._queue_undo
+        self._queue_undo = None
+        self.undo_btn.hide()
+        if self.player.put_back(paths, index):
+            self._queue_source = source
+            self._refresh_queue()
+            self.status.showMessage("The queue is back", 4000)
+        else:
+            self.status.showMessage("Could not put the queue back: something else is playing now", 6000)
 
     def _sleep_menu(self, widget):
         "The sleep timer's choices: a while, or the end of this song; while one runs, cancel it or add time."

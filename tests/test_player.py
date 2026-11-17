@@ -196,6 +196,23 @@ def test_the_master_fade_lowers_every_slot_without_touching_the_volume(app):
     p.close()
 
 
+def test_put_back_restores_a_cleared_queue_around_the_song_playing(app, tmp_path):
+    a, b, c = (silent_wav(tmp_path / f"{n}.wav", 1.0) for n in "abc")
+    p = Player()
+    p.queue, p.index = [a, b, c], 1                    # b plays
+    p.queue, p.index = [b], 0                          # what Clear leaves: b alone
+    assert p.put_back([a, b, c], 1)
+    assert p.queue == [a, b, c] and p.index == 1 and p.current() == b
+    p.queue, p.index = [c], 0                          # by the time Undo is pressed, c plays
+    assert p.put_back([a, b, c], 1) and p.index == 2   # found again where it is
+    p.queue, p.index = [str(tmp_path / "other.wav")], 0
+    assert not p.put_back([a, b, c], 1)                # something else entirely: left alone
+    p.queue, p.index = [], -1
+    assert p.put_back([a, b, c], 1) and p.queue == [a, b, c] and p.index == -1    # nothing playing: just the list
+    assert not p.put_back([], 0)
+    p.close()
+
+
 def test_real_playback_plays_seeks_and_advances(app, tmp_path):
     a, b = silent_wav(tmp_path / "a.wav", 1.0), silent_wav(tmp_path / "b.wav", 3.0)
     p = Player()

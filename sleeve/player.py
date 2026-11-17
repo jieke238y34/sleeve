@@ -539,6 +539,24 @@ class Player(QObject):
         self.queueChanged.emit()
         self._plan_next()
 
+    def put_back(self, paths, index):
+        """Put a queue back (the Undo of Clear) without stopping or restarting anything: the song playing now stays,
+        found again in `paths` (or at `index` if it is not in there). With nothing playing, the queue simply returns."""
+        paths = [p for p in paths if p]
+        if not paths:
+            return False
+        current = self.current()
+        if current and current in paths:
+            index = paths.index(current) if paths[index:index + 1] != [current] else index
+        elif current:
+            return False                                  # something else entirely is playing: leave it be
+        self.queue, self.index = paths, (index if current else -1)
+        self._plan = None
+        self.queueChanged.emit()
+        if current:
+            self._plan_next()
+        return True
+
     def _remember(self, new):
         "The song being left goes on the played list, so Previous comes back to what was really heard."
         if self._new_queue:
