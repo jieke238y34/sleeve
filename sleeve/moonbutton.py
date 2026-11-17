@@ -1,14 +1,14 @@
 """The play / pause button: a moon that waxes as the song goes.
 
 The moon starts new when a song begins and fills to a full moon as it ends, so the button shows how far along you are.
-Playing, it is bright with a thin halo; paused, it is dimmed and the halo is gone. There is no play triangle or pause
-bars. It animates only the change between the two states, so an idle button costs nothing.
+Playing, it is bright; paused, it is dimmed. There is no play triangle or pause bars. It animates only the change
+between the two states, so an idle button costs nothing.
 """
 
 import math
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import QPushButton
 
 INK = QColor("#15131d")            # the same dark as the window, on the accent-coloured button (see setInk)
@@ -16,7 +16,6 @@ SETTLE_MS = 320                    # how long dimming or brightening takes
 
 CENTRE = QPointF(0.5, 0.5)
 RADIUS = 0.27                      # the moon, as a fraction of the button
-HALO = 0.35                        # the thin ring round it while playing
 PAUSED_LIT, PAUSED_DARK = 0.55, 0.12    # how strong the lit part and the unlit part of the disc are when paused
 
 
@@ -115,10 +114,4 @@ class MoonButton(QPushButton):
         light.setAlphaF(lit)
         p.setBrush(light)
         p.drawPath(lit_path(self._progress))
-        if mix > 0.0:                                        # the halo: only while playing
-            halo = QColor(self._ink)
-            halo.setAlphaF(0.34 * mix)
-            p.setBrush(Qt.NoBrush)
-            p.setPen(QPen(halo, 0.03))
-            p.drawEllipse(CENTRE, HALO, HALO)
         p.end()

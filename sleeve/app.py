@@ -5815,11 +5815,14 @@ class MainWindow(QMainWindow):
     def _seek_now(self, seconds):
         "Move the playhead and flag the next position report, so a short seek is not counted as listening."
         self._seeking = True
+        self._show_moon_phase(seconds)                       # the moon moves with the seek, not on the report
         self.player.seek(seconds)
 
     def _seek_moved(self, value):
         "A change not made by the position feed (that one blocks signals) or a drag (applied on release)."
-        if not self._dragging:
+        if self._dragging:
+            self._show_moon_phase(value / 10)                # the moon follows the thumb while it is dragged
+        else:
             self._seek_now(value / 10)
 
     def _seek_by(self, delta):
@@ -5827,16 +5830,18 @@ class MainWindow(QMainWindow):
             target = max(0.0, self._pos + delta)
             self._seek_now(min(target, self._dur) if self._dur > 0 else target)
 
-    def _moon_phase(self):
-        "How far through the song, 0..1: the phase of the moon on the play buttons."
-        return min(1.0, self._pos / self._dur) if self._dur > 0 else 0.0
+    def _moon_phase(self, seconds=None):
+        "How far through the song, 0..1 (at `seconds`, or where the player is): the moon's phase on the play buttons."
+        seconds = self._pos if seconds is None else seconds
+        return min(1.0, max(0.0, seconds / self._dur)) if self._dur > 0 else 0.0
 
-    def _show_moon_phase(self):
+    def _show_moon_phase(self, seconds=None):
         buttons = [self.play_btn, self.np_play]
         if getattr(self, "mini", None) is not None:
             buttons.append(self.mini.play)
+        phase = self._moon_phase(seconds)
         for button in buttons:
-            button.setProgress(self._moon_phase())
+            button.setProgress(phase)
 
     def _on_position(self, pos):
         "The player reports about ten times a second; the seek bar only needs to move about five times a second."
@@ -5845,7 +5850,8 @@ class MainWindow(QMainWindow):
         if not seeked:
             self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
-        self._show_moon_phase()
+        if not self._dragging:                               # a dragged thumb sets the moon: the feed must not undo it
+            self._show_moon_phase()
         if self.wave_strip.isVisible():
             self.wave.set_progress(pos, self._dur)
             if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:

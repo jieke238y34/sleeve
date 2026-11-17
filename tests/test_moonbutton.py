@@ -1,4 +1,4 @@
-"""The play button is a moon: bright with a halo while playing, dimmed when paused, and its phase follows the song."""
+"""The play button is a moon: bright while playing, dimmed when paused, and its phase follows the song and the seek bar."""
 
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
@@ -30,7 +30,7 @@ def test_the_picture_follows_the_state_and_the_phase(qapp):  # noqa: F811
     QTest.qWait(moonbutton.SETTLE_MS + 120)
     assert button._mix == 1.0
     playing = button.grab().toImage()
-    assert playing != paused                                             # brighter, with the halo
+    assert playing != paused                                             # brighter
     button.setProgress(0.5)
     assert button.grab().toImage() != playing                            # a new phase draws differently
     button.setPlaying(False)
@@ -85,5 +85,27 @@ def test_every_play_button_follows_the_player_and_the_song(qapp, cfg, monkeypatc
         assert win.play_btn.progress() == 0.0                           # no song: a new moon
         win._on_playing(False)
         assert not win.play_btn.playing() and not win.np_play.playing()
+    finally:
+        win.close()
+
+
+def test_the_moon_follows_a_dragged_seek_bar_at_once_and_the_feed_cannot_pull_it_back(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win.resize(1100, 700)
+        win.show()
+        win._on_duration(200.0)
+        win._on_position(20.0)
+        assert abs(win.play_btn.progress() - 0.1) < 0.01
+        win._dragging = True                                             # the thumb is held
+        win._seek_moved(1500)                                            # ... and moved to 150 s
+        assert abs(win.play_btn.progress() - 0.75) < 0.01 and abs(win.np_play.progress() - 0.75) < 0.01
+        win._on_position(21.0)                                           # the player is still where it was
+        assert abs(win.play_btn.progress() - 0.75) < 0.01
+        win._dragging = False
+        win._seek_now(40.0)                                              # a click or key: no waiting for the report
+        assert abs(win.play_btn.progress() - 0.2) < 0.01
+        win._on_position(40.1)
+        assert abs(win.play_btn.progress() - 0.2) < 0.01
     finally:
         win.close()
