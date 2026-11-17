@@ -305,6 +305,7 @@ QLabel#nowtitle {{ font-size: 11.5pt; font-weight: 700; }}
 QLabel#nowartist {{ font-size: 10pt; color: {muted}; }}
 QLabel#artist {{ font-size: 13pt; }}
 QLabel#album, QLabel#muted {{ color: {muted}; }}
+QLabel#detail {{ color: {muted}; font-size: 9pt; }}
 QLabel#heading {{ font-size: 12pt; font-weight: 700; }}
 QLabel#subhead {{ font-size: 11pt; font-weight: 700; color: {lit}; }}
 """
@@ -315,8 +316,8 @@ STYLE = build_style()
 
 def transport_icon(kind, color, size=24):
     """A painted icon for the skip buttons ("prev" or "next"), drawn in `color` and crisp at any scale: two chevrons
-    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the record
-    player in discbutton.py.)"""
+    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the orbit
+    button in orbitbutton.py.)"""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)

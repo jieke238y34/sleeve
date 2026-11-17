@@ -156,10 +156,11 @@ def test_the_switch_and_the_gain_line_in_the_window(qapp, cfg, monkeypatch, tmp_
         win._current_path = "/x/a.flac"
         win.player.gain_db = lambda path: -3.2
         win._show_album_line()
-        assert win.np_album.text() == "Album\nFLAC · 24-bit · levelling −3.2 dB"      # only the gain gets the minus
+        assert win.np_album.text() == "Album"
+        assert win.np_detail.text() == "FLAC · 24-bit · levelling −3.2 dB"      # only the gain gets the minus
         win.player.gain_db = lambda path: None
         win._show_album_line()
-        assert win.np_album.text() == "Album\nFLAC · 24-bit"
+        assert win.np_detail.text() == "FLAC · 24-bit"
         win.replaygain_box.setChecked(False)
         assert win.settings.use_replaygain is False
     finally:

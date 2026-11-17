@@ -13,7 +13,7 @@ def art_rect(cover):
 
 
 def words(win):
-    return [w for w in (win.np_title, win.np_artist, win.np_album, *win.np_cover._btns) if w.isVisible()]
+    return [w for w in (win.np_title, win.np_artist, win.np_album, win.np_detail, *win.np_cover._btns) if w.isVisible()]
 
 
 def check(win, qapp):  # noqa: F811

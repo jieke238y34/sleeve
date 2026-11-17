@@ -38,17 +38,15 @@ def test_text_on_a_dark_accent_is_white_and_on_a_bright_one_is_dark():
     assert "background: #a595f0; color: #ffffff" not in theme.build_style("#a595f0")
 
 
-def test_black_is_an_accent_you_can_pick_and_the_play_icon_turns_white(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_black_is_an_accent_you_can_pick_and_the_play_button_turns_white(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     assert settings.ACCENTS["Black"] == "#000000"
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         win.show()
         win._set_setting("accent", "Black")
         win._apply_accent()
-        image = win.play_btn.icon().pixmap(38, 38).toImage()
-        painted = [image.pixelColor(x, y) for x in range(image.width()) for y in range(image.height())
-                   if image.pixelColor(x, y).alpha() > 200]
-        assert painted and all(c.red() > 240 and c.green() > 240 for c in painted)       # white ink on the black button
+        for button in (win.play_btn, win.np_play):                                        # white ink on the black button
+            assert button.ink().red() > 240 and button.ink().green() > 240
     finally:
         win.close()
 

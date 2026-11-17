@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The **play button is an orbit, not a record player**: a dot circles a ring while music plays (with a small dot in the
+  middle), and glides to the top and rests, with the middle empty, when paused. On the player bar, Now Playing and the
+  mini player. It only animates while playing and on screen.
+
+### Fixed
+
+- Now Playing: with the player bar under the pages, the album art sat left of the bar's buttons whenever only one side
+  panel was open; it is now centered over them.
+- Settings: the *Play through* drop-down is no longer squeezed in the smallest window.
+- Now Playing: the album and the file details (format, sample rate, levelling) are two separate lines. Only the album
+  underlines and opens the album; the details are plain text with their own hover label.
+
 ## [0.3.2] - 2026-11-02
 
 ### Added

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSl
 
 from . import theme
 from .coverview import SeekBar
+from .orbitbutton import OrbitButton
 
 
 class _Word(QLabel):
@@ -98,7 +99,7 @@ class MiniWindow(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(2)
         self.prev = QPushButton()
-        self.play = QPushButton()
+        self.play = OrbitButton()
         self.next = QPushButton()
         for btn, tip in ((self.prev, "Previous"), (self.play, "Play / pause"), (self.next, "Next")):
             btn.setToolTip(tip)

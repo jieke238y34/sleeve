@@ -130,13 +130,13 @@ from .boost import StreamBoost
 from .coverart import ArtCache, ArtWorker, is_art_url
 from .coverart import clear_cache as clear_art_cache
 from .coverview import CoverScreen, CoverView
-from .discbutton import DiscButton
 from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
 from .mini import MiniWindow
 from .mpris import Mpris
 from .namedialog import NameDialog
+from .orbitbutton import OrbitButton
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .presence import Presence
 from .presence import activity as listening_activity
@@ -1223,10 +1223,12 @@ class MainWindow(QMainWindow):
         right = QVBoxLayout()
         self.np_cover = CoverView(self.settings.cover_size)
         self.np_title, self.np_artist, self.np_album = QLabel(), LinkLabel(), LinkLabel()
+        self.np_detail = QLabel()                            # what the file is: its own line, not a link like the album
         self._np_who = ("", "")                              # the artist and album tags, as they are in the file
         self.np_artist.clicked.connect(lambda: self._browse_artist(self._np_who[0]))
         self.np_album.clicked.connect(lambda: self._browse_album(self._np_who[1], self._np_who[0]))
-        for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album")):
+        for lab, name in ((self.np_title, "title"), (self.np_artist, "artist"), (self.np_album, "album"),
+                           (self.np_detail, "detail")):
             lab.setObjectName(name)
             lab.setTextFormat(Qt.PlainText)           # tags are data, never markup
             lab.setAlignment(Qt.AlignHCenter)
@@ -1240,9 +1242,10 @@ class MainWindow(QMainWindow):
         self.np_shuffle_btn.setCheckable(True)
         self.np_shuffle_btn.clicked.connect(lambda: self.shuffle_btn.click())
         self.np_cover.doubleClicked.connect(self._toggle_fullscreen)
-        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())   # ride on the cover
+        self.np_cover.set_info((self.np_title, self.np_artist, self.np_album, self.np_detail),
+                               self._np_buttons())   # ride on the cover
         self.np_prev, self.np_next = QPushButton(""), QPushButton("")
-        self.np_play = DiscButton()                              # the record player, bigger on this page
+        self.np_play = OrbitButton()                             # a dot orbiting a ring, bigger on this page
         for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
                                    (self.np_play, "Play / pause", self.player.toggle, "playbig"),
                                    (self.np_next, "Next", self.player.next, "skip")):
@@ -3247,7 +3250,7 @@ class MainWindow(QMainWindow):
             return b
         self.shuffle_btn = button("", "Shuffle: off", self.player.set_shuffle, checkable=True)
         self.prev_btn = button("", "Previous", self.player.prev)
-        self.play_btn = DiscButton()                          # a little record player: it turns while music plays
+        self.play_btn = OrbitButton()                         # a dot orbiting a ring: it circles while music plays
         self.play_btn.setObjectName("play")
         self.play_btn.setToolTip("Play / pause")
         self.play_btn.clicked.connect(self.player.toggle)
@@ -5064,7 +5067,7 @@ class MainWindow(QMainWindow):
             if side == "right":
                 lay.addWidget(widget)
         if hasattr(self, "np_cover"):
-            self.np_cover.set_info((self.np_title, self.np_artist, self.np_album), self._np_buttons())
+            self.np_cover.set_info((self.np_title, self.np_artist, self.np_album, self.np_detail), self._np_buttons())
 
     def _np_buttons(self):
         """The round buttons under the art, in the order of the panels: the button of a panel on the left sits on the
@@ -5305,14 +5308,17 @@ class MainWindow(QMainWindow):
         self._show_cover(pix, *self._np_words)
 
     def _show_album_line(self):
-        "The album and, under it, what the file is and how much levelling adds to it."
+        "The album, and under it, as a line of its own, what the file is and how much levelling adds to it."
         album, detail = self._np_album_text
         db = self.player.gain_db(self._current_path) if self._current_path else None
         if db is not None and abs(db) >= 0.05:
             gain = f"levelling {db:+.1f} dB".replace("-", "\u2212")
             detail = f"{detail} · {gain}" if detail else gain
-        self.np_album.setText(f"{album}\n{detail}" if album and detail else detail or album)
-        self.np_album.setToolTip(detail)
+        self.np_album.setText(album)
+        self.np_album.setToolTip("Show the songs on this album" if album else "")
+        self.np_detail.setText(detail)
+        self.np_detail.setToolTip(detail)
+        self.np_detail.setVisible(bool(detail))                # no empty line (and no gap) when the file says nothing
         self.np_cover.refresh()
 
     def _norm_changed(self, path):
@@ -5759,7 +5765,7 @@ class MainWindow(QMainWindow):
             self._set_setting("mini_player", True)
 
     def _update_transport_icons(self):
-        "The skips are painted chevrons; the play button is a record player that spins while music plays."
+        "The skips are painted chevrons; the play button is an orbit: a dot that circles while music plays."
         if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
             return                                                          # the accent is first set while building
         playing = getattr(self, "_is_playing", False)
@@ -5768,13 +5774,12 @@ class MainWindow(QMainWindow):
         if getattr(self, "mini", None) is not None:
             sets += ((self.mini.prev, self.mini.play, self.mini.next),)     # the mini wears the same buttons
         for prev, play, nxt in sets:
-            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26),
-                                            (play, "pause" if playing else "play", on_play, 38)):
+            for btn, kind, colour, side in ((prev, "prev", theme.TEXT, 26), (nxt, "next", theme.TEXT, 26)):
                 btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
                 btn.setIconSize(QSize(side, side))
             play.setAccessibleName("Play / pause")
-            if hasattr(play, "setPlaying"):
-                play.setPlaying(playing)
+            play.setInk(on_play)
+            play.setPlaying(playing)
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
