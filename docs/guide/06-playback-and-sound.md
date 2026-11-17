@@ -35,7 +35,7 @@ If a song has a matching `.lrc` file, for example one fetched with Get lyrics, t
 Otherwise you will see that no synced lyrics were found.
 
 
-If synced lyrics run ahead of the singer or behind, press **Earlier** or **Later** under the Lyrics heading: each press
+If synced lyrics run ahead of the singer or behind, press **Earlier** or **Later** under the lyrics: each press
 moves them a quarter of a second for this song, and the heading says by how much ("0.5 s earlier"). **Reset** puts the
 file's own timing back. Sleeve remembers the nudge per song in its own folder; the lyrics file is not changed.
 
