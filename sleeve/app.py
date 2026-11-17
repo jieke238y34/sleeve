@@ -145,6 +145,8 @@ from .presence import Presence
 from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
 from .session import Session
+from .sleeptimer import CHOICES as SLEEP_CHOICES
+from .sleeptimer import SleepTimer
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
@@ -808,6 +810,19 @@ class MainWindow(QMainWindow):
         self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
         self.setCentralWidget(root)
         self.status = self.statusBar()
+        self.sleep = SleepTimer(self.player, parent=self)      # pause after a while or at the end of the song
+        self.sleep_btn = QPushButton("")                      # the countdown; a click cancels it or adds time
+        self.sleep_btn.setObjectName("barfold")
+        self.sleep_btn.setToolTip("The sleep timer: click to cancel it or add time")
+        self.sleep_btn.clicked.connect(lambda: self._sleep_menu(self.sleep_btn))
+        self.sleep_btn.hide()
+        self.status.addPermanentWidget(self.sleep_btn)
+        self.sleep.changed.connect(self._sleep_shown)
+        for button in (self.play_btn, self.np_play):          # right-click a play button for the sleep timer
+            button.setToolTip("Play / pause (right-click: sleep timer)")
+            button.setContextMenuPolicy(Qt.CustomContextMenu)
+            button.customContextMenuRequested.connect(lambda _pos, b=button: self._sleep_menu(b))
+        self.sleep.slept.connect(lambda: self.status.showMessage("The sleep timer paused the music. Goodnight.", 10000))
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
         self.bar_fold_btn.setObjectName("barfold")
         self.bar_fold_btn.clicked.connect(self._toggle_bar)
@@ -835,6 +850,7 @@ class MainWindow(QMainWindow):
         p.durationChanged.connect(self._on_duration)
         p.playingChanged.connect(self._on_playing)
         p.trackChanged.connect(self._on_track)
+        p.trackChanged.connect(lambda _i, path: self.sleep.track_changed(path))
         p.queueChanged.connect(self._refresh_queue)
         p.volumeChanged.connect(self._on_volume)
         p.error.connect(lambda m: self.status.showMessage(m, 8000))
@@ -3284,7 +3300,7 @@ class MainWindow(QMainWindow):
         self.prev_btn = button("", "Previous", self.player.prev)
         self.play_btn = MoonButton()                          # a moon that waxes as the song goes: bright while playing
         self.play_btn.setObjectName("play")
-        self.play_btn.setToolTip("Play / pause")
+        self.play_btn.setToolTip("Play / pause (right-click: sleep timer)")
         self.play_btn.clicked.connect(self.player.toggle)
         self.next_btn = button("", "Next", self.player.next)
         self.stash_btn = button("", f"{labels.VERB} this song", self._stash_current)
@@ -4536,6 +4552,24 @@ class MainWindow(QMainWindow):
         menu = theme.Menu(self)
         self._playlist_choices(menu, [song])
         self._popup_menu(menu, self.add_pl_btn)
+
+    def _sleep_menu(self, widget):
+        "The sleep timer's choices: a while, or the end of this song; while one runs, cancel it or add time."
+        menu = theme.Menu(self)
+        if self.sleep.mode is not None:
+            menu.addAction("Cancel the sleep timer", self.sleep.cancel)
+            if self.sleep.mode == "time":
+                menu.addAction("15 more minutes", lambda: self.sleep.add_minutes(15))
+            menu.addSeparator()
+        for minutes, label in SLEEP_CHOICES:
+            menu.addAction(f"Sleep in {label}", lambda m=minutes: self.sleep.start_minutes(m))
+        end = menu.addAction("Sleep at the end of this song", self.sleep.start_end_of_song)
+        end.setEnabled(bool(self.player.current()))
+        self._popup_menu(menu, widget)
+
+    def _sleep_shown(self, text):
+        self.sleep_btn.setText(text)
+        self.sleep_btn.setVisible(bool(text))
 
     def _popup_menu(self, menu, widget):
         "Open a menu just above a widget (the player bar sits at the bottom of the window)."

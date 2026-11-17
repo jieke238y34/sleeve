@@ -179,6 +179,23 @@ def test_volume_is_clamped_and_reported(app):
     p.close()
 
 
+def test_the_master_fade_lowers_every_slot_without_touching_the_volume(app):
+    "The sleep timer's fade: a level over everything; the slider value (and what it reports) stays."
+    p = Player()
+    p.set_volume(80)
+    full = [slot.audio.volume() for slot in p._slots]
+    seen = []
+    p.volumeChanged.connect(seen.append)
+    p.set_master_fade(0.5)
+    assert [round(slot.audio.volume(), 4) for slot in p._slots] == [round(v * 0.5, 4) for v in full]
+    assert p.volume == 80 and seen == []
+    p.set_master_fade(7)                                  # clamped
+    assert [round(slot.audio.volume(), 4) for slot in p._slots] == [round(v, 4) for v in full]
+    p.pause()                                             # not playing: a no-op, never starts anything
+    assert not p.playing
+    p.close()
+
+
 def test_real_playback_plays_seeks_and_advances(app, tmp_path):
     a, b = silent_wav(tmp_path / "a.wav", 1.0), silent_wav(tmp_path / "b.wav", 3.0)
     p = Player()

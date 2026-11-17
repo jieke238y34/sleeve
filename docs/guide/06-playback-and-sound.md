@@ -6,6 +6,16 @@ The bar at the bottom controls playback: previous, play or pause, next, shuffle,
 volume. Click anywhere on a slider to jump there. Previous goes back to the song you actually played before the
 current one, also with shuffle on; a new queue starts that history over.
 
+The waveform strip (shown when the bar is folded away) works the same way: click or drag to seek. Point at it to
+see the time there.
+
+## Sleep timer
+
+Right-click either play button (on the bar or on Now Playing) and choose Sleep in 15, 30 or 45 minutes, 1 or 2 hours,
+or Sleep at the end of this song. The music fades out at the end and pauses; the next time you press play it is as
+loud as before. While it runs, a countdown sits at the bottom right of the window: click it to cancel or to add 15
+minutes. The timer is for this session only.
+
 ## The queue
 
 The Now Playing page shows what is coming. Use Play next or Add to queue from the Library menu to shape it.

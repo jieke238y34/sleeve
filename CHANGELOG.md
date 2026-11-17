@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Sleep timer**: right-click either play button for Sleep in 15, 30 or 45 minutes, 1 or 2 hours, or at the end of
+  this song. A timed sleep fades out over its last half minute, the end of a song over its last ten seconds, then the
+  music pauses and the level is put back for the next play (the volume slider is not touched). A countdown sits at the
+  bottom right; click it to cancel or add 15 minutes.
+
+### Changed
+
+- **Waveform bar**: the played part moves smoothly through each bar, pointing at it shows the time there and lights
+  what a click would skip, and a new song's shape grows in instead of snapping in.
+- **Less memory**: on a 7,049-song library the most Sleeve used while browsing every page and skipping songs went from
+  749 MB to about 460 MB. Covers are kept at the size the screen needs instead of a fixed 2x size (and grow on a
+  sharper screen), the album grid keeps fewer covers, the cover caches are smaller, and memory Sleeve frees is given
+  back to the system after a song change or a long scroll.
+- **Less CPU while playing** (about half): the waveform is drawn once and then revealed, and the look for a download
+  started elsewhere runs every 15 s instead of 3 s unless the Downloads page is open.
+
+### Fixed
+
+- Quitting could crash: the window was left for Python's shutdown, and Qt kept sending it events after Python let go.
+
 ## [0.3.3] - 2026-11-17
 
 ### Changed
