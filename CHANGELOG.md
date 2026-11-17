@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-17
+
 ### Changed
 
 - **Playlists first.** Stashed Songs, All songs, Recently played, Recently added, Most played and Never played are now
