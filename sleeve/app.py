@@ -260,6 +260,8 @@ KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN:
 SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
+LOG_POLL_MS, LOG_POLL_IDLE_MS = 3000, 15000          # how often to look for a dl.py started elsewhere: on the
+                                                     # Downloads page or while one runs, and otherwise
 ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
@@ -854,7 +856,7 @@ class MainWindow(QMainWindow):
         self.scrobbler.changed.connect(self._refresh_apis)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
-        self.log_timer.start(3000)
+        self.log_timer.start(LOG_POLL_MS)
 
         p.start()
         self.rescan()
@@ -5537,7 +5539,10 @@ class MainWindow(QMainWindow):
         except OSError:
             return
         self._set_external(fresh)
-        if not fresh:
+        item = self.nav.currentItem()
+        watching = fresh or (item is not None and item.text() == "Downloads")
+        self.log_timer.setInterval(LOG_POLL_MS if watching else LOG_POLL_IDLE_MS)    # a look at every process: rarely
+        if not fresh:                                                               # when nobody is watching
             return
         start = max(0, len(lines) - 60)                       # first look: the recent end of the log
         if self._ext_last is not None:
@@ -5746,6 +5751,8 @@ class MainWindow(QMainWindow):
             self._apply_layout()                              # and the small art steps aside for the big one
         if item is not None and item.text() == "Playlists":
             self._refresh_smart_now()                         # listening or stashing may have changed the smart lists
+        if item is not None and item.text() == "Downloads" and hasattr(self, "log_timer"):
+            self._poll_log()                                  # at once: away from this page it only looks every 15 s
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
