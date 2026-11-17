@@ -1247,8 +1247,9 @@ class MainWindow(QMainWindow):
         row.addWidget(lyrics_heading, 1)
         row.addWidget(hide_lyrics)
         lyrics_head.addLayout(row)
-        sub_row = QHBoxLayout()                             # "Synced to the song", and the timing nudge for it
-        sub_row.addWidget(self.lyrics_sub, 1)
+        lyrics_head.addWidget(self.lyrics_sub)
+        nudge_row = QHBoxLayout()                           # the timing nudge, under the words (the panel is narrow:
+        nudge_row.addStretch(1)                             # beside "Synced to the song" it squeezed that out of sight)
         self.lyrics_nudge = []
         for text, tip, steps in (("Earlier", "The lyrics come late: show each line a quarter second earlier", 1),
                                  ("Later", "The lyrics come early: show each line a quarter second later", -1),
@@ -1258,11 +1259,12 @@ class MainWindow(QMainWindow):
             b.setToolTip(tip)
             b.clicked.connect(lambda _=False, s=steps: self._nudge_lyrics(s))
             b.hide()
-            sub_row.addWidget(b)
+            nudge_row.addWidget(b)
             self.lyrics_nudge.append(b)
-        lyrics_head.addLayout(sub_row)
+        nudge_row.addStretch(1)
         ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
+        ll.addLayout(nudge_row)
         ll.addWidget(self.lyrics_empty, 1)
         self.lyrics_find_btn = QPushButton("Find lyrics online")
         self.lyrics_find_btn.setToolTip("Ask LRCLIB, Netease, Kugou, Genius and lyrics.ovh for this song and keep "
