@@ -16,6 +16,7 @@ order).
 ## Search
 
 Type in the search box to filter by title, artist, album or genre as you type. Clear the box to see everything again.
+If nothing matches exactly, songs a typo away are shown instead ("beatls" finds the Beatles); Ctrl+K does the same.
 
 ## Songs
 

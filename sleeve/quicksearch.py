@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import textfold, theme
+from . import fuzzy, textfold, theme
 
 MAX_RESULTS = 50
 MAX_OTHER = 8                  # playlists and folders shown at most, so songs never crowd them out
@@ -167,6 +167,10 @@ class QuickSearch(QDialog):
             return []
         songs = [(self._rank(words, query, t, a), a, t, s) for t, a, hay, s in self._index
                  if all(w in hay for w in words)]
+        self.forgiven = False
+        if not songs and any(fuzzy.allowed(w) for w in words):     # nothing as typed: then a typo away
+            songs = [(4, a, t, s) for t, a, hay, s in self._index if fuzzy.matches(words, hay.split())]
+            self.forgiven = bool(songs)
         songs.sort(key=lambda x: x[:3])
         named = []
         for kind, items in (("playlist", self._playlists), ("folder", self._folders)):
@@ -201,8 +205,10 @@ class QuickSearch(QDialog):
         self._move(1, row=-1)
         if res:
             self.list.scrollToTop()
-        self.status.setText("No matches" if text.strip() else "Type to search")
-        self.status.setVisible(not res)
+        forgiven = getattr(self, "forgiven", False)
+        self.status.setText("Close matches (nothing has exactly that)" if forgiven
+                            else "No matches" if text.strip() else "Type to search")
+        self.status.setVisible(not res or forgiven)
 
     # --- keyboard --------------------------------------------------------------------------------------------
 
