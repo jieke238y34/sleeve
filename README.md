@@ -20,8 +20,8 @@ On a wide window the playlist, the art and the lyrics sit side by side, and each
 
 ![Now Playing on a wide window: playlist, art and synced lyrics](docs/screenshots/now-playing-wide.png)
 
-> **Status: alpha (v0.3.0, "A new sleeve, same material").** Linux is the supported platform. Settings shows the version with its
-> build number, for example `0.3.0 · build 247`, so a bug report can name the exact build. Back up your music before using the tag editor, and
+> **Status: alpha (v0.3.3).** Linux is the supported platform. Settings shows the version with its
+> build number, for example `0.3.3 · build 430`, so a bug report can name the exact build. Back up your music before using the tag editor, and
 > please report anything odd. Much of the code was written with an AI coding assistant under the author's direction,
 > and is covered by automated tests, linting and security scanning.
 
@@ -347,11 +347,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 
 ## Roadmap and not yet
 
-These are not in v0.3.0:
+These are not in v0.3.3:
 
 - A tag editor for the Health page's problems (today it shows them and starts the matching `dl.py` job).
-- Crossfade, an equaliser and other sound effects (playback is gapless, nothing more).
-- Smart playlists, web radio and podcasts; ListenBrainz, and Last.fm loved-song sync (scrobbling is in).
+- An equaliser and other sound effects (playback is gapless, with an optional crossfade).
+- Smart playlists you define with your own rules (the lists that fill themselves are in), web radio and podcasts; ListenBrainz, and Last.fm loved-song sync (scrobbling is in).
 - A Windows build and installer.
 - A Fedora package (the RPM spec is in [packaging/](packaging/README.md) but nothing is published).
 - Publishing to PyPI.

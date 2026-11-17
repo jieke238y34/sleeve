@@ -17,7 +17,7 @@ sleeve --toggle | --play-pause | --next | --previous
 | `sleeve` | Opens the window. If Sleeve is already open, that window comes to the front and this command quits. |
 | `sleeve --dl PATH` | Uses the `dl.py` at `PATH` instead of finding one. See [Downloads](04-downloads.md). |
 | `sleeve --preview` | Opens a second, separate copy next to one that is playing, with its own window titled "Sleeve (preview)" and its own media-key name. Useful for trying a build without stopping the music. |
-| `sleeve --version` | Prints the version and build, for example `sleeve 0.3.0+298.00d224d`, then exits. |
+| `sleeve --version` | Prints the version and build, for example `sleeve 0.3.3+430.a1b2c3d`, then exits. |
 | `sleeve --help` | Prints the options, then exits. |
 
 ## Control a running Sleeve
