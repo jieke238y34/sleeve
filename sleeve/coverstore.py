@@ -17,8 +17,8 @@ from . import art
 IMAGE_MAX = 2048      # a picture bigger than this is scaled down once on decode: past every viewable square
 KEEP_IMAGES = 256     # decoded pictures kept when the byte budget allows more; the budget is the real limit
 KEEP_PIX = 512        # resized pixmaps kept (per file and size): the scaled results are what paint
-IMAGE_BUDGET = 96 * 1024 * 1024    # decoded pictures may claim this much memory, then the oldest give way
-PIX_BUDGET = 128 * 1024 * 1024     # the same room for the results the views paint
+IMAGE_BUDGET = 48 * 1024 * 1024    # decoded pictures may claim this much memory, then the oldest give way
+PIX_BUDGET = 64 * 1024 * 1024     # the same room for the results the views paint
 
 
 def _mtime(path):

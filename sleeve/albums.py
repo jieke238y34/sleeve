@@ -2,11 +2,12 @@
 
 import hashlib
 import html
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -25,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import coverstore, theme
+from . import coverstore, memtrim, theme
 from .smoothscroll import SmoothScroll
 
 VARIOUS = "Various artists"
@@ -33,10 +34,19 @@ UNKNOWN = "Unknown"
 TILE_MIN, TILE_WANT, TILE_MAX = 120, 160, 220     # cover size in pixels: responsive between the two ends
 GAP = 14                                          # space around a tile
 TEXT_H = 40                                       # two lines of text under the cover
-SOURCE_SIDE = TILE_MAX * 2                        # covers are kept at this size (sharp on a 2x screen)
+SOURCE_SIDE = TILE_MAX * 2                        # the biggest a kept cover gets (a 2x screen); see source_side_for
+DETAIL_SIDE = 240                                 # the cover in the album view, beside its songs
 COVER_TRIES = 6                                   # songs of one album whose tag is tried before giving up
-KEEP_SOURCES, KEEP_TILES = 320, 320                 # covers and tiles kept in memory at once (the oldest go first)
+KEEP_SOURCES, KEEP_TILES = 120, 120                 # covers and tiles kept at least (the oldest go first); a big window
+                                                    # that shows more than half of this keeps twice what it shows
 PER_TICK = 4                                        # covers loaded per 20 ms tick, like the queue thumbnails
+
+
+def source_side_for(ratio):
+    """The size covers are kept at for a screen of this pixel ratio: the biggest tile or the album view's cover, in
+    device pixels, on a 32-pixel step. 256 on a normal screen, where a fixed 2x size took four times the memory."""
+    side = math.ceil(max(TILE_MAX, DETAIL_SIDE) * max(1.0, ratio) / 32) * 32
+    return min(max(side, 256), max(SOURCE_SIDE, 256))
 
 
 def fmt_time(seconds):
@@ -188,6 +198,7 @@ class AlbumGrid(QListWidget):
         if self._storing:                         # whose `ready` says when a cover on the road has landed
             coverstore.shared().ready.connect(self._cover_ready)
         self.tile = TILE_WANT
+        self.source_side = source_side_for(self.devicePixelRatioF())    # covers are kept at this many pixels
         self._albums = []
         self._sources = {}            # album key -> QPixmap of the real cover, or None (use the placeholder)
         self._tiles = {}              # album key -> rounded pixmap at the current tile size
@@ -272,12 +283,13 @@ class AlbumGrid(QListWidget):
         menu.addAction("Add to queue").triggered.connect(lambda: self.enqueueAlbum.emit(album.paths))
         return menu
 
-    def cover_pixmap(self, album, size=SOURCE_SIDE):
+    def cover_pixmap(self, album, size=None):
         "The cover of an album at `size`, read now if it was not yet (the detail view opens on click and needs it)."
         if self._storing:
             self._read_detail_source(album)
         else:
             self._ensure_source(album)
+        size = size or self.source_side
         src = self._sources.get(album.key)
         if src is None:
             return placeholder_pixmap(album.name, size)
@@ -290,7 +302,7 @@ class AlbumGrid(QListWidget):
             src = self._sources.get(album.key)
             side = self.tile
             if src is None:
-                src = placeholder_pixmap(album.name, SOURCE_SIDE)
+                src = placeholder_pixmap(album.name, self.source_side)
             pix = theme.rounded_pixmap(src, side, max(8, side // 14))
             self._tiles[album.key] = pix
             self._trim()
@@ -300,12 +312,24 @@ class AlbumGrid(QListWidget):
         """Forget the oldest covers beyond the limit; one whose decode is still on the road keeps its place, and
         the song asks (`_tries`) are never forgotten at all: starting them over would only ask for the same
         decodes again."""
-        for cache, limit in ((self._sources, KEEP_SOURCES), (self._tiles, KEEP_TILES)):
+        shown = self._shown_tiles()
+        for cache, limit in ((self._sources, max(KEEP_SOURCES, 2 * shown)), (self._tiles, max(KEEP_TILES, 2 * shown))):
             while len(cache) > limit:
                 oldest = next((k for k in cache if k not in self._waiting), None)
                 if oldest is None:
                     break                          # everything kept here is waiting for its decode: keep the slots
                 cache.pop(oldest)
+                memtrim.soon()                     # what the dropped covers held goes back to the system
+
+    def _shown_tiles(self):
+        "About how many tiles the window shows at once (a row below as well), so a huge screen never thrashes."
+        if not self.isVisible():
+            return 0
+        grid = self.gridSize()
+        if grid.width() <= 0 or grid.height() <= 0:
+            return 0
+        port = self.viewport().size()
+        return max(1, port.width() // grid.width()) * (port.height() // grid.height() + 2)
 
     def _put_source(self, key, src):
         self._sources[key] = src
@@ -385,6 +409,23 @@ class AlbumGrid(QListWidget):
 
     def showEvent(self, ev):
         super().showEvent(ev)
+        self._fit_source_side()
+        self._kick()
+
+    def event(self, ev):
+        if ev.type() == QEvent.DevicePixelRatioChange:
+            self._fit_source_side()                   # moved to a sharper screen (a TV at 1.7x): bigger covers
+        return super().event(ev)
+
+    def _fit_source_side(self):
+        "Keep covers at the size this screen needs; only ever grow, and then ask every cover again at the new size."
+        side = source_side_for(self.devicePixelRatioF())
+        if side <= self.source_side:
+            return
+        self.source_side = side
+        for cache in (self._sources, self._tiles, self._waiting, self._parts, self._tries):
+            cache.clear()
+        self.viewport().update()
         self._kick()
 
     # -- lazy covers
@@ -411,7 +452,7 @@ class AlbumGrid(QListWidget):
         pending = []
         for i, s in enumerate(songs, 0):
             self._tries[album.key] = i + 1
-            pix = store.pixmap(s.path, SOURCE_SIDE)
+            pix = store.pixmap(s.path, self.source_side)
             if pix is not None:
                 self._put_source(album.key, pix)
                 return
@@ -433,7 +474,7 @@ class AlbumGrid(QListWidget):
         store = coverstore.shared()
         pending = []
         for s in album.songs:
-            pix = store.pixmap(s.path, SOURCE_SIDE)
+            pix = store.pixmap(s.path, self.source_side)
             if pix is not None:
                 self._put_source(album.key, pix)
                 return

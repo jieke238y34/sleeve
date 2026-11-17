@@ -11,6 +11,7 @@ import time
 from collections import Counter, OrderedDict
 from pathlib import Path
 
+import shiboken6
 from PySide6.QtCore import (
     QAbstractTableModel,
     QElapsedTimer,
@@ -108,6 +109,7 @@ from . import (
     loudness,
     lrc,
     lyrics_sources,
+    memtrim,
     musicbrainz,
     myplaylists,
     navidrome,
@@ -5975,6 +5977,7 @@ class MainWindow(QMainWindow):
         self._update_presence()
 
     def _on_track(self, index, path):
+        memtrim.soon()                                      # the last song's big cover pictures go back to the system
         self._refresh_queue()
         self._finish_listen()
         self._current_path = path
@@ -6337,4 +6340,6 @@ def main(argv=None):
     attach_media_keys(win, app, suffix="sleeve.preview" if args.preview else "sleeve")
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()
-    return app.exec()
+    code = app.exec()
+    shiboken6.delete(win)          # the window and its event filters go while Qt and Python are both whole: left to
+    return code                    # the interpreter's shutdown, Qt sent them events after Python let go (a crash)
