@@ -1,7 +1,8 @@
 """The play / pause button: a moon that waxes as the song goes.
 
-The moon starts new when a song begins and fills to a full moon as it ends, so the button shows how far along you are.
-Playing, it is bright; paused, it is dimmed. There is no play triangle or pause bars. It animates only the change
+The moon starts new when a song begins and fills to a full moon as it ends, so the button shows how far along you are:
+a dark disc with the lit part in cream (on a black accent, a grey disc with a white lit part). Playing, it is at full
+strength; paused, it is dimmed. There is no play triangle or pause bars. It animates only the change
 between the two states, so an idle button costs nothing.
 """
 
@@ -16,7 +17,8 @@ SETTLE_MS = 320                    # how long dimming or brightening takes
 
 CENTRE = QPointF(0.5, 0.5)
 RADIUS = 0.27                      # the moon, as a fraction of the button
-PAUSED_LIT, PAUSED_DARK = 0.55, 0.12    # how strong the lit part and the unlit part of the disc are when paused
+CREAM = QColor("#fff6dc")           # the lit part of the moon on an accent that takes dark ink
+PAUSED_FADE = 0.5                  # how strong the whole moon is when paused (1 while playing)
 
 
 def lit_path(fraction):
@@ -103,15 +105,15 @@ class MoonButton(QPushButton):
         p.setRenderHint(QPainter.Antialiasing)
         p.translate((self.width() - side) / 2, (self.height() - side) / 2)
         p.scale(side, side)
-        mix = self._mix
-        unlit, lit = PAUSED_DARK + (0.22 - PAUSED_DARK) * mix, PAUSED_LIT + (1.0 - PAUSED_LIT) * mix
+        fade = PAUSED_FADE + (1.0 - PAUSED_FADE) * self._mix
+        light_ink = self._ink.lightness() >= 128             # a black accent takes white ink: grey disc, white light
+        shadow = QColor(self._ink)
+        shadow.setAlphaF((0.26 if light_ink else 1.0) * fade)
+        lit = QColor(self._ink if light_ink else CREAM)
+        lit.setAlphaF(fade)
         p.setPen(Qt.NoPen)
-        dark = QColor(self._ink)
-        dark.setAlphaF(unlit)
-        p.setBrush(dark)
-        p.drawEllipse(CENTRE, RADIUS, RADIUS)                # the whole disc, faint: the part not yet lit
-        light = QColor(self._ink)
-        light.setAlphaF(lit)
-        p.setBrush(light)
+        p.setBrush(shadow)
+        p.drawEllipse(CENTRE, RADIUS, RADIUS)                # the whole disc: the part not yet lit is its shadow
+        p.setBrush(lit)
         p.drawPath(lit_path(self._progress))
         p.end()
