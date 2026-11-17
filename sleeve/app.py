@@ -108,6 +108,7 @@ from . import (
     library,
     loudness,
     lrc,
+    lyricoffset,
     lyrics_sources,
     memtrim,
     musicbrainz,
@@ -678,6 +679,7 @@ class MainWindow(QMainWindow):
         self._loud_timer.setInterval(400)
         self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
+        self.lyric_offsets = lyricoffset.LyricOffsets(Path(self.settings.file).parent / "lyric-offsets.json")
         SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
@@ -1245,7 +1247,20 @@ class MainWindow(QMainWindow):
         row.addWidget(lyrics_heading, 1)
         row.addWidget(hide_lyrics)
         lyrics_head.addLayout(row)
-        lyrics_head.addWidget(self.lyrics_sub)
+        sub_row = QHBoxLayout()                             # "Synced to the song", and the timing nudge for it
+        sub_row.addWidget(self.lyrics_sub, 1)
+        self.lyrics_nudge = []
+        for text, tip, steps in (("Earlier", "The lyrics come late: show each line a quarter second earlier", 1),
+                                 ("Later", "The lyrics come early: show each line a quarter second later", -1),
+                                 ("Reset", "Back to the timing in the lyrics file", 0)):
+            b = QPushButton(text)
+            b.setObjectName("chip")
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, s=steps: self._nudge_lyrics(s))
+            b.hide()
+            sub_row.addWidget(b)
+            self.lyrics_nudge.append(b)
+        lyrics_head.addLayout(sub_row)
         ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
         ll.addWidget(self.lyrics_empty, 1)
@@ -6035,10 +6050,31 @@ class MainWindow(QMainWindow):
             if not self._dragging:
                 self._set_slider_silently(self.seek, int(pos * 10))
         if self._lyrics:
-            i = lrc.current_index(self._lyrics, pos)
-            if i >= 0 and i != self._lyric_row:
-                self._mark_lyric(i)
-                self.lyrics._smooth.center_on(i)
+            self._follow_lyrics(pos)
+
+    def _follow_lyrics(self, pos):
+        "Light the line being sung at `pos`, with this song's timing nudge (lyrics that come early or late)."
+        i = lrc.current_index(self._lyrics, pos + self.lyric_offsets.get(self._current_path))
+        if i >= 0 and i != self._lyric_row:
+            self._mark_lyric(i)
+            self.lyrics._smooth.center_on(i)
+
+    def _nudge_lyrics(self, steps):
+        "Earlier (+1), Later (-1) or Reset (0) for the lyrics of the song playing."
+        path = self._current_path
+        if not path:
+            return
+        if steps:
+            self.lyric_offsets.nudge(path, steps)
+        else:
+            self.lyric_offsets.reset(path)
+        try:
+            self.lyric_offsets.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save the lyrics timing: {e}", 6000)
+        self._set_lyrics_state()
+        if self._lyrics:
+            self._follow_lyrics(self._pos)
 
     def _on_duration(self, dur):
         self._dur = dur
@@ -6141,8 +6177,15 @@ class MainWindow(QMainWindow):
         "The lyrics list when there are lyrics, otherwise a plain message."
         has = self.lyrics.count() > 0
         if hasattr(self, "lyrics_sub"):
-            self.lyrics_sub.setText(("Synced to the song" if self._lyric_synced else "Not synced") if has
-                                    else "No lyrics found")
+            nudge = (lyricoffset.describe(self.lyric_offsets.get(getattr(self, "_current_path", "")))
+                     if self._lyric_synced else "")
+            self.lyrics_sub.setText(("Synced to the song" + (f" · {nudge}" if nudge else "") if self._lyric_synced
+                                     else "Not synced") if has else "No lyrics found")
+            synced = has and self._lyric_synced
+            earlier, later, reset = self.lyrics_nudge
+            earlier.setVisible(synced)
+            later.setVisible(synced)
+            reset.setVisible(synced and bool(nudge))
         self.lyrics.setVisible(has)
         self.lyrics_empty.setVisible(not has)
         self.lyrics_find_btn.setVisible(not has and self._lyrics_can_look())
