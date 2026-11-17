@@ -106,6 +106,7 @@ class MiniWindow(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             controls.addWidget(btn)
         self.play.setObjectName("play")                     # the same round accent button the player bar has
+        self.play.setFixedSize(30, 30)                      # this window has its own style sheet: the face is set below
         controls.addStretch(1)
         self.volume = QSlider(Qt.Horizontal)
         self.volume.setRange(0, 100)
@@ -144,6 +145,8 @@ class MiniWindow(QWidget):
 
     def set_accent(self, colour):
         self.seek.set_accent(colour)
+        self.play.setStyleSheet(f"QPushButton {{ background: {colour}; border: none; border-radius: 15px; }}")
+        self.play.setInk(theme.on_accent(colour, theme.BG))   # dark on a bright face, white on a dark one
 
     def set_playing(self, on):
         self._is_playing = bool(on)                         # the icons come from the main window's repaint

@@ -5873,7 +5873,8 @@ class MainWindow(QMainWindow):
                 btn.setIcon(QIcon(theme.transport_icon(kind, colour, side)))
                 btn.setIconSize(QSize(side, side))
             play.setAccessibleName("Play / pause")
-            play.setInk(on_play)
+            if play is not getattr(getattr(self, "mini", None), "play", None):
+                play.setInk(on_play)                                   # the mini sets its own, for its own face
             play.setPlaying(playing)
             play.setProgress(self._moon_phase())
 
