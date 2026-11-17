@@ -8,9 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- The **play button is an orbit, not a record player**: a dot circles a ring while music plays (with a small dot in the
-  middle), and glides to the top and rests, with the middle empty, when paused. On the player bar, Now Playing and the
-  mini player. It only animates while playing and on screen.
+- The **play button is a moon, not a record player**: a moon that waxes from new to full as the song goes, so it also
+  shows how far along you are. It is bright with a thin halo while playing and dimmed, without the halo, when paused (no
+  play triangle or pause bars). On the player bar, Now Playing and the mini player. It only animates the change between
+  playing and paused.
 
 ### Fixed
 

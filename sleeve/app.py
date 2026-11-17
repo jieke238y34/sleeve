@@ -135,9 +135,9 @@ from .flow import FlowLayout
 from .history import PERIODS, History, counts_as_played
 from .lyricswin import LyricsWindow
 from .mini import MiniWindow
+from .moonbutton import MoonButton
 from .mpris import Mpris
 from .namedialog import NameDialog
-from .orbitbutton import OrbitButton
 from .player import REPEAT_ALL, REPEAT_ONE, Player
 from .presence import Presence
 from .presence import activity as listening_activity
@@ -1255,7 +1255,7 @@ class MainWindow(QMainWindow):
         self.np_cover.set_info((self.np_title, self.np_artist, self.np_album, self.np_detail),
                                self._np_buttons())   # ride on the cover
         self.np_prev, self.np_next = QPushButton(""), QPushButton("")
-        self.np_play = OrbitButton()                             # a dot orbiting a ring, bigger on this page
+        self.np_play = MoonButton()                              # a moon that waxes with the song, bigger on this page
         for b, tip, slot, name in ((self.np_prev, "Previous", self.player.prev, "skip"),
                                    (self.np_play, "Play / pause", self.player.toggle, "playbig"),
                                    (self.np_next, "Next", self.player.next, "skip")):
@@ -3260,7 +3260,7 @@ class MainWindow(QMainWindow):
             return b
         self.shuffle_btn = button("", "Shuffle: off", self.player.set_shuffle, checkable=True)
         self.prev_btn = button("", "Previous", self.player.prev)
-        self.play_btn = OrbitButton()                         # a dot orbiting a ring: it circles while music plays
+        self.play_btn = MoonButton()                          # a moon that waxes as the song goes: bright while playing
         self.play_btn.setObjectName("play")
         self.play_btn.setToolTip("Play / pause")
         self.play_btn.clicked.connect(self.player.toggle)
@@ -5775,7 +5775,7 @@ class MainWindow(QMainWindow):
             self._set_setting("mini_player", True)
 
     def _update_transport_icons(self):
-        "The skips are painted chevrons; the play button is an orbit: a dot that circles while music plays."
+        "The skips are painted chevrons; the play button is a moon: bright while playing, waxing with the song."
         if not hasattr(self, "next_btn") or not hasattr(self, "np_next"):
             return                                                          # the accent is first set while building
         playing = getattr(self, "_is_playing", False)
@@ -5790,6 +5790,7 @@ class MainWindow(QMainWindow):
             play.setAccessibleName("Play / pause")
             play.setInk(on_play)
             play.setPlaying(playing)
+            play.setProgress(self._moon_phase())
 
     def _update_toggle_icons(self, *_):
         "Shuffle and repeat show their state in the icon itself: muted when off, accent colour with a dot when on."
@@ -5826,6 +5827,17 @@ class MainWindow(QMainWindow):
             target = max(0.0, self._pos + delta)
             self._seek_now(min(target, self._dur) if self._dur > 0 else target)
 
+    def _moon_phase(self):
+        "How far through the song, 0..1: the phase of the moon on the play buttons."
+        return min(1.0, self._pos / self._dur) if self._dur > 0 else 0.0
+
+    def _show_moon_phase(self):
+        buttons = [self.play_btn, self.np_play]
+        if getattr(self, "mini", None) is not None:
+            buttons.append(self.mini.play)
+        for button in buttons:
+            button.setProgress(self._moon_phase())
+
     def _on_position(self, pos):
         "The player reports about ten times a second; the seek bar only needs to move about five times a second."
         jumped = abs(pos - self._pos) > 1.0                  # a seek or a new song: show it at once
@@ -5833,6 +5845,7 @@ class MainWindow(QMainWindow):
         if not seeked:
             self._count_listening(self._pos, pos)           # the report right after a seek is not listening
         self._pos = pos
+        self._show_moon_phase()
         if self.wave_strip.isVisible():
             self.wave.set_progress(pos, self._dur)
             if jumped or self._tick.elapsed() >= POSITION_REFRESH_MS:
@@ -5854,6 +5867,7 @@ class MainWindow(QMainWindow):
 
     def _on_duration(self, dur):
         self._dur = dur
+        self._show_moon_phase()
         self.wave_dur.setText(fmt_time(dur))
         self.wave.set_progress(self._pos, dur)
         if self._cover_screen is not None:

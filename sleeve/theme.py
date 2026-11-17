@@ -316,8 +316,8 @@ STYLE = build_style()
 
 def transport_icon(kind, color, size=24):
     """A painted icon for the skip buttons ("prev" or "next"), drawn in `color` and crisp at any scale: two chevrons
-    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the orbit
-    button in orbitbutton.py.)"""
+    with a fading trail behind the leading one, so they point the way the music moves. (Play and pause are the moon
+    button in moonbutton.py.)"""
     scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
