@@ -65,21 +65,26 @@ def test_the_art_never_starts_above_the_top_of_the_playlist(qapp, cfg, monkeypat
         win.close()
 
 
-def test_the_art_is_centered_over_the_window_whichever_panels_are_open(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+def test_the_art_is_centered_over_the_transport_buttons_whichever_panels_are_open(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
     win = make_window(qapp, cfg, monkeypatch, tmp_path)
     try:
         open_page(qapp, win, (1800, 800))
-        page_centre = win.mapToGlobal(QPoint(0, 0)).x() + win.width() / 2          # where the transport buttons are
-        for queue, lyrics in ((True, True), (True, False), (False, True), (False, False)):
-            win.tab_queue.setChecked(queue)
-            win.tab_lyrics.setChecked(lyrics)
-            for _ in range(4):
-                qapp.processEvents()
-            side = win.np_cover.side()
-            art_centre = (win.np_cover.mapToGlobal(QPoint(0, 0)).x() + win.np_cover.width() // 2
-                          - win.np_cover.x_shift)
-            assert abs(art_centre - page_centre) <= 2, (queue, lyrics, art_centre, page_centre)
-            assert side >= 300
+        for legacy in (False, True):                       # the bar sits under the pages, or spans the whole window
+            win.settings.set("legacy_layout", legacy)
+            win._apply_layout()
+            win._set_setting("keep_bar_on_np", True)
+            win._apply_bar_for_page()
+            for queue, lyrics in ((True, True), (True, False), (False, True), (False, False)):
+                win.tab_queue.setChecked(queue)
+                win.tab_lyrics.setChecked(lyrics)
+                for _ in range(4):
+                    qapp.processEvents()
+                side = win.np_cover.side()
+                art_centre = (win.np_cover.mapToGlobal(QPoint(0, 0)).x() + win.np_cover.width() // 2
+                              - win.np_cover.x_shift)
+                bar_centre = win.play_btn.mapToGlobal(QPoint(0, 0)).x() + win.play_btn.width() // 2
+                assert abs(art_centre - bar_centre) <= 3, (legacy, queue, lyrics, art_centre, bar_centre)
+                assert side >= 300
     finally:
         win.close()
 

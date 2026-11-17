@@ -5325,14 +5325,14 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._np_apply_panels)          # after the layout settles: it needs real widths
 
     def _np_balance(self):
-        "Keep the cover centered over the whole window, in line with the transport buttons: while a panel shows, the"
+        "Keep the cover centered in line with the transport buttons: while a panel shows, the"
         " square and its words avert to that line by mirroring half of the panel's width (spacing and margins"
         " included); nothing when hidden."
         " On too-narrow windows the mirror is cut back, so the square itself is never the thing that gives."
         left, right = self._np_side_width("left"), self._np_side_width("right")
         limit = max(0, (self.np_cover.width() - 360) // 2)
-        sidebar = self.nav.width() + self.splitter.handleWidth()
-        wanted = (left - right) // 2 + sidebar // 2        # over the window's middle, where the transport buttons are
+        sidebar = self.nav.width() + self.splitter.handleWidth() if self.settings.legacy_layout else 0
+        wanted = (left - right) // 2 + sidebar // 2        # over the transport buttons: the bar spans the whole window
         self.np_cover.set_shift(max(-limit, min(limit, wanted)))
         inset = 0                                            # the art never starts above the top of the list beside it
         for panel, view in ((self.np_side, self.queue_list), (self.np_lyrics_side, self.lyrics)):
