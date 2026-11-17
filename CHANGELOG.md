@@ -17,6 +17,9 @@ All notable changes to this project are documented here. The format follows
 - Now Playing: with the player bar under the pages, the album art sat left of the bar's buttons whenever only one side
   panel was open; it is now centered over them.
 - Settings: the *Play through* drop-down is no longer squeezed in the smallest window.
+- Now Playing: a very long title, artist or album with no spaces (a URL, `snake_case_words`) now wraps instead of running
+  past its label, silly lengths are cut with an … (the full text stays in the tooltip), and on a small window the words
+  can no longer push the round buttons off the page.
 - Now Playing: the album and the file details (format, sample rate, levelling) are two separate lines. Only the album
   underlines and opens the album; the details are plain text with their own hover label.
 

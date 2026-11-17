@@ -110,6 +110,9 @@ class CoverView(QWidget):
         cx = wid // 2 - self.x_shift                        # the group's center, averted to the page center
         # beside a panel the art starts level with the top of its list; with no panel it is centered in the page
         self._art_y = self.top_inset if self.top_inset > 0 else max(0, (room - side - info) // 2)
+        spill = self._art_y + side + info - hei             # taller than what is left below the line: slide up into
+        if spill > 0:                                       # the room above it rather than off the page
+            self._art_y = max(0, self._art_y - spill)
         y = self._art_y + side + 26
         shown = self._tr_on
         span -= 12                                          # the words keep the same edge room as before

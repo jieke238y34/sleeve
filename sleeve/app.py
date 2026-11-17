@@ -3,6 +3,7 @@ import argparse
 import dataclasses
 import os
 import random
+import re
 import secrets
 import shutil
 import sys
@@ -263,6 +264,15 @@ HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe 
 LIKED = f"{labels.MARK} {labels.SONGS}"
 RECENT = "Recently played"
 SMART_ORDERED = (RECENT, *smart.NAMES)                     # lists whose order is their point (kept until a header)
+
+
+def breakable(text, limit=100, run=14):
+    """`text` ready for a wrapping label: cut to `limit` characters with an … (an absurdly long tag would otherwise push
+    the buttons off the page), with a zero-width space after every `run` characters that have no break in them (a title
+    like a URL or one long_snake_case_word cannot wrap by itself and would run past the label's edge)."""
+    if len(text) > limit:
+        text = text[:limit - 1].rstrip() + "…"
+    return re.sub(rf"(\S{{{run}}})(?=\S)", "\\1\u200b", text)
 
 
 def fmt_time(seconds):
@@ -5287,9 +5297,9 @@ class MainWindow(QMainWindow):
 
     def _show_words(self, title, artist, album, detail=""):
         "The words of the Now Playing page for one song; set on their own while its cover is still being decoded."
-        self.np_title.setText(title or "Nothing playing")
+        self.np_title.setText(breakable(title or "Nothing playing"))
         self._np_who = (artist or "", album or "")
-        self.np_artist.setText(artists.display(artist))
+        self.np_artist.setText(breakable(artists.display(artist)))
         self._np_album_text = (album or "", detail or "")
         self._show_album_line()
         if getattr(self, "mini", None) is not None:
@@ -5314,9 +5324,9 @@ class MainWindow(QMainWindow):
         if db is not None and abs(db) >= 0.05:
             gain = f"levelling {db:+.1f} dB".replace("-", "\u2212")
             detail = f"{detail} · {gain}" if detail else gain
-        self.np_album.setText(album)
+        self.np_album.setText(breakable(album))
         self.np_album.setToolTip("Show the songs on this album" if album else "")
-        self.np_detail.setText(detail)
+        self.np_detail.setText(breakable(detail))
         self.np_detail.setToolTip(detail)
         self.np_detail.setVisible(bool(detail))                # no empty line (and no gap) when the file says nothing
         self.np_cover.refresh()

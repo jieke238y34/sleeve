@@ -11,6 +11,7 @@ from test_app import cfg, qapp, wait  # noqa: E402,F401  (fixtures)
 from test_stash import make_window  # noqa: E402
 
 from sleeve import artists, library, theme  # noqa: E402
+from sleeve.app import breakable  # noqa: E402
 
 
 def solid(w, h, colour):
@@ -114,8 +115,8 @@ def test_now_playing_keeps_a_big_cover_with_messy_tags(qapp, cfg, monkeypatch, t
         win.show_page("Now Playing")
         win._show_cover(solid(300, 300, QColor("#aa3344")), title, artist, album)
         wait(qapp, lambda: False, 0.1)
-        assert win.np_title.text() == (title or "Nothing playing")
-        assert win.np_artist.text() == artists.display(artist)
+        assert win.np_title.text() == breakable(title or "Nothing playing")      # cut and made wrappable, not raw
+        assert win.np_artist.text() == breakable(artists.display(artist))
         assert win.np_cover.side() > 100
     finally:
         win.close()
