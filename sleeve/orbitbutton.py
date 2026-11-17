@@ -12,7 +12,7 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QPushButton
 
 INK = QColor("#15131d")            # the same dark as the window, on the accent-coloured button (see setInk)
-SECONDS_PER_TURN = 2.4             # a calm lap
+SECONDS_PER_TURN = 3.2             # a calm lap
 FRAME_MS = 40                      # 25 frames a second is plenty for a 56 px button
 SETTLE_MS = 450                    # how long the dot takes to glide to the top, and the middle dot to appear or go
 
