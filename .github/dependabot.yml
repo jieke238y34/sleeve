@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      codeql-action:                        # init and analyze must be on the same version, so they are bumped together
+        patterns:
+          - "github/codeql-action/*"
   - package-ecosystem: pip
     directory: /
     schedule:
