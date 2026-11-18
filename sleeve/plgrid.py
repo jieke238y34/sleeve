@@ -309,19 +309,19 @@ class PlaylistGrid(AlbumGrid):
             self._put_source(tile.key, load_cover(tile, self.cover_loader))
             return
         if tile.new:
-            self._put_source(tile.key, new_tile_pixmap(SOURCE_SIDE))
+            self._put_source(tile.key, new_tile_pixmap(self.source_side))
             return
         if tile.image:
             pix = QPixmap(tile.image)
             if not pix.isNull():
-                self._put_source(tile.key, pix.scaled(SOURCE_SIDE, SOURCE_SIDE,
+                self._put_source(tile.key, pix.scaled(self.source_side, self.source_side,
                                                       Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
                 return
         store = coverstore.shared()               # the mosaic: every piece is the store's copy of one file
         covers = self._parts.pop(tile.key, [])
         pending, seen = [], set()
         for path in self._retry.pop(tile.key, []):    # what was pending when this tile last waited has landed by now:
-            pix = store.pixmap(path, SOURCE_SIDE)     # the walk below starts after those files, so take them here
+            pix = store.pixmap(path, self.source_side)     # the walk below starts after those files, so take them here
             if pix is not None:
                 covers.append(pix)
             elif store.state(path) == "pending":
@@ -334,7 +334,7 @@ class PlaylistGrid(AlbumGrid):
                 continue
             seen.add(album)
             self._tries[tile.key] = i + 1
-            pix = store.pixmap(s.path, SOURCE_SIDE)
+            pix = store.pixmap(s.path, self.source_side)
             if pix is not None:
                 covers.append(pix)
                 if len(covers) >= 4:
@@ -346,7 +346,7 @@ class PlaylistGrid(AlbumGrid):
             self._retry[tile.key] = list(pending)
             self._parts[tile.key] = covers        # the pieces already in are kept while the rest decode
         elif covers:
-            self._put_source(tile.key, mosaic(covers[:4], SOURCE_SIDE))
+            self._put_source(tile.key, mosaic(covers[:4], self.source_side))
         else:
             self._put_source(tile.key, None)      # none of these files has a cover: the generated one shows
 
@@ -361,7 +361,7 @@ class PlaylistGrid(AlbumGrid):
                 pix = new_tile_pixmap(side)                   # drawn at the tile size in today's accent colour
             else:
                 if src is None:
-                    src = placeholder_pixmap(tile.name, SOURCE_SIDE)
+                    src = placeholder_pixmap(tile.name, self.source_side)
                 pix = theme.rounded_pixmap(src, side, max(8, side // 14))
             pix = glass(pix, band_height(side))
             write_names(pix, tile, self.font(), band_height(side), side)

@@ -93,6 +93,7 @@ class Player(QObject):
         self.playing, self.position, self.duration, self.volume = False, 0.0, 0.0, 80
         self.max_gain, self.gapless = MAX_GAIN, True
         self.crossfade = 0                      # seconds the end of a song and the start of the next overlap; 0: none
+        self.master_fade = 1.0                  # a level over everything, 0 to 1: the sleep timer's fade-out
         self._fade = None                       # (started at, milliseconds, the player coming in, the one going out)
         self._fade_timer = QTimer(self)
         self._fade_timer.setInterval(40)
@@ -223,9 +224,10 @@ class Player(QObject):
         "Set each player's output level: the slider, the ceiling and that song's own adjustment."
         for slot in self._slots:
             slot.audio.setVolume(min(1.0, gain(self.volume, self.max_gain) * 10 ** (self._norm_for(slot.path) / 20)
-                                     * slot.fade))
+                                     * slot.fade * self.master_fade))
         if self.on_boost is not None:           # Qt stops at 100%; whatever is beyond that is asked of PipeWire
-            now = gain(self.volume, self.max_gain) * 10 ** (self._norm_for(self._slots[self._cur].path) / 20)
+            now = (gain(self.volume, self.max_gain) * 10 ** (self._norm_for(self._slots[self._cur].path) / 20)
+                   * self.master_fade)
             self.on_boost(max(1.0, now) * 100)
 
     def set_crossfade(self, seconds):
@@ -537,6 +539,24 @@ class Player(QObject):
         self.queueChanged.emit()
         self._plan_next()
 
+    def put_back(self, paths, index):
+        """Put a queue back (the Undo of Clear) without stopping or restarting anything: the song playing now stays,
+        found again in `paths` (or at `index` if it is not in there). With nothing playing, the queue simply returns."""
+        paths = [p for p in paths if p]
+        if not paths:
+            return False
+        current = self.current()
+        if current and current in paths:
+            index = paths.index(current) if paths[index:index + 1] != [current] else index
+        elif current:
+            return False                                  # something else entirely is playing: leave it be
+        self.queue, self.index = paths, (index if current else -1)
+        self._plan = None
+        self.queueChanged.emit()
+        if current:
+            self._plan_next()
+        return True
+
     def _remember(self, new):
         "The song being left goes on the played list, so Previous comes back to what was really heard."
         if self._new_queue:
@@ -658,6 +678,18 @@ class Player(QObject):
                         self._back = False
                     return
             self.play_index((self.index - 1) % len(self.queue))    # nothing came before: the song above in the queue
+
+    def pause(self):
+        "Pause if playing (unlike toggle, never starts anything)."
+        if self.playing:
+            self._media.pause()
+
+    def set_master_fade(self, level):
+        "A level over everything, 0 to 1, without touching the volume slider: the sleep timer fades out with it."
+        level = max(0.0, min(1.0, float(level)))
+        if level != self.master_fade:
+            self.master_fade = level
+            self._apply_volume()
 
     def seek(self, seconds):
         self._media.setPosition(int(max(0.0, float(seconds)) * 1000))

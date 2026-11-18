@@ -4,6 +4,7 @@ import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from . import fuzzy
 from .audioinfo import fmt_of
 from .textfold import fold
 
@@ -175,12 +176,24 @@ def _haystack(s):
     return h
 
 
-def search(songs, text):
-    "Songs where every word of text is in the title, artist, album, genre or file name."
+def search(songs, text, forgiving=True):
+    """Songs where every word of text is in the title, artist, album, genre or file name. When that finds nothing,
+    and `forgiving`, the songs whose words are close to every word typed (a typo away: see fuzzy.py)."""
     words = fold(text).split()
     if not words:
         return list(songs)
-    return [s for s in songs if all(w in _haystack(s) for w in words)]
+    found = [s for s in songs if all(w in _haystack(s) for w in words)]
+    if found or not forgiving or not any(fuzzy.allowed(w) for w in words):
+        return found
+    return [s for s in songs if fuzzy.matches(words, _tokens(s))]
+
+
+def _tokens(s):
+    "The words of a song's haystack, split once and kept (like the haystack itself)."
+    t = s.__dict__.get("_tok")
+    if t is None:
+        t = s.__dict__["_tok"] = tuple(_haystack(s).replace(".", " ").replace("-", " ").replace("_", " ").split())
+    return t
 
 
 def by_folder(songs):

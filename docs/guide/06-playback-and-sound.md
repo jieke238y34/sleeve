@@ -6,10 +6,21 @@ The bar at the bottom controls playback: previous, play or pause, next, shuffle,
 volume. Click anywhere on a slider to jump there. Previous goes back to the song you actually played before the
 current one, also with shuffle on; a new queue starts that history over.
 
+The waveform strip (shown when the bar is folded away) works the same way: click or drag to seek. Point at it to
+see the time there.
+
+## Sleep timer
+
+Right-click either play button (on the bar or on Now Playing) and choose Sleep in 15, 30 or 45 minutes, 1 or 2 hours,
+or Sleep at the end of this song. The music fades out at the end and pauses; the next time you press play it is as
+loud as before. While it runs, a countdown sits at the bottom right of the window: click it to cancel or to add 15
+minutes. The timer is for this session only.
+
 ## The queue
 
 The Now Playing page shows what is coming. Use Play next or Add to queue from the Library menu to shape it.
-Clear empties it but keeps the song that is playing, and Save turns it into a playlist (see [Playlists](03-playlists)).
+Clear empties it but keeps the song that is playing; for ten seconds an Undo button at the bottom right puts it back.
+Save turns the queue into a playlist (see [Playlists](03-playlists)).
 
 ## Album art
 
@@ -22,6 +33,11 @@ from a cover or by double-click starts in a fresh random order each time.
 
 If a song has a matching `.lrc` file, for example one fetched with Get lyrics, the lines show alongside the music.
 Otherwise you will see that no synced lyrics were found.
+
+
+If synced lyrics run ahead of the singer or behind, press **Earlier** or **Later** under the lyrics: each press
+moves them a quarter of a second for this song, and the heading says by how much ("0.5 s earlier"). **Reset** puts the
+file's own timing back. Sleeve remembers the nudge per song in its own folder; the lyrics file is not changed.
 
 ## Gapless playback
 

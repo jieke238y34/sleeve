@@ -11,6 +11,7 @@ import time
 from collections import Counter, OrderedDict
 from pathlib import Path
 
+import shiboken6
 from PySide6.QtCore import (
     QAbstractTableModel,
     QElapsedTimer,
@@ -107,7 +108,9 @@ from . import (
     library,
     loudness,
     lrc,
+    lyricoffset,
     lyrics_sources,
+    memtrim,
     musicbrainz,
     myplaylists,
     navidrome,
@@ -143,6 +146,8 @@ from .presence import Presence
 from .presence import activity as listening_activity
 from .quicksearch import QuickSearch
 from .session import Session
+from .sleeptimer import CHOICES as SLEEP_CHOICES
+from .sleeptimer import SleepTimer
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
@@ -258,6 +263,8 @@ KIND_COLOR = {activity.GOOD: "#8fd6a4", activity.INFO: "#c9c4de", activity.WARN:
 SIDE_ART_MIN, SIDE_ART_MAX = 56, 260                 # the album art under the sidebar list: smallest and biggest side
 POSITION_REFRESH_MS = 200                        # how often the seek bar and time are redrawn
 ONLINE_FIXABLE = ("Missing title or artist", "No genre tag")   # problems the MusicBrainz lookup can fill in
+LOG_POLL_MS, LOG_POLL_IDLE_MS = 3000, 15000          # how often to look for a dl.py started elsewhere: on the
+                                                     # Downloads page or while one runs, and otherwise
 ONLINE_LIMIT = 50                                    # songs per lookup: about two minutes at one a second
 HEALTH_FIX = {"No genre tag": "Repair genres", "Same artist and title": "Dedupe (report only)",
               "Parked as duplicates": "Dedupe (report only)"}      # problem -> the dl.py job that deals with it
@@ -672,6 +679,7 @@ class MainWindow(QMainWindow):
         self._loud_timer.setInterval(400)
         self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
+        self.lyric_offsets = lyricoffset.LyricOffsets(Path(self.settings.file).parent / "lyric-offsets.json")
         SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
@@ -804,6 +812,26 @@ class MainWindow(QMainWindow):
         self.side_lay.addWidget(self.cover, 0, Qt.AlignHCenter)
         self.setCentralWidget(root)
         self.status = self.statusBar()
+        self.sleep = SleepTimer(self.player, parent=self)      # pause after a while or at the end of the song
+        self.sleep_btn = QPushButton("")                      # the countdown; a click cancels it or adds time
+        self.sleep_btn.setObjectName("barfold")
+        self.sleep_btn.setToolTip("The sleep timer: click to cancel it or add time")
+        self.sleep_btn.clicked.connect(lambda: self._sleep_menu(self.sleep_btn))
+        self.sleep_btn.hide()
+        self.status.addPermanentWidget(self.sleep_btn)
+        self.sleep.changed.connect(self._sleep_shown)
+        for button in (self.play_btn, self.np_play):          # right-click a play button for the sleep timer
+            button.setToolTip("Play / pause (right-click: sleep timer)")
+            button.setContextMenuPolicy(Qt.CustomContextMenu)
+            button.customContextMenuRequested.connect(lambda _pos, b=button: self._sleep_menu(b))
+        self.sleep.slept.connect(lambda: self.status.showMessage("The sleep timer paused the music. Goodnight.", 10000))
+        self.undo_btn = QPushButton("Undo")                   # puts a cleared queue back, for a few seconds
+        self.undo_btn.setObjectName("barfold")
+        self.undo_btn.setToolTip("Put the queue back the way it was")
+        self.undo_btn.clicked.connect(self._undo_clear)
+        self.undo_btn.hide()
+        self.status.addPermanentWidget(self.undo_btn)
+        self._queue_undo = None                               # (paths, index, what it was called), while Undo shows
         self.bar_fold_btn = QPushButton("")                   # one click hides the player bar, one click brings it back
         self.bar_fold_btn.setObjectName("barfold")
         self.bar_fold_btn.clicked.connect(self._toggle_bar)
@@ -831,6 +859,7 @@ class MainWindow(QMainWindow):
         p.durationChanged.connect(self._on_duration)
         p.playingChanged.connect(self._on_playing)
         p.trackChanged.connect(self._on_track)
+        p.trackChanged.connect(lambda _i, path: self.sleep.track_changed(path))
         p.queueChanged.connect(self._refresh_queue)
         p.volumeChanged.connect(self._on_volume)
         p.error.connect(lambda m: self.status.showMessage(m, 8000))
@@ -852,7 +881,7 @@ class MainWindow(QMainWindow):
         self.scrobbler.changed.connect(self._refresh_apis)
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._poll_log)
-        self.log_timer.start(3000)
+        self.log_timer.start(LOG_POLL_MS)
 
         p.start()
         self.rescan()
@@ -1145,8 +1174,8 @@ class MainWindow(QMainWindow):
         save_pl.setToolTip("Save this queue as a playlist")
         save_pl.clicked.connect(self._save_queue_as_playlist)
         clear = QPushButton("Clear")
-        clear.setToolTip("Empty the queue; the song that is playing keeps playing")
-        clear.clicked.connect(self.player.clear_queue)
+        clear.setToolTip("Empty the queue; the song that is playing keeps playing (Undo brings it back)")
+        clear.clicked.connect(self._clear_queue)
         hide_queue = QPushButton("Hide")
         hide_queue.setToolTip("Hide the playlist (the ☰ button under the cover brings it back)")
         hide_queue.clicked.connect(lambda: self.tab_queue.setChecked(False))
@@ -1219,8 +1248,23 @@ class MainWindow(QMainWindow):
         row.addWidget(hide_lyrics)
         lyrics_head.addLayout(row)
         lyrics_head.addWidget(self.lyrics_sub)
+        nudge_row = QHBoxLayout()                           # the timing nudge, under the words (the panel is narrow:
+        nudge_row.addStretch(1)                             # beside "Synced to the song" it squeezed that out of sight)
+        self.lyrics_nudge = []
+        for text, tip, steps in (("Earlier", "The lyrics come late: show each line a quarter second earlier", 1),
+                                 ("Later", "The lyrics come early: show each line a quarter second later", -1),
+                                 ("Reset", "Back to the timing in the lyrics file", 0)):
+            b = QPushButton(text)
+            b.setObjectName("chip")
+            b.setToolTip(tip)
+            b.clicked.connect(lambda _=False, s=steps: self._nudge_lyrics(s))
+            b.hide()
+            nudge_row.addWidget(b)
+            self.lyrics_nudge.append(b)
+        nudge_row.addStretch(1)
         ll.addLayout(lyrics_head)
         ll.addWidget(self.lyrics, 1)
+        ll.addLayout(nudge_row)
         ll.addWidget(self.lyrics_empty, 1)
         self.lyrics_find_btn = QPushButton("Find lyrics online")
         self.lyrics_find_btn.setToolTip("Ask LRCLIB, Netease, Kugou, Genius and lyrics.ovh for this song and keep "
@@ -3280,7 +3324,7 @@ class MainWindow(QMainWindow):
         self.prev_btn = button("", "Previous", self.player.prev)
         self.play_btn = MoonButton()                          # a moon that waxes as the song goes: bright while playing
         self.play_btn.setObjectName("play")
-        self.play_btn.setToolTip("Play / pause")
+        self.play_btn.setToolTip("Play / pause (right-click: sleep timer)")
         self.play_btn.clicked.connect(self.player.toggle)
         self.next_btn = button("", "Next", self.player.next)
         self.stash_btn = button("", f"{labels.VERB} this song", self._stash_current)
@@ -4533,6 +4577,57 @@ class MainWindow(QMainWindow):
         self._playlist_choices(menu, [song])
         self._popup_menu(menu, self.add_pl_btn)
 
+    UNDO_MS = 10000                                          # how long Undo stays after Clear
+
+    def _clear_queue(self):
+        "Empty the queue (the song playing carries on), and offer to put it back for a few seconds."
+        before = (list(self.player.queue), self.player.index, self._queue_source)
+        self.player.clear_queue()
+        gone = len(before[0]) - len(self.player.queue)
+        if gone <= 0:
+            return
+        self._queue_undo = before
+        self.status.showMessage(f"Cleared {gone} song{'' if gone == 1 else 's'} from the queue", self.UNDO_MS)
+        self.undo_btn.show()
+        token = self._queue_undo
+        QTimer.singleShot(self.UNDO_MS, lambda: self._undo_expired(token))
+
+    def _undo_expired(self, token):
+        if self._queue_undo is token:                         # a later Clear has its own few seconds
+            self._queue_undo = None
+            self.undo_btn.hide()
+
+    def _undo_clear(self):
+        if self._queue_undo is None:
+            return
+        paths, index, source = self._queue_undo
+        self._queue_undo = None
+        self.undo_btn.hide()
+        if self.player.put_back(paths, index):
+            self._queue_source = source
+            self._refresh_queue()
+            self.status.showMessage("The queue is back", 4000)
+        else:
+            self.status.showMessage("Could not put the queue back: something else is playing now", 6000)
+
+    def _sleep_menu(self, widget):
+        "The sleep timer's choices: a while, or the end of this song; while one runs, cancel it or add time."
+        menu = theme.Menu(self)
+        if self.sleep.mode is not None:
+            menu.addAction("Cancel the sleep timer", self.sleep.cancel)
+            if self.sleep.mode == "time":
+                menu.addAction("15 more minutes", lambda: self.sleep.add_minutes(15))
+            menu.addSeparator()
+        for minutes, label in SLEEP_CHOICES:
+            menu.addAction(f"Sleep in {label}", lambda m=minutes: self.sleep.start_minutes(m))
+        end = menu.addAction("Sleep at the end of this song", self.sleep.start_end_of_song)
+        end.setEnabled(bool(self.player.current()))
+        self._popup_menu(menu, widget)
+
+    def _sleep_shown(self, text):
+        self.sleep_btn.setText(text)
+        self.sleep_btn.setVisible(bool(text))
+
     def _popup_menu(self, menu, widget):
         "Open a menu just above a widget (the player bar sits at the bottom of the window)."
         menu.exec(widget.mapToGlobal(QPoint(0, -menu.sizeHint().height() - 6)))
@@ -5535,7 +5630,10 @@ class MainWindow(QMainWindow):
         except OSError:
             return
         self._set_external(fresh)
-        if not fresh:
+        item = self.nav.currentItem()
+        watching = fresh or (item is not None and item.text() == "Downloads")
+        self.log_timer.setInterval(LOG_POLL_MS if watching else LOG_POLL_IDLE_MS)    # a look at every process: rarely
+        if not fresh:                                                               # when nobody is watching
             return
         start = max(0, len(lines) - 60)                       # first look: the recent end of the log
         if self._ext_last is not None:
@@ -5744,6 +5842,8 @@ class MainWindow(QMainWindow):
             self._apply_layout()                              # and the small art steps aside for the big one
         if item is not None and item.text() == "Playlists":
             self._refresh_smart_now()                         # listening or stashing may have changed the smart lists
+        if item is not None and item.text() == "Downloads" and hasattr(self, "log_timer"):
+            self._poll_log()                                  # at once: away from this page it only looks every 15 s
         if on_np:
             QTimer.singleShot(0, self._queue_catch_up)
             QTimer.singleShot(0, self._lyrics_catch_up)
@@ -5952,10 +6052,31 @@ class MainWindow(QMainWindow):
             if not self._dragging:
                 self._set_slider_silently(self.seek, int(pos * 10))
         if self._lyrics:
-            i = lrc.current_index(self._lyrics, pos)
-            if i >= 0 and i != self._lyric_row:
-                self._mark_lyric(i)
-                self.lyrics._smooth.center_on(i)
+            self._follow_lyrics(pos)
+
+    def _follow_lyrics(self, pos):
+        "Light the line being sung at `pos`, with this song's timing nudge (lyrics that come early or late)."
+        i = lrc.current_index(self._lyrics, pos + self.lyric_offsets.get(self._current_path))
+        if i >= 0 and i != self._lyric_row:
+            self._mark_lyric(i)
+            self.lyrics._smooth.center_on(i)
+
+    def _nudge_lyrics(self, steps):
+        "Earlier (+1), Later (-1) or Reset (0) for the lyrics of the song playing."
+        path = self._current_path
+        if not path:
+            return
+        if steps:
+            self.lyric_offsets.nudge(path, steps)
+        else:
+            self.lyric_offsets.reset(path)
+        try:
+            self.lyric_offsets.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save the lyrics timing: {e}", 6000)
+        self._set_lyrics_state()
+        if self._lyrics:
+            self._follow_lyrics(self._pos)
 
     def _on_duration(self, dur):
         self._dur = dur
@@ -5975,6 +6096,7 @@ class MainWindow(QMainWindow):
         self._update_presence()
 
     def _on_track(self, index, path):
+        memtrim.soon()                                      # the last song's big cover pictures go back to the system
         self._refresh_queue()
         self._finish_listen()
         self._current_path = path
@@ -6057,8 +6179,15 @@ class MainWindow(QMainWindow):
         "The lyrics list when there are lyrics, otherwise a plain message."
         has = self.lyrics.count() > 0
         if hasattr(self, "lyrics_sub"):
-            self.lyrics_sub.setText(("Synced to the song" if self._lyric_synced else "Not synced") if has
-                                    else "No lyrics found")
+            nudge = (lyricoffset.describe(self.lyric_offsets.get(getattr(self, "_current_path", "")))
+                     if self._lyric_synced else "")
+            self.lyrics_sub.setText(("Synced to the song" + (f" · {nudge}" if nudge else "") if self._lyric_synced
+                                     else "Not synced") if has else "No lyrics found")
+            synced = has and self._lyric_synced
+            earlier, later, reset = self.lyrics_nudge
+            earlier.setVisible(synced)
+            later.setVisible(synced)
+            reset.setVisible(synced and bool(nudge))
         self.lyrics.setVisible(has)
         self.lyrics_empty.setVisible(not has)
         self.lyrics_find_btn.setVisible(not has and self._lyrics_can_look())
@@ -6337,4 +6466,6 @@ def main(argv=None):
     attach_media_keys(win, app, suffix="sleeve.preview" if args.preview else "sleeve")
     win.enable_loudness(loudness.find_ffmpeg())
     win.show()
-    return app.exec()
+    code = app.exec()
+    shiboken6.delete(win)          # the window and its event filters go while Qt and Python are both whole: left to
+    return code                    # the interpreter's shutdown, Qt sent them events after Python let go (a crash)
