@@ -89,6 +89,14 @@ class History:
         "How many times each song was played, over everything kept: {path: plays}."
         return Counter(e[0] for e in self.events)
 
+    def played_when(self):
+        "({path: when it was last played}, {path: when it was first played}), over everything kept (epoch seconds)."
+        last, first = {}, {}
+        for path, when, _secs in self.events:
+            last[path] = max(last.get(path, 0), when)
+            first[path] = min(first.get(path, when), when)
+        return last, first
+
     def recent(self, limit=100):
         "The songs played most recently, newest first, each once."
         seen, out = set(), []

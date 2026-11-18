@@ -124,6 +124,7 @@ from . import (
     shuffleorder,
     singleton,
     smart,
+    smartrules,
     stash,
     sync,
     tags,
@@ -149,6 +150,7 @@ from .quicksearch import QuickSearch
 from .session import Session
 from .sleeptimer import CHOICES as SLEEP_CHOICES
 from .sleeptimer import SleepTimer
+from .smarteditor import SmartEditor
 from .smoothscroll import SmoothScroll
 from .switch import Switch
 from .tagsuggest import TagSuggestions
@@ -274,6 +276,8 @@ RECENT = "Recently played"
 # The lists that fill themselves are playlists (Playlists page), in this order. Their "file" is a key with this prefix.
 SMART_PLAYLISTS = (LIKED, ALL, RECENT, smart.ADDED, smart.MOST, smart.NEVER)
 SMART_PREFIX = "smart:"
+RULE_PREFIX = "rule:"                                       # a smart playlist the user made (smartrules.py)
+RULE_MARK = "✦"
 SMART_ABOUT = {LIKED: "The songs you stashed.", ALL: "Every song in your library.",
                RECENT: "What you played last, newest first.", smart.ADDED: "Songs that appeared in the last 30 days.",
                smart.MOST: "Your most played songs, the top 100.", smart.NEVER: "Songs you have not played yet."}
@@ -681,6 +685,7 @@ class MainWindow(QMainWindow):
         self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
         self.lyric_offsets = lyricoffset.LyricOffsets(Path(self.settings.file).parent / "lyric-offsets.json")
+        self.smart_store = smartrules.SmartStore(Path(self.settings.file).parent / "smart-playlists.json")
         kanji.load_cache()                                   # the readings of kanji titles, for search
         self._kanji_worker = None
         SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
@@ -1079,6 +1084,11 @@ class MainWindow(QMainWindow):
         self.pl_look_btn.setToolTip("Change this playlist's cover picture and title colour")
         self.pl_look_btn.clicked.connect(self._edit_current_playlist)
         info_row.addWidget(self.pl_look_btn)
+        self.pl_rule_btn = QPushButton(f"{RULE_MARK}  Edit rule…")
+        self.pl_rule_btn.setToolTip("Change what this smart playlist fills itself with, its order or its size")
+        self.pl_rule_btn.clicked.connect(self._edit_current_rule)
+        self.pl_rule_btn.hide()
+        info_row.addWidget(self.pl_rule_btn)
         info_row.addStretch(1)
         info_row.addWidget(self.pl_stash_all)
         self.pl_title = QLabel("")
@@ -3616,8 +3626,8 @@ class MainWindow(QMainWindow):
             if chip is not None:
                 out.append((f"Settings: {chip.text()}", "Settings section", f"settings:{chip.text()}"))
         for name, path, mine in self._playlist_files:
-            what = ("Playlist that fills itself" if self._is_smart(path) else "Your playlist" if mine
-                    else "Spotify playlist")
+            what = ("Playlist that fills itself" if self._is_smart(path) else "Smart playlist" if self._is_rule(path)
+                    else "Your playlist" if mine else "Spotify playlist")
             out.append((name, what, f"playlist:{path}"))
         for folder in sorted({s.folder for s in self.songs if s.folder != library.LOOSE}, key=str.lower):
             out.append((folder, "Genre folder in the Library", f"folder:{folder}"))
@@ -3771,7 +3781,9 @@ class MainWindow(QMainWindow):
         return [self.model.songs[r] for r in rows]
 
     def _browse_actions(self, menu, song):
-        "“All songs by …” and “The album …” for a right-clicked song."
+        "“All songs by …” and “The album …” for a right-clicked song, and a smart playlist of songs like it."
+        menu.addAction("More like this…", lambda: self._new_smart(rule=smartrules.more_like(song),
+                                                                     name=f"Like {song.artist or song.name}"[:60]))
         if song.artist:
             menu.addAction(f"All songs by {artists.display(song.artist)}", lambda: self._browse_artist(song.artist))
         if song.album:
@@ -4233,6 +4245,10 @@ class MainWindow(QMainWindow):
         self.pl_grid_spotify_btn = QPushButton("Show Spotify playlists")
         self.pl_grid_spotify_btn.setToolTip("The playlist files dl.py made from your Spotify playlists")
         self.pl_grid_spotify_btn.clicked.connect(lambda: self.pl_spotify_btn.click())
+        smart_btn = QPushButton(f"{RULE_MARK}  Smart playlist…")
+        smart_btn.setToolTip("A playlist that fills itself from rules you choose (genre, plays, length, alphabet...)")
+        smart_btn.clicked.connect(lambda: self._new_smart())
+        bar.addWidget(smart_btn)
         bar.addWidget(import_btn)
         bar.addWidget(self.pl_grid_spotify_btn)
         bar.addStretch(1)
@@ -4261,15 +4277,16 @@ class MainWindow(QMainWindow):
             count, songs, stamp = self._playlist_songs(path)
             tiles.append(plgrid.PlaylistTile(name, key, count, songs, self.pl_styles.colour(key),
                                              self.pl_styles.image(key), mine=mine, stamp=stamp,
-                                             smart=self._is_smart(path)))
+                                             smart=self._is_smart(path) or self._is_rule(path)))
         self.pl_grid.set_playlists(tiles)
-        self.pl_grid_hint.setVisible(not any(not self._is_smart(f[1]) for f in self._playlist_files))
+        self.pl_grid_hint.setVisible(not any(not self._is_smart(f[1]) for f in self._playlist_files))   # yours count
 
     def _playlist_songs(self, path):
         """(songs in the file, those that are in the library, when the file changed). Read again only when the file or
         the library changed: with hundreds of playlists, reading them all on every refresh took seconds."""
-        if self._is_smart(path):
-            songs = self._smart_songs(self._smart_name(path))
+        if self._is_smart(path) or self._is_rule(path):
+            songs = (self._smart_songs(self._smart_name(path)) if self._is_smart(path)
+                     else self._rule_songs(self._rule_name(path), shuffle=False))      # a cover must not reshuffle
             return len(songs), songs, hash((len(songs), *(s.path for s in songs[:12]))) & 0x7FFFFFFF
         try:
             st = Path(path).stat()
@@ -4339,6 +4356,15 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
             menu.addAction("Rename…", lambda: self._playlist_tile_do(tile, self._rename_playlist))
             menu.addAction("Delete…", lambda: self._playlist_tile_do(tile, self._delete_playlist))
+        if self._is_smart(tile.path) and smartrules.builtin_rule(tile.name):
+            menu.addSeparator()
+            menu.addAction("Make an editable copy…", lambda: self._new_smart(
+                rule=smartrules.builtin_rule(tile.name), name=f"My {tile.name.split(' ', 1)[-1].lower()}"
+                if tile.name.startswith(labels.MARK) else f"My {tile.name.lower()}"))
+        if self._is_rule(tile.path):
+            menu.addSeparator()
+            menu.addAction("Edit rule…", lambda: self._edit_rule(self._rule_name(tile.path)))
+            menu.addAction("Delete…", lambda: self._delete_rule(self._rule_name(tile.path)))
         return menu
 
     def _playlist_tile_do(self, tile, action):
@@ -4389,6 +4415,7 @@ class MainWindow(QMainWindow):
         spotify = playlists.list_playlists(self.cfg.playlist_dir)
         show = self.settings.show_spotify_playlists
         self._playlist_files = ([(n, SMART_PREFIX + n, False) for n in SMART_PLAYLISTS]       # the self-filling lists
+                                + [(n, RULE_PREFIX + n, False) for n in self.smart_store.names()]   # and yours
                                 + [(n, p, True) for n, p in self.my_playlists.names()]
                                 + ([(n, p, False) for n, p in spotify] if show else []))
         self.pl_spotify_btn.blockSignals(True)
@@ -4401,8 +4428,9 @@ class MainWindow(QMainWindow):
         self.pl_list.setVisible(bool(self._playlist_files))
         self.pl_list.blockSignals(True)
         self.pl_list.clear()
-        for name, _, mine in self._playlist_files:
-            self.pl_list.addItem(f"{labels.MINE_MARK}  {name}" if mine else name)
+        for name, path, mine in self._playlist_files:
+            self.pl_list.addItem(f"{labels.MINE_MARK}  {name}" if mine else f"{RULE_MARK}  {name}"
+                                 if self._is_rule(path) else name)
         self.pl_list.blockSignals(False)
         if self._playlist_files:
             row = next((i for i, f in enumerate(self._playlist_files)
@@ -4426,8 +4454,16 @@ class MainWindow(QMainWindow):
             b.setEnabled(on)
             b.setVisible(anything)
         self.pl_copy_btn.setVisible(anything and not on)
+        rule = anything and self._pl_current is not None and self._is_rule(self._pl_current[1])
+        self.pl_rule_btn.setVisible(rule)
+        for b in self.pl_edit_buttons:
+            b.setVisible(anything and not rule)             # those edit a file; a rule is changed in its editor
         if on or not anything:
             self.pl_edit_note.setText("")
+        elif rule:
+            found = self.smart_store.get(self._rule_name(self._pl_current[1])) or smartrules.EMPTY_RULE
+            self.pl_edit_note.setText(f"Fills itself from your rule: {smartrules.describe(found)}. Edit rule to change "
+                                      "it, or copy it to keep these songs as they are.")
         elif smart_list:
             self.pl_edit_note.setText(f"{SMART_ABOUT[self._smart_name(self._pl_current[1])]} It fills itself and "
                                       "cannot be changed. Copy it to make a playlist you can.")
@@ -4442,6 +4478,66 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _smart_name(path):
         return str(path)[len(SMART_PREFIX):]
+
+    @staticmethod
+    def _is_rule(path):
+        "Whether this playlist 'file' is a smart playlist the user made (a rule, not a file)."
+        return str(path).startswith(RULE_PREFIX)
+
+    @staticmethod
+    def _rule_name(path):
+        return str(path)[len(RULE_PREFIX):]
+
+    def _smart_context(self):
+        "What a rule can know beyond the tags: plays, when played, when added, what is stashed."
+        last, first = self.history.played_when()
+        return smartrules.Context(counts=self.history.counts(), last=last, first=first, mtime=self._mtime,
+                                  stashed=self.stash)
+
+    def _rule_songs(self, name, shuffle=True):
+        rule = self.smart_store.get(name)
+        return smartrules.evaluate(rule, self.songs, self._smart_context(), shuffle=shuffle) if rule else []
+
+    def _edit_current_rule(self):
+        if self._pl_current and self._is_rule(self._pl_current[1]):
+            self._edit_rule(self._rule_name(self._pl_current[1]))
+
+    def _new_smart(self, rule=None, name=""):
+        "Make a smart playlist (from a rule to start from, like More like this) and open it."
+        return self._edit_rule(None, rule=rule, name=name)
+
+    def _edit_rule(self, old, rule=None, name=""):
+        "Open the editor on a smart playlist (or a new one); on Save, keep it and show it. Returns the name used."
+        taken = {n for n, _p, _m in self._playlist_files} - ({old} if old else set())
+        dlg = SmartEditor(self.songs, self._smart_context, name=old or name,
+                          rule=self.smart_store.get(old) if old else rule, taken=taken, parent=self)
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        new_name, new_rule = dlg.values()
+        try:
+            used = self.smart_store.put(new_name, new_rule, old=old)
+        except OSError as e:
+            self.status.showMessage(f"Could not save the smart playlist: {e}", 8000)
+            return None
+        self._load_playlists()
+        self.show_page("Playlists")
+        if self._select_playlist_path(RULE_PREFIX + used):
+            self.pl_stack.setCurrentIndex(1)
+        return used
+
+    def _delete_rule(self, name):
+        answer = QMessageBox.question(self, "Delete smart playlist",
+                                      f"Delete the smart playlist “{name}”? Your songs stay where they are.")
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            self.smart_store.delete(name)
+        except OSError as e:
+            self.status.showMessage(f"Could not delete the smart playlist: {e}", 8000)
+            return
+        self._pl_current = None
+        self._load_playlists()
+        self._show_playlist_grid()
 
     def _smart_songs(self, name):
         "The songs of one of the lists that fill themselves, in the order that list is about."
@@ -4465,8 +4561,8 @@ class MainWindow(QMainWindow):
             return
         self._smart_dirty = False
         self._refresh_playlist_grid()
-        if self._pl_current and self._is_smart(self._pl_current[1]):
-            row = next((i for i, f in enumerate(self._playlist_files) if f[0] == self._pl_current[0]), -1)
+        if self._pl_current and (self._is_smart(self._pl_current[1]) or self._is_rule(self._pl_current[1])):
+            row = next((i for i, f in enumerate(self._playlist_files) if f[1] == self._pl_current[1]), -1)
             if row >= 0:
                 self._playlist_selected(row)
 
@@ -4495,9 +4591,10 @@ class MainWindow(QMainWindow):
         self._pl_current = (name, path, mine)
         smart_list = self._is_smart(path)
         self._set_edit_buttons(mine, smart_list=smart_list)
-        if smart_list:
-            entries = [playlists.KnownEntry(s.path, s.name, int(s.length or 0))
-                       for s in self._smart_songs(self._smart_name(path))]
+        if smart_list or self._is_rule(path):
+            songs = (self._smart_songs(self._smart_name(path)) if smart_list
+                     else self._rule_songs(self._rule_name(path)))           # random rules are dealt again here
+            entries = [playlists.KnownEntry(s.path, s.name, int(s.length or 0)) for s in songs]
         else:
             try:
                 entries = playlists.read_m3u8(path, self.cfg.music_dir)
@@ -4649,6 +4746,7 @@ class MainWindow(QMainWindow):
     def _clear_queue(self):
         "Empty the queue (the song playing carries on), and offer to put it back for a few seconds."
         before = (list(self.player.queue), self.player.index, self._queue_source)
+        self._queue_rule = None                               # a cleared queue is not topped up from a rule
         self.player.clear_queue()
         gone = len(before[0]) - len(self.player.queue)
         if gone <= 0:
@@ -5013,13 +5111,15 @@ class MainWindow(QMainWindow):
         paths = [e.path for e in self._playlist_entries if e.exists]
         if paths:
             paths, source = self._quick_order(self._pl_current[1], paths, self._playlist_source())
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(self._pl_current[1]))
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
     def _quick_order(self, key, paths, source):
         """The order for a quick play (a double-click, or the play button on a cover): All songs and Stashed Songs
         start in a fresh random order each time, never with the same first song."""
+        if self._is_rule(key):                                # dealt again: a random rule's 50 are new each time
+            return [s.path for s in self._rule_songs(self._rule_name(key))], source
         if self._is_smart(key) and self._smart_name(key) in (ALL, LIKED):
             paths = list(paths)
             random.shuffle(paths)
@@ -5037,7 +5137,7 @@ class MainWindow(QMainWindow):
             return
         if self.shuffle_btn.isChecked() != shuffle:
             self.shuffle_btn.setChecked(shuffle)             # the bar's button follows, and the player with it
-        self._play_queue(paths, 0, self._playlist_source())
+        self._play_queue(paths, 0, self._playlist_source(), rule=self._rule_of(self._pl_current[1]))
 
     def _queue_current_playlist(self):
         paths = self._current_playlist_paths()
@@ -5050,12 +5150,14 @@ class MainWindow(QMainWindow):
             return
         playable = [e.path for e in self._playlist_entries if e.exists]
         start = sum(1 for e in self._playlist_entries[:row] if e.exists)       # the clicked copy, not the first one
-        self._play_queue(playable, start, self._playlist_source())
+        self._play_queue(playable, start, self._playlist_source(), rule=self._rule_of(self._pl_current[1]))
 
     # --- queue --------------------------------------------------------------
-    def _play_queue(self, paths, start=0, source=""):
-        "Play these songs, and remember what they came from so Now Playing can say so."
+    def _play_queue(self, paths, start=0, source="", rule=None):
+        """Play these songs, and remember what they came from so Now Playing can say so (and, for a smart playlist
+        that keeps going, which rule tops the queue up)."""
         self._queue_source = source
+        self._queue_rule = rule
         self.player.set_queue(paths, start)
         self._refresh_queue()
 
@@ -5069,6 +5171,10 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(paths[0]) if paths else None
         return song.album if song and song.album else (Path(paths[0]).parent.name if paths else "")
 
+    def _rule_of(self, path):
+        "The smart playlist's name if `path` is one (so its queue can be topped up), else None."
+        return self._rule_name(path) if path and self._is_rule(path) else None
+
     def _playlist_source(self):
         return self._pl_current[0] if self._pl_current else ""
 
@@ -5076,7 +5182,7 @@ class MainWindow(QMainWindow):
         "The play button on a playlist cover: one click and it plays."
         if tile.songs:
             paths, source = self._quick_order(tile.path, tile.paths, tile.name)
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(tile.path))
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
@@ -5085,7 +5191,7 @@ class MainWindow(QMainWindow):
         if paths:
             paths, source = self._quick_order(tile.path if tile is not None else "", paths,
                                               tile.name if tile is not None else "")
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(tile.path) if tile is not None else None)
 
     def _refresh_queue(self):
         queue = list(self.player.queue)
@@ -6162,8 +6268,23 @@ class MainWindow(QMainWindow):
         self._update_transport_icons()
         self._update_presence()
 
+    ENDLESS_LOW, ENDLESS_ADD = 3, 20                     # songs left before an endless queue is topped up, and how many
+
+    def _top_up_queue(self):
+        "An endless smart playlist: when its queue is nearly played, add more songs from its rule."
+        name = getattr(self, "_queue_rule", None)
+        rule = self.smart_store.get(name) if name else None
+        if not rule or not rule["endless"] or len(self.player.queue) - self.player.index > self.ENDLESS_LOW:
+            return
+        more = smartrules.top_up(rule, self.songs, self._smart_context(), self.player.queue, self.ENDLESS_ADD)
+        if more:
+            self.player.enqueue([s.path for s in more])
+            self.status.showMessage(f"{RULE_MARK} {name}: {len(more)} more songs added", 4000)
+
     def _on_track(self, index, path):
         memtrim.soon()                                      # the last song's big cover pictures go back to the system
+        if index >= 0:
+            self._top_up_queue()
         self._refresh_queue()
         self._finish_listen()
         self._current_path = path

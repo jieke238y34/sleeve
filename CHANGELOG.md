@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-18
+
 ### Added
 
 - **Sleep timer**: right-click either play button for Sleep in 15, 30 or 45 minutes, 1 or 2 hours, or at the end of
@@ -14,6 +16,17 @@ All notable changes to this project are documented here. The format follows
   bottom right; click it to cancel or add 15 minutes.
 - **Lyrics timing nudge**: when synced lyrics come early or late, Earlier and Later under the lyrics move
   them a quarter second at a time for that song (Reset puts it back). Kept in Sleeve's own file; the .lrc is untouched.
+- **Smart playlists**: playlists that fill themselves from rules you write. **✦ Smart playlist…** on the Playlists page
+  opens the editor: lines that read like a sentence (Genre folder is one of Rock, Pop · Times played is 0 · Length is
+  under 4 min), all or any of them, a sort (random, most played, newest added, ...) and a limit in songs or minutes,
+  with a live count and the first songs as you build. Rules can use tags, length, format and lossless, bitrate,
+  plays, last and first played, date added, stashed, lyrics and the alphabet. Six ready-made rules to start from
+  (Forgotten favourites, New and unheard, One hour of Japanese, Russian mix, Lossless only, Short and sweet).
+  **More like this…** on any song starts one from it. They update themselves, random ones are dealt again each time,
+  and they live in Sleeve's own `smart-playlists.json` (copy one to your playlists to freeze it as a file).
+  Two switches per rule: **Skip songs played today**, and **Keep going when the queue runs out** (played from that
+  playlist, the queue is topped up from the rule, like a radio). The six built-in lists offer **Make an editable copy…**
+  (so Recently added can be 14 days instead of 30).
 - **Ctrl+K goes anywhere**: pages (the hidden Library too), each Settings section, every playlist (Stashed Songs and
   the other lists that fill themselves included) and each genre folder, under Go to; Enter opens them. Stashed Songs,
   the lists that fill themselves and the Spotify playlists can also be played from Ctrl+K now.
