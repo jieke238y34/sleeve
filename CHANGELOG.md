@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
   (Forgotten favourites, New and unheard, One hour of Japanese, Russian mix, Lossless only, Short and sweet).
   **More like this…** on any song starts one from it. They update themselves, random ones are dealt again each time,
   and they live in Sleeve's own `smart-playlists.json` (copy one to your playlists to freeze it as a file).
+  Two switches per rule: **Skip songs played today**, and **Keep going when the queue runs out** (played from that
+  playlist, the queue is topped up from the rule, like a radio). The six built-in lists offer **Make an editable copy…**
+  (so Recently added can be 14 days instead of 30).
 - **Ctrl+K goes anywhere**: pages (the hidden Library too), each Settings section, every playlist (Stashed Songs and
   the other lists that fill themselves included) and each genre folder, under Go to; Enter opens them. Stashed Songs,
   the lists that fill themselves and the Spotify playlists can also be played from Ctrl+K now.

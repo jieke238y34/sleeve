@@ -118,3 +118,45 @@ def test_the_editor_counts_as_you_build(qapp, cfg, monkeypatch, tmp_path):  # no
         dlg.close()
     finally:
         win.close()
+
+
+def test_an_endless_smart_playlist_tops_up_its_queue(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        answer(monkeypatch, "Forever", dict(ROCK, lines=[], sort="title", endless=True,
+                                            limit={"by": "songs", "value": 1}))
+        win._new_smart()
+        tile = win.pl_grid.tile_for(sleeve_app.RULE_PREFIX + "Forever")
+        win._play_tile(tile)
+        assert win._queue_rule == "Forever"
+        queue = win.player.calls[-1][1][0]
+        win.player.queue, win.player.index = list(queue), 0
+        added = []
+        monkeypatch.setattr(win.player, "enqueue", lambda paths, next_up=False: added.extend(paths))
+        win._top_up_queue()                                        # one song left: the rest of the library comes
+        assert sorted(added + queue) == sorted(s.path for s in win.songs)
+        win._clear_queue()
+        assert win._queue_rule is None
+    finally:
+        win.close()
+
+
+def test_each_built_in_list_offers_an_editable_copy_that_matches_it(qapp, cfg, monkeypatch, tmp_path):  # noqa: F811
+    win = make_window(qapp, cfg, monkeypatch, tmp_path)
+    try:
+        win._toggle_stash([win.songs[0].path])
+        win.history.record(win.songs[1].path, 60)
+        ctx = win._smart_context()
+        for name in sleeve_app.SMART_PLAYLISTS:
+            tile = win.pl_grid.tile_for(sleeve_app.SMART_PREFIX + name)
+            texts = [a.text() for a in win._tile_menu(tile).actions()]
+            assert "Make an editable copy…" in texts, name
+            copy = smartrules.evaluate(smartrules.builtin_rule(name), win.songs, ctx, shuffle=False)
+            assert {s.path for s in copy} == {s.path for s in win._smart_songs(name)}, name
+        seen = []
+        monkeypatch.setattr(win, "_new_smart", lambda rule=None, name="": seen.append(name))
+        tile = win.pl_grid.tile_for(sleeve_app.SMART_PREFIX + sleeve_app.LIKED)
+        next(a for a in win._tile_menu(tile).actions() if a.text() == "Make an editable copy…").trigger()
+        assert seen == ["My stashed songs"]
+    finally:
+        win.close()

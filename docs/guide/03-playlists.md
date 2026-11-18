@@ -49,6 +49,15 @@ again each time you open or play it. Right-click its cover for **Edit rule…** 
 keeps the songs it has now as a normal playlist file. Right-click any song and choose **More like this…** to start a
 smart playlist from that song's artist and genre.
 
+Two switches under the rule:
+
+- **Skip songs played today** leaves out what you already heard today, so a long session never comes back round.
+- **Keep going when the queue runs out**: played from this playlist, the queue is topped up from the rule when only a
+  few songs are left, like a radio. Clear in the queue stops it.
+
+The six built-in lists can't be changed, but right-click one and choose **Make an editable copy…** to get a smart
+playlist that does the same, which you can then change (Recently added for 14 days instead of 30, say).
+
 Smart playlists are kept in `~/.config/sleeve/smart-playlists.json`; your music and playlist files are never changed.
 
 ## The cover grid

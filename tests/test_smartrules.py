@@ -119,3 +119,14 @@ def test_the_store_saves_renames_deletes_and_survives_a_broken_file(tmp_path):
     (tmp_path / "odd.json").write_text(json.dumps({"playlists": [{"name": "", "rule": {}}, {"name": "X", "rule": 5},
                                                                  "junk", {"name": "X", "rule": {}}]}))
     assert SmartStore(tmp_path / "odd.json").names() == ["X"]
+
+
+def test_skip_today_and_topping_up_an_endless_queue():
+    today = Context(counts=CTX.counts, last={"/m/c.mp3": NOW - 60}, now=NOW)       # Gamma played a minute ago
+    pop = rule(("genre", "is", "Pop"))
+    assert [s.title for s in evaluate(dict(pop, skip_today=True), SONGS, today)] == ["Маша"]
+    assert [s.title for s in evaluate(pop, SONGS, today)] == ["Gamma", "Маша"]       # off: all of them
+    more = smartrules.top_up(dict(rule(sort="title", limit={"by": "songs", "value": 1}), endless=True), SONGS, CTX,
+                             queue=["/m/a.mp3", "/m/b.flac"], count=2)
+    assert [s.title for s in more] == ["Gamma", "Маша"]                             # not in the queue, limit ignored
+    assert clean_rule({"skip_today": "yes", "endless": 1}) == dict(smartrules.EMPTY_RULE)   # only a real true counts

@@ -4,6 +4,7 @@ a live count with the first few songs, so a rule that is too strict or too loose
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -157,6 +158,16 @@ class SmartEditor(QDialog):
         shape.addWidget(self.limit_by)
         shape.addStretch(1)
         lay.addLayout(shape)
+        options = QHBoxLayout()
+        self.skip_today = QCheckBox("Skip songs played today")
+        self.skip_today.setToolTip("A long session never comes back round to what you already heard today")
+        self.endless = QCheckBox("Keep going when the queue runs out")
+        self.endless.setToolTip("Played from this playlist, the queue is topped up from the rule, like a radio")
+        for box in (self.skip_today, self.endless):
+            box.toggled.connect(lambda _on: self.changed())
+            options.addWidget(box)
+        options.addStretch(1)
+        lay.addLayout(options)
         self.count = QLabel("")
         self.count.setObjectName("heading")
         self.preview = QLabel("")
@@ -214,6 +225,8 @@ class SmartEditor(QDialog):
         self.limit_by.setCurrentIndex(max(0, self.limit_by.findData(rule["limit"]["by"])))
         if rule["limit"]["value"]:
             self.limit_value.setText(str(rule["limit"]["value"]))
+        self.skip_today.setChecked(rule["skip_today"])
+        self.endless.setChecked(rule["endless"])
         self._show_limit()
         self.recount()
 
@@ -222,7 +235,8 @@ class SmartEditor(QDialog):
         return smartrules.clean_rule({
             "match": self.match.currentData(), "lines": [row.value() for row in self.lines()],
             "sort": self.sort.currentData(),
-            "limit": {"by": by, "value": self._limit() if by != "none" else 0}})
+            "limit": {"by": by, "value": self._limit() if by != "none" else 0},
+            "skip_today": self.skip_today.isChecked(), "endless": self.endless.isChecked()})
 
     def _limit(self):
         try:

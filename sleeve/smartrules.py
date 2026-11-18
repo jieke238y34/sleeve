@@ -6,7 +6,9 @@ A rule is plain data, kept as JSON in Sleeve's own folder (the music and the .m3
     {"match": "all" | "any",
      "lines": [{"field": "genre", "op": "one_of", "value": "Rock, Metal"}, ...],
      "sort": "random" | "title" | "artist" | "album" | "plays" | "added" | "last_played" | "length",
-     "limit": {"by": "none" | "songs" | "minutes", "value": 50}}
+     "limit": {"by": "none" | "songs" | "minutes", "value": 50},
+     "skip_today": false,       # leave out songs already played today
+     "endless": false}          # a queue started from it is topped up from the rule when it runs low
 
 Everything read from that file goes through `clean_rule`, so a hand-edited or broken file can never raise later.
 """
@@ -64,7 +66,8 @@ LIMITS = [("none", "No limit"), ("songs", "songs"), ("minutes", "minutes")]
 MAX_LINES = 20
 MAX_VALUE = 200            # characters in a value
 
-EMPTY_RULE = {"match": "all", "lines": [], "sort": "random", "limit": {"by": "none", "value": 0}}
+EMPTY_RULE = {"match": "all", "lines": [], "sort": "random", "limit": {"by": "none", "value": 0},
+              "skip_today": False, "endless": False}
 
 
 class Context:
@@ -209,6 +212,9 @@ def evaluate(rule, songs, ctx, shuffle=True, rng=None):
     title instead (a cover that must not change each time it is drawn)."""
     rule = clean_rule(rule)
     found = [s for s in songs if matches(s, rule, ctx)]
+    if rule["skip_today"]:
+        today = start_of_day(ctx.now)
+        found = [s for s in found if (ctx.last.get(s.path) or 0) < today]
     how = rule["sort"] if shuffle or rule["sort"] != "random" else "title"
     found = _sorted(found, how, ctx, rng or random.Random())
     by, value = rule["limit"]["by"], rule["limit"]["value"]
@@ -268,7 +274,22 @@ def clean_rule(rule):
     value = max(0, min(100_000, int(value))) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
     return {"match": "any" if rule.get("match") == "any" else "all", "lines": lines,
             "sort": rule.get("sort") if rule.get("sort") in dict(SORTS) else "random",
-            "limit": {"by": by, "value": value}}
+            "limit": {"by": by, "value": value},
+            "skip_today": rule.get("skip_today") is True, "endless": rule.get("endless") is True}
+
+
+def start_of_day(now):
+    "Local midnight before `now` (epoch seconds)."
+    t = time.localtime(now)
+    return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+
+
+def top_up(rule, songs, ctx, queue, count=20, rng=None):
+    """More songs for a queue started from an endless rule: ones that match and are not in the queue yet, in the
+    rule's own order (dealt fresh), ignoring its limit (the limit is for one playlist, not for an evening)."""
+    unlimited = dict(clean_rule(rule), limit={"by": "none", "value": 0})
+    have = set(queue)
+    return [s for s in evaluate(unlimited, songs, ctx, rng=rng) if s.path not in have][:count]
 
 
 # --- ready-made rules ------------------------------------------------------------------------------------------------
@@ -289,6 +310,27 @@ TEMPLATES = {
                         "lines": [{"field": "length", "op": "under", "value": "3"},
                                   {"field": "plays", "op": "at_least", "value": "1"}]},
 }
+
+
+def builtin_rule(name):
+    """The rule that does what one of the six built-in lists does, to start an editable copy from (the names are the
+    ones the window uses: Stashed Songs, All songs, Recently played, Recently added, Most played, Never played)."""
+    none = {"by": "none", "value": 0}
+    known = {
+        "Stashed Songs": {"lines": [{"field": "stashed", "op": "yes", "value": ""}], "sort": "random", "limit": none},
+        "All songs": {"lines": [], "sort": "random", "limit": none},
+        "Recently played": {"lines": [{"field": "plays", "op": "at_least", "value": "1"}], "sort": "last_played",
+                            "limit": {"by": "songs", "value": 100}},
+        "Recently added": {"lines": [{"field": "added", "op": "within", "value": "30"}], "sort": "added",
+                           "limit": {"by": "songs", "value": 300}},
+        "Most played": {"lines": [{"field": "plays", "op": "at_least", "value": "1"}], "sort": "plays",
+                        "limit": {"by": "songs", "value": 100}},
+        "Never played": {"lines": [{"field": "plays", "op": "is", "value": "0"}], "sort": "title", "limit": none},
+    }
+    for key, rule in known.items():
+        if name.endswith(key):                              # "◆ Stashed Songs" carries a mark in front
+            return clean_rule(dict(rule, match="all"))
+    return None
 
 
 def more_like(song):

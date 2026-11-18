@@ -4356,6 +4356,11 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
             menu.addAction("Rename…", lambda: self._playlist_tile_do(tile, self._rename_playlist))
             menu.addAction("Delete…", lambda: self._playlist_tile_do(tile, self._delete_playlist))
+        if self._is_smart(tile.path) and smartrules.builtin_rule(tile.name):
+            menu.addSeparator()
+            menu.addAction("Make an editable copy…", lambda: self._new_smart(
+                rule=smartrules.builtin_rule(tile.name), name=f"My {tile.name.split(' ', 1)[-1].lower()}"
+                if tile.name.startswith(labels.MARK) else f"My {tile.name.lower()}"))
         if self._is_rule(tile.path):
             menu.addSeparator()
             menu.addAction("Edit rule…", lambda: self._edit_rule(self._rule_name(tile.path)))
@@ -4741,6 +4746,7 @@ class MainWindow(QMainWindow):
     def _clear_queue(self):
         "Empty the queue (the song playing carries on), and offer to put it back for a few seconds."
         before = (list(self.player.queue), self.player.index, self._queue_source)
+        self._queue_rule = None                               # a cleared queue is not topped up from a rule
         self.player.clear_queue()
         gone = len(before[0]) - len(self.player.queue)
         if gone <= 0:
@@ -5105,7 +5111,7 @@ class MainWindow(QMainWindow):
         paths = [e.path for e in self._playlist_entries if e.exists]
         if paths:
             paths, source = self._quick_order(self._pl_current[1], paths, self._playlist_source())
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(self._pl_current[1]))
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
@@ -5131,7 +5137,7 @@ class MainWindow(QMainWindow):
             return
         if self.shuffle_btn.isChecked() != shuffle:
             self.shuffle_btn.setChecked(shuffle)             # the bar's button follows, and the player with it
-        self._play_queue(paths, 0, self._playlist_source())
+        self._play_queue(paths, 0, self._playlist_source(), rule=self._rule_of(self._pl_current[1]))
 
     def _queue_current_playlist(self):
         paths = self._current_playlist_paths()
@@ -5144,12 +5150,14 @@ class MainWindow(QMainWindow):
             return
         playable = [e.path for e in self._playlist_entries if e.exists]
         start = sum(1 for e in self._playlist_entries[:row] if e.exists)       # the clicked copy, not the first one
-        self._play_queue(playable, start, self._playlist_source())
+        self._play_queue(playable, start, self._playlist_source(), rule=self._rule_of(self._pl_current[1]))
 
     # --- queue --------------------------------------------------------------
-    def _play_queue(self, paths, start=0, source=""):
-        "Play these songs, and remember what they came from so Now Playing can say so."
+    def _play_queue(self, paths, start=0, source="", rule=None):
+        """Play these songs, and remember what they came from so Now Playing can say so (and, for a smart playlist
+        that keeps going, which rule tops the queue up)."""
         self._queue_source = source
+        self._queue_rule = rule
         self.player.set_queue(paths, start)
         self._refresh_queue()
 
@@ -5163,6 +5171,10 @@ class MainWindow(QMainWindow):
         song = self.by_path.get(paths[0]) if paths else None
         return song.album if song and song.album else (Path(paths[0]).parent.name if paths else "")
 
+    def _rule_of(self, path):
+        "The smart playlist's name if `path` is one (so its queue can be topped up), else None."
+        return self._rule_name(path) if path and self._is_rule(path) else None
+
     def _playlist_source(self):
         return self._pl_current[0] if self._pl_current else ""
 
@@ -5170,7 +5182,7 @@ class MainWindow(QMainWindow):
         "The play button on a playlist cover: one click and it plays."
         if tile.songs:
             paths, source = self._quick_order(tile.path, tile.paths, tile.name)
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(tile.path))
         else:
             self.status.showMessage("Nothing in this playlist is in the library", 5000)
 
@@ -5179,7 +5191,7 @@ class MainWindow(QMainWindow):
         if paths:
             paths, source = self._quick_order(tile.path if tile is not None else "", paths,
                                               tile.name if tile is not None else "")
-            self._play_queue(paths, 0, source)
+            self._play_queue(paths, 0, source, rule=self._rule_of(tile.path) if tile is not None else None)
 
     def _refresh_queue(self):
         queue = list(self.player.queue)
@@ -6256,8 +6268,23 @@ class MainWindow(QMainWindow):
         self._update_transport_icons()
         self._update_presence()
 
+    ENDLESS_LOW, ENDLESS_ADD = 3, 20                     # songs left before an endless queue is topped up, and how many
+
+    def _top_up_queue(self):
+        "An endless smart playlist: when its queue is nearly played, add more songs from its rule."
+        name = getattr(self, "_queue_rule", None)
+        rule = self.smart_store.get(name) if name else None
+        if not rule or not rule["endless"] or len(self.player.queue) - self.player.index > self.ENDLESS_LOW:
+            return
+        more = smartrules.top_up(rule, self.songs, self._smart_context(), self.player.queue, self.ENDLESS_ADD)
+        if more:
+            self.player.enqueue([s.path for s in more])
+            self.status.showMessage(f"{RULE_MARK} {name}: {len(more)} more songs added", 4000)
+
     def _on_track(self, index, path):
         memtrim.soon()                                      # the last song's big cover pictures go back to the system
+        if index >= 0:
+            self._top_up_queue()
         self._refresh_queue()
         self._finish_listen()
         self._current_path = path
