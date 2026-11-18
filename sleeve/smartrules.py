@@ -216,7 +216,7 @@ def evaluate(rule, songs, ctx, shuffle=True, rng=None):
         today = start_of_day(ctx.now)
         found = [s for s in found if (ctx.last.get(s.path) or 0) < today]
     how = rule["sort"] if shuffle or rule["sort"] != "random" else "title"
-    found = _sorted(found, how, ctx, rng or random.Random())
+    found = _sorted(found, how, ctx, rng or random.Random())   # a playlist order, not a secret  # nosec B311
     by, value = rule["limit"]["by"], rule["limit"]["value"]
     if by == "songs" and value > 0:
         found = found[:int(value)]
