@@ -31,6 +31,8 @@ dependencies = [
     "PySide6>=6.6,<6.12; python_version < '3.11'",
     "PySide6>=6.6,<7; python_version >= '3.11'",
     "mutagen>=1.47,<2",
+    # reads kanji aloud for search, in a separate short process (sleeve/kanji_worker.py); Sleeve works without it
+    "pykakasi>=2.3,<3",
 ]
 
 [project.optional-dependencies]

@@ -16,6 +16,9 @@ order).
 ## Search
 
 Type in the search box to filter by title, artist, album or genre as you type. Clear the box to see everything again.
+Songs in other alphabets can be typed in English letters: "sudno" finds Судно, "ragutorein" finds ラグトレイン and
+"gangnam" finds 강남스타일. Kanji are read aloud too ("takahashi yoko" finds 高橋 洋子) once Sleeve has worked out their
+reading in the background after a scan. The usual spelling differences don't matter (Ryzhiy, Ryzhii and Ryzhy all work).
 If nothing matches exactly, songs a typo away are shown instead ("beatls" finds the Beatles); Ctrl+K does the same.
 
 ## Songs
@@ -52,6 +55,10 @@ which view you used.
 ## Search everything
 
 Press **Ctrl+K** anywhere to search songs, playlists and folders at once. Enter plays what you picked.
+
+Ctrl+K also goes anywhere in Sleeve: every page (the Library too, even while it is hidden), each Settings section
+("Settings: Sound"), every playlist including Stashed Songs and the other lists that fill themselves, and each genre
+folder. These are listed first, under Go to; Enter opens them. Playlists further down play straight away.
 
 ## Identity
 

@@ -4,7 +4,7 @@ import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from . import fuzzy
+from . import fuzzy, kanji, romanize
 from .audioinfo import fmt_of
 from .textfold import fold
 
@@ -169,23 +169,58 @@ def scan(music_dir, cache_file=None, extra_skip=(), progress=None, mutagen_file=
 
 
 def _haystack(s):
-    "Folded text (see textfold.py) a search looks in, built once per song (not a dataclass field, so not cached)."
+    """Folded text (see textfold.py) a search looks in, built once per song (not a dataclass field, so not cached).
+    A song in another alphabet also gets its words in Latin letters (romanize.py, and kanji.py for kanji), in the
+    loose spelling a search compares them in, so "sudno ryzhy" finds Судно by Борис Рыжий."""
     h = s.__dict__.get("_hay")
     if h is None:
-        h = s.__dict__["_hay"] = fold(f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}")
+        h = fold(f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}")
+        extra = []
+        if romanize.has_other_script(h):
+            extra.append(romanize.loose(romanize.romanize(h)))
+        for field in (s.title, s.artist, s.album):
+            reading = kanji.READINGS.get(field) if field else None
+            if reading:
+                extra.append(romanize.loose(fold(reading)))
+        if extra:
+            h = " ".join([h, *extra])
+        s.__dict__["_hay"] = h
     return h
+
+
+def search_text(s):
+    "What a search looks in for this song (the Ctrl+K box uses it too)."
+    return _haystack(s)
+
+
+def forget_search_text(songs):
+    "Build the search text again next time (kanji readings came in)."
+    for s in songs:
+        s.__dict__.pop("_hay", None)
+        s.__dict__.pop("_tok", None)
+
+
+def query_words(text):
+    "[(word, the same word spelled loosely)] for a search: either form may be what the song's text holds."
+    return [(w, romanize.loose(w)) for w in fold(text).split()]
+
+
+def word_in(pair, hay):
+    return pair[0] in hay or pair[1] in hay
 
 
 def search(songs, text, forgiving=True):
     """Songs where every word of text is in the title, artist, album, genre or file name. When that finds nothing,
     and `forgiving`, the songs whose words are close to every word typed (a typo away: see fuzzy.py)."""
-    words = fold(text).split()
-    if not words:
+    pairs = query_words(text)
+    if not pairs:
         return list(songs)
-    found = [s for s in songs if all(w in _haystack(s) for w in words)]
+    found = [s for s in songs if all(word_in(p, _haystack(s)) for p in pairs)]
+    words = [w for w, _ in pairs]
     if found or not forgiving or not any(fuzzy.allowed(w) for w in words):
         return found
-    return [s for s in songs if fuzzy.matches(words, _tokens(s))]
+    loosened = [w2 for _, w2 in pairs]
+    return [s for s in songs if fuzzy.matches(words, _tokens(s)) or fuzzy.matches(loosened, _tokens(s))]
 
 
 def _tokens(s):
