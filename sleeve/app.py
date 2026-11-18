@@ -103,6 +103,7 @@ from . import (
     getdl,
     health,
     identity,
+    kanji,
     labels,
     lastfm,
     library,
@@ -680,6 +681,8 @@ class MainWindow(QMainWindow):
         self._loud_timer.timeout.connect(self._measure_loudness)
         self.settings = settings.Settings(settings_file)
         self.lyric_offsets = lyricoffset.LyricOffsets(Path(self.settings.file).parent / "lyric-offsets.json")
+        kanji.load_cache()                                   # the readings of kanji titles, for search
+        self._kanji_worker = None
         SmoothScroll.speed = self.settings.scroll_speed / 100       # before any list is made
         self.my_playlists = myplaylists.PlaylistStore(cfg.playlist_dir, cfg.music_dir)
         self._current_path = ""
@@ -3438,6 +3441,29 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Could not read playlists or run the health check: {e}", 10000)
             return
         self.status.showMessage(f"{len(songs)} songs in {len(groups)} folders", 6000)
+        self._read_kanji()
+
+    def _read_kanji(self):
+        """Titles in kanji get a reading in Latin letters for search, in the background (kanji.py: a short separate
+        process, so its 110 MB dictionary never stays in Sleeve). Readings are cached, so this is quick after once."""
+        texts = kanji.missing(t for s in self.songs for t in (s.title, s.artist, s.album))
+        if not texts or (self._kanji_worker is not None and self._kanji_worker.isRunning()):
+            return
+        self._kanji_worker = kanji.ReadingWorker(texts, self)
+        self._kanji_worker.done.connect(self._kanji_read)
+        self._kanji_worker.start()
+
+    def _kanji_read(self, found):
+        if not found:
+            return
+        kanji.READINGS.update(found)
+        try:
+            kanji.save_cache()
+        except OSError:
+            pass                                             # read again next time: nothing is lost
+        library.forget_search_text(self.songs)
+        if self.search.text().strip():
+            self._apply_filter()
 
     def _folder_changed(self, name):
         self.folder = name or ALL

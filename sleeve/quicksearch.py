@@ -1,5 +1,4 @@
 """Ctrl+K quick search: type a few letters, pick a song, playlist or genre folder, play it from the keyboard."""
-import os
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter
@@ -16,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import fuzzy, textfold, theme
+from . import fuzzy, library, textfold, theme
 
 MAX_RESULTS = 50
 MAX_OTHER = 8                  # playlists and folders shown at most, so songs never crowd them out
@@ -101,10 +100,9 @@ class QuickSearch(QDialog):
                             theme.build_style()) + _CARD)
         self.resize(640, 420)
         self._songs = list(songs)
-        # (title, artist, everything, song), folded once: filtering is then plain substring tests.
-        self._index = [(fold(s.name), fold(s.artist),
-                        fold(f"{s.title} {s.artist} {s.album} {s.genre} {os.path.basename(s.path)}"), s)
-                       for s in self._songs]
+        # (title, artist, everything, song), folded once: filtering is then plain substring tests. "Everything" is the
+        # Library's search text, so a song in another alphabet is found in Latin letters here too.
+        self._index = [(fold(s.name), fold(s.artist), library.search_text(s), s) for s in self._songs]
         self._playlists = [(n, fold(n), list(p)) for n, p in playlists]
         self._folders = [(n, fold(n), [s.path for s in self._songs if s.folder == n]) for n in folders]
         self._shown = []                # songs currently listed, in order: the queue a song's Enter plays
@@ -165,11 +163,14 @@ class QuickSearch(QDialog):
         words = query.split()
         if not words:
             return []
+        pairs = library.query_words(text)
         songs = [(self._rank(words, query, t, a), a, t, s) for t, a, hay, s in self._index
-                 if all(w in hay for w in words)]
+                 if all(library.word_in(p, hay) for p in pairs)]
         self.forgiven = False
         if not songs and any(fuzzy.allowed(w) for w in words):     # nothing as typed: then a typo away
-            songs = [(4, a, t, s) for t, a, hay, s in self._index if fuzzy.matches(words, hay.split())]
+            loosened = [w2 for _, w2 in pairs]
+            songs = [(4, a, t, s) for t, a, hay, s in self._index
+                     if fuzzy.matches(words, hay.split()) or fuzzy.matches(loosened, hay.split())]
             self.forgiven = bool(songs)
         songs.sort(key=lambda x: x[:3])
         named = []

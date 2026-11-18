@@ -78,6 +78,10 @@ def private_settings_file(tmp_path, monkeypatch):
 def private_cache_dir(tmp_path, monkeypatch):
     "Loudness measurements, cover art for the desktop and the like must not land in the real ~/.cache."
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    from sleeve import kanji
+
+    monkeypatch.setattr(kanji, "CACHE_FILE", tmp_path / "xdg-cache" / "sleeve" / "romaji.json")
+    monkeypatch.setattr(kanji, "READINGS", {})                  # each test starts with no kanji readings known
 
 
 _APP = None                                           # one reference for the whole run: the application is made once

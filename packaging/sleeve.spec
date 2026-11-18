@@ -28,6 +28,8 @@ Requires:       python3-mutagen
 # Volume above 100% needs pactl; same-volume levelling for files without ReplayGain tags needs ffmpeg.
 Recommends:     pulseaudio-utils
 Suggests:       ffmpeg
+# Searching kanji titles in Latin letters; without it the rest of search works the same.
+Recommends:     python3-pykakasi
 # The optional download front end (dl.py); not packaged by the distributions yet, so only a hint.
 Suggests:       playlist-sync
 
