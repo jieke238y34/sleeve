@@ -36,6 +36,8 @@ def test_the_command_line_says_the_same(monkeypatch):
     monkeypatch.setattr(updater, "install_kind", lambda env=None, **k: "venv")
     monkeypatch.setattr(updater, "local_build", lambda: 129)
     monkeypatch.setattr(updater, "latest_release", lambda opener=None: dict(RELEASE))
+    # ahead of every release runs dev_update, which really clones main and pip-installs it over the test's Python
+    monkeypatch.setattr(updater, "dev_update", lambda out=print, run=None, env=None, python=None: 0)
     said = []
     assert updater.cli_update(out=said.append) == 0
     assert "newer than the newest published release" in said[-1]
