@@ -56,6 +56,10 @@ which view you used.
 
 Press **Ctrl+K** anywhere to search songs, playlists and folders at once. Enter plays what you picked.
 
+Ctrl+K also goes anywhere in Sleeve: every page (the Library too, even while it is hidden), each Settings section
+("Settings: Sound"), every playlist including Stashed Songs and the other lists that fill themselves, and each genre
+folder. These are listed first, under Go to; Enter opens them. Playlists further down play straight away.
+
 ## Identity
 
 Two large tabs sit at the top: **Identity** and **Listening**. The Listening tab shows your top songs this week or

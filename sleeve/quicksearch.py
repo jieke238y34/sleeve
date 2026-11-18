@@ -21,7 +21,7 @@ MAX_RESULTS = 50
 MAX_OTHER = 8                  # playlists and folders shown at most, so songs never crowd them out
 ROLE = Qt.UserRole + 1         # (kind, payload) on every selectable row; header rows have none
 HINT = "Enter plays · Shift+Enter adds to the queue · Esc closes"
-GROUPS = {"song": "Songs", "playlist": "Playlists", "folder": "Folders"}
+GROUPS = {"place": "Go to", "song": "Songs", "playlist": "Playlists", "folder": "Folders"}
 _CARD = f"""
 QDialog#quicksearch {{ background: transparent; }}
 QFrame#qscard {{ background: rgba(24, 21, 33, 240); border: 1px solid rgba(255, 255, 255, 30); border-radius: 16px; }}
@@ -85,14 +85,16 @@ class _Rows(QStyledItemDelegate):
 
 
 class QuickSearch(QDialog):
-    """Search box over songs, playlists and genre folders. Never touches the window: it emits play(paths, start),
-    enqueue(paths) or play_next(paths) and closes. With an empty query nothing is listed (only a hint)."""
+    """Search box over songs, playlists, genre folders and the places in Sleeve. Never touches the window: it emits
+    play(paths, start), enqueue(paths), play_next(paths) or go(key) and closes. With an empty query nothing is listed
+    (only a hint). `places` are (name, what it is, key): a page, a Settings section, a playlist or folder to open."""
 
     play = Signal(list, int)
     enqueue = Signal(list)
     play_next = Signal(list)
+    go = Signal(str)                    # a place was picked: the window opens it
 
-    def __init__(self, songs, playlists, folders, parent=None):
+    def __init__(self, songs, playlists, folders, parent=None, places=()):
         super().__init__(parent, Qt.Dialog | Qt.FramelessWindowHint)
         self.setObjectName("quicksearch")
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -105,6 +107,7 @@ class QuickSearch(QDialog):
         self._index = [(fold(s.name), fold(s.artist), library.search_text(s), s) for s in self._songs]
         self._playlists = [(n, fold(n), list(p)) for n, p in playlists]
         self._folders = [(n, fold(n), [s.path for s in self._songs if s.folder == n]) for n in folders]
+        self._places = [(name, what, key, fold(f"{name} {what}")) for name, what, key in places]
         self._shown = []                # songs currently listed, in order: the queue a song's Enter plays
 
         card = QFrame(self)
@@ -117,7 +120,7 @@ class QuickSearch(QDialog):
         lay.setSpacing(8)
         self.edit = QLineEdit()
         self.edit.setObjectName("qsinput")
-        self.edit.setPlaceholderText("Search songs, playlists and folders")
+        self.edit.setPlaceholderText("Search songs, playlists, folders and pages")
         self.edit.setClearButtonEnabled(True)
         self.edit.installEventFilter(self)
         self.edit.textChanged.connect(self.set_query)
@@ -174,10 +177,14 @@ class QuickSearch(QDialog):
             self.forgiven = bool(songs)
         songs.sort(key=lambda x: x[:3])
         named = []
+        places = sorted((self._rank(words, query, fold(n), ""), fold(n), n, w, k) for n, w, k, f in self._places
+                        if all(library.word_in(p, f) for p in pairs))
+        named += [("place", (n, w, k)) for _r, _f, n, w, k in places[:MAX_OTHER]]
         for kind, items in (("playlist", self._playlists), ("folder", self._folders)):
             hits = sorted((self._rank(words, query, f, ""), f, n, p) for n, f, p in items if all(w in f for w in words))
             named += [(kind, (n, p)) for _r, _f, n, p in hits[:MAX_OTHER]]
-        return [("song", x[3]) for x in songs[:MAX_RESULTS - len(named)]] + named
+        found = [("song", x[3]) for x in songs[:MAX_RESULTS - len(named)]]
+        return [x for x in named if x[0] == "place"] + found + [x for x in named if x[0] != "place"]
 
     def set_query(self, text):
         "Refill the list for text (what typing in the box calls)."
@@ -196,6 +203,9 @@ class QuickSearch(QDialog):
             if kind == "song":
                 item.setText(f"{payload.artist} - {payload.name}" if payload.artist else payload.name)
                 item.setData(Qt.UserRole, "  ·  ".join(x for x in (payload.album, _clock(payload.length)) if x))
+            elif kind == "place":
+                item.setText(payload[0])
+                item.setData(Qt.UserRole, payload[1])
             else:
                 n = len(payload[1])
                 item.setText(payload[0])
@@ -221,6 +231,10 @@ class QuickSearch(QDialog):
         elif self.current() is None:
             return
         menu = theme.Menu(self)
+        if self.current() and self.current()[0] == "place":
+            menu.addAction("Go there", lambda: self.activate())
+            menu.exec(self.list.viewport().mapToGlobal(pos))
+            return
         for label, mode in (("Play now", "play"), ("Play next", "next"), ("Add to queue", "enqueue")):
             menu.addAction(label, lambda _checked=False, wm=mode: self.activate(wm))
         menu.exec(self.list.viewport().mapToGlobal(pos))
@@ -245,6 +259,10 @@ class QuickSearch(QDialog):
         if not cur:
             return
         kind, payload = cur
+        if kind == "place":                                   # a page, section, playlist or folder: open it
+            self.go.emit(payload[2])
+            self.accept()
+            return
         paths = [payload.path] if kind == "song" else list(payload[1])
         if not paths:
             return

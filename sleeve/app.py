@@ -3592,19 +3592,60 @@ class MainWindow(QMainWindow):
             self._albums_timer.start()
 
     def _quick_search(self):
-        "Ctrl+K: find any song, playlist or folder and play it from the keyboard."
+        "Ctrl+K: find any song, playlist or folder and play it, or go to any place in Sleeve, from the keyboard."
         playlists_ = []
-        for name, _ in self.my_playlists.names():
+        for name, path, _mine in self._playlist_files:      # the lists that fill themselves, yours, and dl.py's
             try:
-                playlists_.append((name, [e.path for e in self.my_playlists.read(name) if e.exists]))
+                playlists_.append((name, [s.path for s in self._playlist_songs(path)[1]]))
             except (OSError, ValueError):
                 continue
         folders = sorted({s.folder for s in self.songs if s.folder != library.LOOSE}, key=str.lower)
-        dlg = self._quick = QuickSearch(self.songs, playlists_, folders, self)
+        dlg = self._quick = QuickSearch(self.songs, playlists_, folders, self, places=self._places())
         dlg.play.connect(lambda paths, start: self._play_queue(paths, start, "Search results"))
         dlg.enqueue.connect(lambda paths: self.player.enqueue(paths))
         dlg.play_next.connect(lambda paths: self.player.enqueue(paths, next_up=True))
+        dlg.go.connect(self._go_to)
         dlg.show()
+
+    def _places(self):
+        "Every place Ctrl+K can take you: (name, what it is, key for _go_to)."
+        out = [(self.nav.item(i).text(), "Page", f"page:{self.nav.item(i).text()}") for i in range(self.nav.count())]
+        chips = getattr(self, "settings_jump_chips", None)
+        for i in range(chips.count() if chips is not None else 0):
+            chip = chips.itemAt(i).widget()
+            if chip is not None:
+                out.append((f"Settings: {chip.text()}", "Settings section", f"settings:{chip.text()}"))
+        for name, path, mine in self._playlist_files:
+            what = ("Playlist that fills itself" if self._is_smart(path) else "Your playlist" if mine
+                    else "Spotify playlist")
+            out.append((name, what, f"playlist:{path}"))
+        for folder in sorted({s.folder for s in self.songs if s.folder != library.LOOSE}, key=str.lower):
+            out.append((folder, "Genre folder in the Library", f"folder:{folder}"))
+        return out
+
+    def _go_to(self, key):
+        "Open a place picked in Ctrl+K: a page, a Settings section, a playlist (its songs) or a Library folder."
+        kind, _, name = key.partition(":")
+        if kind == "page":
+            self.show_page(name)
+        elif kind == "settings":
+            self.show_page("Settings")
+            chips = self.settings_jump_chips
+            chip = next((chips.itemAt(i).widget() for i in range(chips.count())
+                         if chips.itemAt(i).widget() is not None and chips.itemAt(i).widget().text() == name), None)
+            if chip is not None:
+                QTimer.singleShot(0, chip.click)              # once the page is laid out, scroll to the section
+        elif kind == "playlist":
+            self.show_page("Playlists")
+            if self._select_playlist_path(name):
+                self.pl_stack.setCurrentIndex(1)
+        elif kind == "folder":
+            self.show_page("Library")
+            self.view_songs_btn.setChecked(True)
+            for i in range(self.folders.count()):
+                if self.folders.item(i).text() == name:
+                    self.folders.setCurrentRow(i)
+                    break
 
     def _scroll_speed_changed(self, value):
         self.scroll_label.setText(f"{value}%")

@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format follows
   bottom right; click it to cancel or add 15 minutes.
 - **Lyrics timing nudge**: when synced lyrics come early or late, Earlier and Later under the lyrics move
   them a quarter second at a time for that song (Reset puts it back). Kept in Sleeve's own file; the .lrc is untouched.
+- **Ctrl+K goes anywhere**: pages (the hidden Library too), each Settings section, every playlist (Stashed Songs and
+  the other lists that fill themselves included) and each genre folder, under Go to; Enter opens them. Stashed Songs,
+  the lists that fill themselves and the Spotify playlists can also be played from Ctrl+K now.
 - **Search other alphabets in English letters**: "sudno boris ryzhy" finds Судно (Борис Рыжий), "ragutorein" finds
   ラグトレイン, "gangnam" finds 강남스타일, "takahashi yoko" finds 高橋 洋子. Cyrillic, Japanese kana and Korean are spelled out
   by Sleeve itself; kanji are read by pykakasi (a new dependency) in a short separate process, once per title, so its
