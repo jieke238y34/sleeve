@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-18
+
 ### Added
 
 - **Sleep timer**: right-click either play button for Sleep in 15, 30 or 45 minutes, 1 or 2 hours, or at the end of
