@@ -84,6 +84,15 @@ def private_cache_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(kanji, "READINGS", {})                  # each test starts with no kanji readings known
 
 
+@pytest.fixture(autouse=True)
+def no_real_source_update(tmp_path, monkeypatch):
+    """A development update clones main and pip-installs it over the running Python: a test that reaches it by mistake
+    must fail to clone (no network, nothing installed) instead of replacing the code under test."""
+    from sleeve import updater
+
+    monkeypatch.setattr(updater, "SOURCE_URL", (tmp_path / "no-such-repository").as_uri())
+
+
 _APP = None                                           # one reference for the whole run: the application is made once
 
 
