@@ -32,6 +32,25 @@ themselves, and **Copy to my playlists** makes a playlist of your own from one. 
 colour like any other playlist. Playing All songs or Stashed Songs from a cover, or by double-clicking its name,
 starts in a fresh random order; the Play button plays any list from the top.
 
+## Smart playlists
+
+A smart playlist fills itself from a rule you write. Press **✦ Smart playlist…** on the Playlists page:
+
+- Give it a name, or pick one of the ready-made rules under **Start from…** and change what you like.
+- Each line reads like a sentence: a field (Genre folder, Artist, Length, Times played, Last played, Added, Stashed,
+  Alphabet...), how (is, contains, is one of, is under, in the last, never...) and a value. "Is one of" takes a list
+  with commas: `Rock, Metal`.
+- Songs where **all** or **any** of the lines are true; then the order (Random, Most played, Newest added...) and an
+  optional limit in songs or minutes ("1 hour").
+- The count and the first songs update as you type, so you see straight away if a rule is too strict.
+
+It joins your playlists with a ✦ and keeps itself up to date as you listen, stash and add music. A random one is dealt
+again each time you open or play it. Right-click its cover for **Edit rule…** or **Delete…**; **Copy to my playlists**
+keeps the songs it has now as a normal playlist file. Right-click any song and choose **More like this…** to start a
+smart playlist from that song's artist and genre.
+
+Smart playlists are kept in `~/.config/sleeve/smart-playlists.json`; your music and playlist files are never changed.
+
 ## The cover grid
 
 The Playlists tab shows a grid of cover tiles, with a New playlist tile first, then the lists that fill themselves. A playlist's cover is, in this order: the picture
