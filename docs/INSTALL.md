@@ -13,7 +13,8 @@ cd sleeve
 ```
 
 The script makes a private Python environment in `~/.local/share/sleeve/venv`, builds and installs Sleeve into it, adds
-a `sleeve` command in `~/.local/bin`, and adds Sleeve (with its icon) to your application menu. It needs no root access.
+a `sleeve` command in `~/.local/bin`, and adds Sleeve (with its icon) to your application menu. It needs no root access. If a system upgrade changes Python, the menu entry rebuilds the environment itself the next
+time you start Sleeve (it needs the internet for a minute; the `sleeve` command in a terminal does not do this).
 To update, press **Check for updates** in Settings, run `sleeve --update`, or pull the source and run `./install.sh` again.
 `./install.sh --uninstall` (or `sleeve --uninstall`) removes it and leaves your music and settings alone;
 `sleeve --uninstall --full` also deletes Sleeve's own data (add `--yes` to skip the question).

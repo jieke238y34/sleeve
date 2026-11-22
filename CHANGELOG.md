@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sleeve no longer breaks when the system Python is upgraded** (Fedora 44 to 45 took Python from 3.14 to 3.15, and the
+  menu entry then did nothing). The menu entry now starts Sleeve through a small launcher that notices the environment
+  can no longer run it and rebuilds it once with `install.sh`, keeping the checkout it was installed from. Run
+  `./install.sh` once to get the launcher; after that no reinstall is needed after a Python upgrade.
+
 ## [0.3.4] - 2026-11-18
 
 ### Added
