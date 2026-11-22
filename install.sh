@@ -53,6 +53,7 @@ fi
 case "${UNINSTALL:-}" in
     1)
         rm -rf "$VENV"
+        rm -f "$PREFIX/launch" "$PREFIX/install.sh" "$PREFIX/source" "$PREFIX/rebuild.log"
         rm -f "$BIN/sleeve" "$APPS/$APP_ID.desktop" "$ICONS/$APP_ID.svg"
         command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" >/dev/null 2>&1 || true
         say "Sleeve is uninstalled. Your music, playlists and settings (~/.config/sleeve) were not touched."
@@ -234,6 +235,45 @@ mkdir -p "$PREFIX" "$BIN" "$APPS" "$ICONS"
 # shellcheck disable=SC2086
 "$VENV/bin/python" -m pip install --quiet ${SLEEVE_PIP_ARGS:-} "$SOURCE"
 
+# --- launcher that rebuilds the environment after a system Python upgrade ---------------------------------------------
+# A Python upgrade (Fedora 44 to 45 took 3.14 to 3.15) leaves the private environment holding packages for the old
+# one, and it can no longer import Sleeve. The menu entry starts Sleeve through this small script, which notices and
+# runs this installer again once. It needs a copy of the installer next to it (made when this is run as a file) and
+# keeps the checkout it came from, so a rebuild does not swap a development build for the last release.
+if [ -f "$0" ] && [ "$HERE" != "$PREFIX" ]; then
+    cp "$0" "$PREFIX/install.sh.new" && mv -f "$PREFIX/install.sh.new" "$PREFIX/install.sh"
+fi
+if [ -d "$SOURCE" ] && [ -f "$SOURCE/pyproject.toml" ] && { [ -z "$WORK" ] || case "$SOURCE" in "$WORK"/*) false ;; esac; }; then
+    printf '%s' "$SOURCE" > "$PREFIX/source"
+elif [ -z "${SLEEVE_SOURCE:-}" ]; then rm -f "$PREFIX/source"
+fi
+# Written beside the old one and moved into place, so a launcher that is running this installer is never overwritten.
+cat > "$PREFIX/launch.new" <<'LAUNCH'
+#!/bin/sh
+# Starts Sleeve. Written by install.sh (rewritten on every install). If a Python upgrade left the private environment
+# unable to run Sleeve, it is rebuilt once with the installer kept beside this file, then Sleeve starts.
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+VENV="$HERE/venv"
+say() {
+    command -v notify-send >/dev/null 2>&1 && notify-send -a Sleeve "Sleeve" "$1" >/dev/null 2>&1
+    printf '%s\n' "$1" >&2
+}
+if ! "$VENV/bin/python" -I -c 'import sleeve' >/dev/null 2>&1; then
+    if [ ! -f "$HERE/install.sh" ]; then
+        say "Sleeve cannot run with this Python and has no installer to rebuild itself. Install it again (see the README)."
+        exit 1
+    fi
+    say "Python was upgraded, so Sleeve is rebuilding its environment. This takes a minute and needs the internet."
+    if [ -f "$HERE/source" ] && [ -d "$(cat "$HERE/source")" ]; then SLEEVE_SOURCE=$(cat "$HERE/source"); export SLEEVE_SOURCE; fi
+    if ! sh "$HERE/install.sh" > "$HERE/rebuild.log" 2>&1; then
+        say "Sleeve could not rebuild itself. Run: sh $HERE/install.sh   (what went wrong is in $HERE/rebuild.log)"
+        exit 1
+    fi
+fi
+exec "$VENV/bin/sleeve" "$@"
+LAUNCH
+chmod +x "$PREFIX/launch.new" && mv -f "$PREFIX/launch.new" "$PREFIX/launch"
+
 # --- command, icon, launcher entry ---------------------------------------------------------------------------------------
 ln -sf "$VENV/bin/sleeve" "$BIN/sleeve"
 ICON_SRC=$("$VENV/bin/python" -c 'import pathlib, sleeve; print(pathlib.Path(sleeve.__file__).parent / "data" / "sleeve.svg")')
@@ -244,7 +284,7 @@ Type=Application
 Name=Sleeve
 GenericName=Music Player
 Comment=Music library, player and sync dashboard
-Exec=$VENV/bin/sleeve
+Exec=$PREFIX/launch
 Icon=$APP_ID
 Terminal=false
 Categories=AudioVideo;Audio;Player;Qt;
@@ -254,15 +294,15 @@ Actions=PlayPause;Next;Previous;
 
 [Desktop Action PlayPause]
 Name=Play / Pause
-Exec=$VENV/bin/sleeve --play-pause
+Exec=$PREFIX/launch --play-pause
 
 [Desktop Action Next]
 Name=Next song
-Exec=$VENV/bin/sleeve --next
+Exec=$PREFIX/launch --next
 
 [Desktop Action Previous]
 Name=Previous song
-Exec=$VENV/bin/sleeve --previous
+Exec=$PREFIX/launch --previous
 EOF
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" >/dev/null 2>&1 || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
